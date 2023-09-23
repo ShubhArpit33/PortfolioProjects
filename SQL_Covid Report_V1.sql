@@ -6,10 +6,10 @@ Skills used: Joins, CTE's, Temp Tables, Windows Functions, Aggregate Functions, 
 
 */
 
-Select *
-From PortfolioProject..CovidDeaths
-Where continent is not null 
-order by 3,4
+SELECT *
+FROM PortfolioProject..CovidDeaths$
+WHERE continent is not null
+ORDER BY 3,4
 
 
 
@@ -20,6 +20,7 @@ FROM PortfolioProject..CovidDeaths$
 WHERE continent is not null
 ORDER BY 1,2
 
+	
 
 --Looking at Total Cases vs Total Deaths
 --Shows likelihood of dying if you contracted Covid in your country
@@ -31,6 +32,7 @@ WHERE continent is not null
 ORDER BY 1,2
 
 
+	
 --Let's look at Total Cases vs Population
 --Shows percentage of population infected with Covid
 
