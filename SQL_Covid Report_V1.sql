@@ -1,8 +1,16 @@
 
---Select *
---From PortfolioProject..CovidDeaths$
---Where continent is not null
---order by 3,4
+--/*
+Covid 19 Data Exploration 
+
+Skills used: Joins, CTE's, Temp Tables, Windows Functions, Aggregate Functions, Creating Views, Converting Data Types
+
+*/
+
+Select *
+From PortfolioProject..CovidDeaths
+Where continent is not null 
+order by 3,4
+
 
 
 --Select the Data we are going to use
@@ -24,7 +32,7 @@ ORDER BY 1,2
 
 
 --Let's look at Total Cases vs Population
---Shows percentage of population who got Covid
+--Shows percentage of population infected with Covid
 
 SELECT Location, date, population, total_cases, (total_cases/population)*100 AS CasePercentage
 FROM PortfolioProject..CovidDeaths$
@@ -32,6 +40,7 @@ WHERE continent is not null
 ORDER BY 1,2
 
 
+	
 --Looking at Countries with Highest Infection Rate compared to Population
 
 SELECT location, population, MAX(total_cases) as HighestInfectionCount, MAX((total_cases/population))*100 AS PercentPopulationInfected
@@ -39,8 +48,6 @@ FROM PortfolioProject..CovidDeaths$
 WHERE continent is not null
 GROUP BY location, population
 ORDER BY PercentPopulationInfected Desc
-
-
 
 
 
@@ -53,8 +60,8 @@ GROUP BY location
 ORDER BY TotalDeathCount Desc
 
 
+	
 --Let's break things down by Continent
-
 --Showing Continents Highest Death Count per Population
 
 SELECT continent, MAX(cast(total_deaths as int)) As TotalDeathCount
@@ -65,7 +72,7 @@ ORDER BY TotalDeathCount Desc
 
 
 --GLOBAL NUMBERS
-
+	
 SELECT date, SUM(new_cases) As TotalCases, SUM(Cast(new_deaths As int)) As TotalDeaths, 
 	(SUM(Cast(new_deaths As int))/SUM(new_cases))*100 As DeathPercentage
 FROM PortfolioProject..CovidDeaths$
@@ -86,7 +93,7 @@ ORDER BY 1,2
 
 
 -- Looking at Total Population vs Vaccinations
-
+	
 SELECT dea.continent, dea.location, dea.date, dea.population, vac.new_vaccinations
 , SUM(Cast(vac.new_vaccinations As int)) OVER (Partition by dea.location Order by dea.location, dea.date )
   as RollingPeopleVaccinated
@@ -99,8 +106,9 @@ WHERE dea.continent is not Null
 ORDER BY 2,3
 
 
---USE CTE
-
+	
+--Using CTE to perform Calculation on Partition By in previous query
+	
 WITH PopvsVac (Continent, Location, Date, Population, New_vaccinations, RollingPeopleVaccinated)
 As
 (
