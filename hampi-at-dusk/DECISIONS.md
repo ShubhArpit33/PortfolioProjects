@@ -99,5 +99,42 @@ In headless WebGL the only warning is SwiftShader's "GPU stall due to ReadPixels
 - Rotated sprites look slightly jagged at some angles.
 - The bundle is about 1.5 MB, almost all of it Phaser.
 
+## M5: end-to-end tests
+1. **Bot plan:** built from `levelData` plus `CONFIG`. There is one hop centred over each hazard (canal gap, cow, pillar, cart).
+   When a hop would land too late to take off for the next hazard, one hop clears both. That happens for the paired gaps 102–104 and 108–110, with 24 px margin on each side.
+   Take-off x values: 624, 1016, 1210, 1404, 1608, 1856, 2424, 2872, 3096, 3320, 4400.
+2. **Diyas:** a diya 2 or more tiles above the ground that no hazard hop passes through gets its own hop, 24 px before it. Only x276 needs one.
+   Diyas within 8 columns after a cliff are skipped, because rolling off the cliff collects x264.
+3. **Cow:** the bot hops over her instead of waiting. In the air it levels the bike to within ±3°, which gives CLEAN landings, but the run doesn't depend on that.
+4. **Monkeys:** the bot honks 5 steps on, 5 off, from the trigger column to the furthest spawn column. It boosts only from cp4 onward.
+5. **Console allowlist:** five patterns, all SwiftShader, GPU or WebGL driver notices. Console errors are never allowed.
+   An automatic fixture in `tests/e2e/helpers.ts` fails a test on any page error, console error, or warning that isn't on the list.
+6. **River "lands in the water" check:** the last position before the crash must be inside the river's x range and below the water line (y > 226), with crashes = 1.
+
+## M6: visual review fixes
+1. **Finish:** the bike is braked to stop 64 px past the finish line, because it used to roll to the end wall and off the screen.
+   The speed cap is `sqrt(2·1200·distance left)`. It only applies after the timer has stopped, so it doesn't affect the time.
+2. **Honk popups:** a new honk popup replaces the previous one instead of stacking on top of it.
+3. **Lamp offset:** each checkpoint lamp is drawn 26 px left of the checkpoint x, so the bike doesn't spawn on top of the pillar. This is a visual offset only;
+   where checkpoints trigger and where the bike respawns are unchanged.
+4. **Exhaust puffs:** now a soft 3×3 blob, because the old plus shape looked like sparkles.
+5. **Left as they are:** vines sometimes pass behind HUD text (it stays readable), rotated sprites look slightly jagged, and the bundle is about 1.5 MB.
+
+## Section 9 status (final for v1.1)
+
+| # | Criterion | Status | Evidence |
+|---|---|---|---|
+| 1 | Build and tests pass | Met | `tsc` and `vite build` clean; 31 Vitest and 4 Playwright tests pass. Fable ran the suite 3 times in a row and the coordinator re-ran it once more. |
+| 2 | Console clean | Met | Nothing logged under `?renderer=canvas` |
+| 3 | Bot run | Met | 23.22 s of game time, 0 crashes, 17/17 diyas |
+| 4 | River needs boost | Met | No boost: about 61 px short, into the water. Boost from cp4: lands at x = 5474.4, 34.4 px past the edge (needs ≥ 16) |
+| 5 | Canal gaps | Met | Vitest (M2) |
+| 6 | Hop windows | Met | Pillar 375 ms, cart 225 ms |
+| 7 | Landing at 40° / 5° | Met | Vitest |
+| 8 | 60 fps | Partly met | The automated perf test passes (10 000 steps in about 3 ms). **60 fps on real hardware still needs a manual check.** |
+| 9 | Screenshots reviewed | Met | 10 PNGs in `test-results/shots/`, reviewed by Fable and spot-checked by the coordinator |
+
+In the live game, 0.18 of the boost meter is left after the river jump (the diya collected in mid-air adds 0.1).
+
 ## Attribution
 - Commits made by Fable carry a `Co-Authored-By: Claude Fable 5.2` trailer, which names the model that actually wrote them. Commits made by the coordinator carry the Opus trailer.
