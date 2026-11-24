@@ -1,4 +1,8 @@
+import '@fontsource/press-start-2p/latin-400.css';
 import Phaser from 'phaser';
+import { BootScene } from './scenes/Boot';
+import { GameScene } from './scenes/Game';
+import { installTestHooks } from './testHooks';
 
 const params = new URLSearchParams(window.location.search);
 
@@ -16,7 +20,9 @@ const game = new Phaser.Game({
     mode: Phaser.Scale.FIT,
     autoCenter: Phaser.Scale.CENTER_BOTH,
   },
-  scene: [],
+  scene: [BootScene, GameScene],
 });
+
+if (import.meta.env.DEV || import.meta.env.MODE === 'test') installTestHooks(game);
 
 export default game;
