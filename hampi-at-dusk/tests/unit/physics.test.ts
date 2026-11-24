@@ -5,7 +5,7 @@ import {
   type BikeInput, type BikeState,
 } from '../../src/bike/BikePhysics';
 import {
-  BASELINE_Y, CHECKPOINTS, COW, DIYAS, OBSTACLES, SECTIONS, TILE, checkpointX, diyaCentre,
+  BASELINE_Y, CHECKPOINTS, COW, DIYAS, OBSTACLES, SECTIONS, TILE, WORLD_START_X, checkpointX, diyaCentre,
 } from '../../src/level/levelData';
 import { TERRAIN, obstacleBox, type Box } from '../../src/level/terrain';
 
@@ -152,11 +152,12 @@ describe('landing (criterion 7)', () => {
 });
 
 describe('ground rules', () => {
-  it('throttle reaches topSpeed and holds it; brake stops; no reverse', () => {
+  it('throttle reaches topSpeed and holds it; brake stops', () => {
     let s = createBikeState(40);
     for (let i = 0; i < 120 * 3; i++) s = step(s, { throttle: true });
     expect(s.v).toBe(CONFIG.topSpeed);
-    for (let i = 0; i < 120; i++) s = step(s, { brake: true });
+    // 240 / 400 = 0.6 s to stop; 100 steps is still inside the hold delay that precedes backing up
+    for (let i = 0; i < 100; i++) s = step(s, { brake: true });
     expect(s.v).toBe(0);
     expect(s.vx).toBe(0);
   });
@@ -260,6 +261,181 @@ describe('ground rules', () => {
       return s;
     };
     expect(run()).toEqual(run());
+  });
+});
+
+describe('backing up at a standstill', () => {
+  const HOLD_STEPS = Math.round((CONFIG.reverseHoldDelayMs / 1000) * 120);
+
+  it('Left from a standstill backs up at once, reaching and holding reverseSpeed', () => {
+    let s = createBikeState(400);
+    s.boost = 0.5;
+    let idle = createBikeState(400);
+    idle.boost = 0.5;
+    s = step(s, { brake: true });
+    expect(s.v).toBeCloseTo(-CONFIG.reverseAccel * FIXED_DT, 9);
+    let minV = 0;
+    for (let i = 0; i < 120 * 2; i++) {
+      s = step(s, { brake: true });
+      minV = Math.min(minV, s.v);
+      expect(s.grounded).toBe(true);
+      expect(s.evHop).toBe(false);
+      expect(s.evLanding).toBeNull();
+    }
+    for (let i = 0; i < 120 * 2 + 1; i++) idle = step(idle, {});
+    expect(s.v).toBe(-CONFIG.reverseSpeed);
+    expect(minV).toBe(-CONFIG.reverseSpeed);
+    expect(s.vx).toBe(-CONFIG.reverseSpeed);
+    expect(s.x).toBeLessThan(400 - CONFIG.reverseSpeed * 1.5);
+    expect(s.y).toBe(BASELINE_Y);
+    expect(s.crashed).toBeNull();
+    // the meter behaves exactly as it does standing still (plain regen)
+    expect(s.boost).toBeCloseTo(idle.boost, 12);
+    expect(s.boosting).toBe(false);
+  });
+
+  it('Left while moving forward only brakes: no reverse until it has been held at rest for the hold delay', () => {
+    let s = rolling(1000 - 200, 240);
+    let steps = 0;
+    while (s.v > 0) {
+      const before = s.v;
+      s = step(s, { brake: true });
+      expect(s.v).toBeGreaterThanOrEqual(0);
+      expect(s.v).toBeCloseTo(Math.max(0, before - CONFIG.brake * FIXED_DT), 9);
+      steps++;
+    }
+    expect(steps).toBe(Math.ceil(240 / (CONFIG.brake * FIXED_DT)));
+    const stopX = s.x;
+    for (let i = 0; i < HOLD_STEPS; i++) {
+      s = step(s, { brake: true });
+      expect(s.v).toBe(0);
+    }
+    expect(s.x).toBe(stopX);
+    for (let i = 0; i < 4; i++) s = step(s, { brake: true });
+    expect(s.v).toBeLessThan(0);
+    expect(s.x).toBeLessThan(stopX);
+  });
+
+  it('a released and re-pressed Left backs up without the delay', () => {
+    let s = rolling(800, 100);
+    while (s.v > 0) s = step(s, { brake: true });
+    s = step(s, {});
+    s = step(s, { brake: true });
+    expect(s.v).toBeLessThan(0);
+  });
+
+  it('releasing Left stops the bike at the brake rate, and it stays stopped', () => {
+    let s = createBikeState(400);
+    for (let i = 0; i < 120; i++) s = step(s, { brake: true });
+    expect(s.v).toBe(-CONFIG.reverseSpeed);
+    const stopSteps = Math.ceil(CONFIG.reverseSpeed / (CONFIG.brake * FIXED_DT));
+    for (let i = 0; i < stopSteps; i++) {
+      s = step(s, {});
+      expect(s.v).toBeLessThanOrEqual(0);
+    }
+    expect(s.v).toBe(0);
+    const x = s.x;
+    for (let i = 0; i < 120; i++) s = step(s, {});
+    expect(s.v).toBe(0);
+    expect(s.x).toBe(x);
+  });
+
+  it('Right while backing up brakes to a stop first, then drives forward', () => {
+    let s = createBikeState(400);
+    for (let i = 0; i < 120; i++) s = step(s, { brake: true });
+    let prev = s.v;
+    let sawZero = false;
+    for (let i = 0; i < 60; i++) {
+      s = step(s, { throttle: true });
+      expect(s.v).toBeGreaterThanOrEqual(prev);
+      if (prev < 0) expect(s.v).toBeLessThanOrEqual(0); // never jumps through zero
+      if (s.v === 0) sawZero = true;
+      prev = s.v;
+    }
+    expect(sawZero).toBe(true);
+    expect(s.v).toBeGreaterThan(0);
+  });
+
+  it('is clamped at the start of the level', () => {
+    let s = createBikeState(checkpointX(CHECKPOINTS[0]!));
+    for (let i = 0; i < 120 * 5; i++) s = step(s, { brake: true });
+    expect(s.x).toBe(WORLD_START_X);
+    expect(s.v).toBe(0);
+    expect(s.vx).toBe(0);
+    expect(s.grounded).toBe(true);
+    expect(s.crashed).toBeNull();
+    // and it can ride away again
+    for (let i = 0; i < 60; i++) s = step(s, { throttle: true });
+    expect(s.x).toBeGreaterThan(WORLD_START_X);
+  });
+
+  it('follows the slope: backing down the river ramp stays glued to the surface, and holds when released', () => {
+    let s = createBikeState(324 * TILE);
+    const y0 = s.y;
+    for (let i = 0; i < 120; i++) {
+      s = step(s, { brake: true });
+      expect(s.grounded).toBe(true);
+      expect(s.y).toBeCloseTo(TERRAIN.surfaceY(s.x)!, 6);
+    }
+    expect(s.v).toBe(-CONFIG.reverseSpeed);
+    expect(s.y).toBeGreaterThan(y0); // lower on the ramp
+    for (let i = 0; i < 120; i++) s = step(s, {});
+    expect(s.v).toBe(0);
+    // crossing ramp corners backwards never launches the bike (boulder field crest and dip)
+    s = createBikeState(238 * TILE);
+    for (let i = 0; i < 120 * 8; i++) {
+      s = step(s, { brake: true });
+      expect(s.grounded).toBe(true);
+      expect(s.evLanding).toBeNull();
+    }
+    expect(s.x).toBeLessThan(226 * TILE);
+  });
+
+  it('backing into a canal falls in the water (normal crash rules)', () => {
+    const gap = CANAL_GAPS[0]!;
+    let s = createBikeState(gap.x1 + 20);
+    for (let i = 0; i < 120 * 3 && !s.crashed; i++) s = step(s, { brake: true });
+    expect(s.crashed).toBe('water');
+    expect(s.x).toBeLessThan(gap.x1);
+    expect(s.x).toBeGreaterThan(gap.x0);
+  });
+
+  it('backing into the foot of the cliff just stops against it', () => {
+    const cliff = TERRAIN.cliffs[0]!;
+    let s = createBikeState(cliff.x + 30);
+    for (let i = 0; i < 120 * 3; i++) s = step(s, { brake: true });
+    expect(s.crashed).toBeNull();
+    expect(s.grounded).toBe(true);
+    expect(s.x).toBeGreaterThanOrEqual(cliff.x);
+    expect(s.x).toBeLessThan(cliff.x + 1);
+    expect(s.y).toBe(cliff.bottomY);
+    expect(s.v).toBe(0);
+  });
+
+  it('no hop while backing up; the buffered press fires once the bike has stopped', () => {
+    let s = createBikeState(400);
+    for (let i = 0; i < 120; i++) s = step(s, { brake: true });
+    s = step(s, { brake: true, hop: true });
+    expect(s.evHop).toBe(false);
+    expect(s.grounded).toBe(true);
+    // hop from a standstill still works
+    let t = createBikeState(400);
+    t = step(t, { hop: true });
+    expect(t.evHop).toBe(true);
+  });
+
+  it('Left in the air does nothing (no air brake, no reverse)', () => {
+    let a = rolling(400, 200);
+    let b = rolling(400, 200);
+    a = step(a, { hop: true });
+    b = step(b, { hop: true });
+    for (let i = 0; i < 30; i++) {
+      a = step(a, { brake: true });
+      b = step(b, {});
+    }
+    expect(a.grounded).toBe(false);
+    expect(a.x).toBe(b.x);
+    expect(a.vx).toBe(b.vx);
   });
 });
 

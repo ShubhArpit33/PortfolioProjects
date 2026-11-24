@@ -36,7 +36,7 @@ export class TitleScene extends Phaser.Scene {
 
     this.add.rectangle(0, 232, 480, 38, PAL.ink, 0.72).setOrigin(0, 0).setDepth(ui - 1);
     const hints = [
-      'RIGHT GAS  LEFT BRAKE  SPACE HOP  UP/DOWN TILT',
+      'RIGHT GAS  LEFT BRAKE/BACK  SPACE HOP  UP/DOWN TILT',
       'SHIFT BOOST  H HONK  P PAUSE  R RESTART  M MUTE',
     ];
     hints.forEach((line, i) => pixelText(this, 240, 239 + i * 13, line, PAL.cream).setOrigin(0.5, 0).setDepth(ui));
@@ -53,9 +53,9 @@ export class TitleScene extends Phaser.Scene {
   private draw(dt: number): void {
     this.t += dt;
     const scroll = Math.round(this.t * SCROLL_SPEED);
-    this.parallax.update(scroll);
+    this.parallax.update(scroll, this.t);
     this.ground.tilePositionX = scroll;
-    this.bike.ride(150, BASELINE_Y, 0, { throttle: true, brake: false, boosting: false, grounded: true, v: SCROLL_SPEED * 3 }, dt);
+    this.bike.ride(150, BASELINE_Y, 0, { throttle: true, brake: false, reversing: false, footDown: false, boosting: false, grounded: true, v: SCROLL_SPEED * 3 }, dt);
     this.press.setVisible(Math.floor(this.t * 2.5) % 2 === 0);
     this.mute.setVisible(isMuted());
   }

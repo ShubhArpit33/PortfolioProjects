@@ -7,6 +7,7 @@ export const WATER_KILL_Y = 230;    // kill plane over gaps
 export const STAGE_COLS = 360;
 export const STAGE_WIDTH = STAGE_COLS * TILE; // 5760
 export const WORLD_END_X = 5744;    // invisible wall
+export const WORLD_START_X = 24;    // invisible wall at the start (keeps a backed-up bike fully on screen)
 export const CAMERA_MAX_SCROLL_X = 5280;
 
 export type Segment =
@@ -138,6 +139,7 @@ export const LEVEL = {
   waterKillY: WATER_KILL_Y,
   stageCols: STAGE_COLS,
   stageWidth: STAGE_WIDTH,
+  worldStartX: WORLD_START_X,
   worldEndX: WORLD_END_X,
   sections: SECTIONS,
   checkpoints: CHECKPOINTS,

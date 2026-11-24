@@ -31,6 +31,9 @@ export const CONFIG = {
   minAirMsForLanding: 120,   // shorter airs re-attach silently
   angleEaseDegPerSec: 720,   // grounded angle easing toward the slope
   cowCrashSpeed: 60,
+  reverseSpeed: 45,          // top speed backing up ("paddling with the feet"), grounded only
+  reverseAccel: 120,
+  reverseHoldDelayMs: 300,   // Left held through a stop: pause this long before backing up
 };
 
 export type Config = typeof CONFIG;

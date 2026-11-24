@@ -258,7 +258,10 @@ export class GameScene extends Phaser.Scene {
     const dt = FIXED_DT;
     if (!this.finished) this.timerSteps++;
 
-    const input: GameInput = this.finished ? { brake: true } : this.readInput();
+    // After the line only the brake is active (released once stopped, so the bike never backs up).
+    const input: GameInput = this.finished
+      ? { brake: !this.bike.grounded || this.bike.v > 0 }
+      : this.readInput();
     this.lastInput = input;
 
     // Honk: keyboard presses are queued; the test input is edge-triggered here.
@@ -480,7 +483,7 @@ export class GameScene extends Phaser.Scene {
     const cam = this.cameras.main;
     const scroll = Math.round(this.camX);
     cam.scrollX = scroll;
-    this.parallax.update(scroll);
+    this.parallax.update(scroll, t);
 
     const b = this.bike;
     if (this.phase === 'crash') {
@@ -492,6 +495,8 @@ export class GameScene extends Phaser.Scene {
       this.view.ride(sx, Math.round(b.y), b.angle, {
         throttle: inp.throttle === true && b.grounded,
         brake: inp.brake === true && b.grounded && b.v > 1,
+        reversing: b.grounded && b.v < -1,
+        footDown: b.grounded && Math.abs(b.v) < 2 && inp.throttle !== true && !b.boosting,
         boosting: b.boosting,
         grounded: b.grounded,
         v: b.grounded ? b.v : Math.abs(b.vx),

@@ -6,10 +6,16 @@ import Phaser from 'phaser';
 const WHEEL_R = 6;
 const WHEEL_DX = 13;
 const DEG = Math.PI / 180;
+/** x of the planted foot, relative to the wheel-contact midpoint */
+const LEG_X = -1;
 
 export interface BikeDrive {
   throttle: boolean;
   brake: boolean;
+  /** backing up (paddling with the feet) */
+  reversing: boolean;
+  /** stopped or backing up: the rider has a foot on the ground */
+  footDown: boolean;
   boosting: boolean;
   grounded: boolean;
   /** speed along the ground (px/s) */
@@ -21,6 +27,7 @@ export class BikeView {
   private body: Phaser.GameObjects.Image;
   private rear: Phaser.GameObjects.Image;
   private front: Phaser.GameObjects.Image;
+  private leg: Phaser.GameObjects.Image;
   private smoke: Phaser.GameObjects.Particles.ParticleEmitter;
   private dust: Phaser.GameObjects.Particles.ParticleEmitter;
   private sparks: Phaser.GameObjects.Particles.ParticleEmitter;
@@ -33,12 +40,15 @@ export class BikeView {
   private wobbleT = 0;     // seconds left of the stumble wobble
   private smokeAcc = 0;
   private dustAcc = 0;
+  private paddle = 0;      // phase of the backing-up foot shuffle, radians
 
   constructor(scene: Phaser.Scene, depth: number, fxDepth: number) {
     this.rear = scene.add.image(-WHEEL_DX, -WHEEL_R, 'wheel');
     this.front = scene.add.image(WHEEL_DX, -WHEEL_R, 'wheel');
     this.body = scene.add.image(0, -WHEEL_R, 'bike_body').setOrigin(0.5, 1);
-    this.container = scene.add.container(0, 0, [this.rear, this.front, this.body]).setDepth(depth);
+    // The rider's leg reaching the ground (shown at a standstill and while backing up).
+    this.leg = scene.add.image(LEG_X, 0, 'rider_leg').setOrigin(0.5, 1).setVisible(false);
+    this.container = scene.add.container(0, 0, [this.rear, this.front, this.body, this.leg]).setDepth(depth);
 
     this.smoke = scene.add.particles(0, 0, 'p_smoke', {
       lifespan: { min: 260, max: 460 }, speedX: { min: -50, max: -15 }, speedY: { min: -26, max: -6 },
@@ -66,7 +76,7 @@ export class BikeView {
     c.rotation = -angleDeg * DEG;
 
     // Lean back under throttle / boost, forward under braking.
-    const target = drive.brake ? -4 : drive.boosting ? 6 : drive.throttle ? 3 : 0;
+    const target = drive.brake ? -4 : drive.boosting ? 6 : drive.reversing ? 5 : drive.throttle ? 3 : 0;
     this.lean += (target - this.lean) * Math.min(1, dt * 10);
     this.squash = Math.max(0, this.squash - dt * 14);
     this.wobbleT = Math.max(0, this.wobbleT - dt);
@@ -79,9 +89,17 @@ export class BikeView {
     this.body.rotation = -(this.lean + wobble) * DEG;
     this.body.y = -WHEEL_R + bob + Math.round(this.squash);
 
+    // drive.v is negative while backing up, so the wheels turn backwards.
     this.spin += (drive.v / WHEEL_R) * dt;
     this.rear.rotation = this.spin;
     this.front.rotation = this.spin;
+
+    // Foot down; it shuffles back and forth with the distance covered while backing up.
+    this.leg.setVisible(drive.footDown || drive.reversing);
+    if (drive.reversing) this.paddle += Math.abs(drive.v) * dt * 0.5;
+    else this.paddle = 0;
+    this.leg.x = LEG_X + (drive.reversing ? Math.round(Math.sin(this.paddle) * 2) : 0);
+    this.leg.y = drive.reversing && Math.cos(this.paddle) > 0.6 ? -1 : 0;
 
     // Exhaust puffs scale with throttle; dust trail when grounded and fast.
     const cos = Math.cos(c.rotation), sin = Math.sin(c.rotation);
@@ -110,6 +128,7 @@ export class BikeView {
     this.container.rotation = -angleDeg * DEG;
     this.body.rotation = 0;
     this.body.y = -WHEEL_R;
+    this.leg.setVisible(false);
   }
 
   landed(hard: boolean, x: number, y: number): void {
@@ -136,5 +155,6 @@ export class BikeView {
     this.lean = 0;
     this.squash = 0;
     this.wobbleT = 0;
+    this.paddle = 0;
   }
 }

@@ -1,4 +1,4 @@
-# HAMPI AT DUSK — Game Spec (v1.1, one stage)
+# HAMPI AT DUSK — Game Spec (v1.2, one stage)
 
 A 2D side-scrolling arcade motorcycle game set in the ruins of Hampi, Karnataka, at sunset.
 16-bit pixel-art look. One stage, about 30–45 seconds for a clean run.
@@ -7,6 +7,8 @@ This file is the single source of truth. If something is not specified here, cho
 simplest option and write it down in `DECISIONS.md`.
 
 > v1.1: revised after the spec review in `SPEC_REVIEW.md` (all 30 proposed edits applied).
+>
+> v1.2 (after play-testing): backing up at a standstill (sections 2, 3, 4) and background ambience (section 6.2).
 
 ---
 
@@ -32,7 +34,7 @@ Commands that must work: `npm run dev`, `npm run build`, `npm test`.
 | Key | Action |
 |---|---|
 | → | Throttle |
-| ← | Brake (no reverse) |
+| ← | Brake while moving forward. At a standstill on the ground: back the bike up slowly ("paddling with the feet"), up to `reverseSpeed`. A press that braked the bike to a stop must be held `reverseHoldDelayMs` longer before it backs up; a fresh press backs up at once. Releasing stops the bike at `brake` rate; → while backing up stops it first, then drives forward. No hop while backing up. No effect in the air. |
 | Space | Hop (ground only; 80 ms coyote time, 100 ms jump buffer; works on slopes; disabled on `noHop` segments, including coyote time off them) |
 | ↑ / ↓ | In the air: tilt the nose up / down |
 | Shift | Boost: while held, meter > 0 and grounded, acceleration is `boostAccel` (replaces `accel`, no throttle needed) and the cap is `boostSpeed`. No regen while held. When boost ends, speed above `topSpeed` decays at `brake` rate. The meter starts full. No effect in the air. The meter drains only while boost is actually applied (held, grounded, meter > 0); in the air it neither drains nor regenerates. |
@@ -86,6 +88,9 @@ export const CONFIG = {
   minAirMsForLanding: 120,   // shorter airs re-attach silently
   angleEaseDegPerSec: 720,   // grounded angle easing toward the slope
   cowCrashSpeed: 60,
+  reverseSpeed: 45,          // top speed backing up, grounded only
+  reverseAccel: 120,
+  reverseHoldDelayMs: 300,   // Left held through a stop: pause this long before backing up
 };
 ```
 
@@ -105,7 +110,10 @@ Angles: positive = nose up or uphill; angle differences are normalised to [−18
 **On the ground:**
 1. Speed `v` along the slope changes with throttle, brake, drag, boost, and `−gravity·sin(slope)·slopeGravityFactor`.
    While boosting, cap at `boostSpeed`. Otherwise throttle cannot accelerate past `topSpeed`, and any speed above it
-   (after boost, a landing, or a downhill) decays at `brake` rate, with no instant clamp. Clamp to ≥ 0.
+   (after boost, a landing, or a downhill) decays at `brake` rate, with no instant clamp. Clamp to ≥ 0,
+   except when backing up (v1.2): with ← held at `v = 0`, `v` goes down to `−reverseSpeed` at `reverseAccel`; slope gravity is not applied
+   while `v ≤ 0` with ← held or while `v < 0` (the rider's feet hold the bike). A backing bike stops against a vertical face more than
+   `wallTolerance` high (the foot of the cliff) and at the wall at the level start (x = 24); backing into a gap falls in as usual.
 2. Velocity vector = `(v·cos θ, −v·sin θ)` where θ is the slope angle.
 3. Move one step as a projectile (with gravity). If the new y is **more than `airborneEps` (0.25 px) above the surface, or the surface is `null`**
    (ramp lip, cliff edge, gap), the bike becomes **airborne** and keeps its velocity. Otherwise snap to the surface
@@ -220,6 +228,13 @@ Alpha blends and tints of palette colours are allowed.
 
 The stone chariot silhouette appears on the far skyline near the finish.
 
+**Ambience (v1.2).** Extra background detail, all behind the terrain layer, all in the 6.1 palette, low contrast:
+stacked-boulder hills on the far skyline and behind the middle ground; a hazier back row in the middle ground with ruined
+pillared halls (mandapas), arches, boulder stacks and more banana plants; small lamps in those ruins with a flickering glow;
+bird flocks crossing the sky near the sun, giving way to bats in sections 4–5; fireflies just behind the road, densest by
+the canals and the river; a smoke wisp from a small skyline shrine; coracles bobbing on the river.
+Animated details are a pure function of game time and camera scroll (no tweens, no wall clock, no `Math.random`).
+
 ### 6.3 Bike (built from parts — no sprite-sheet animation)
 
 - `bike_body` 40×24: roadster motorcycle (round headlamp, teardrop tank, single seat) with a rider in a helmet and jacket.
@@ -322,10 +337,10 @@ src/
   level/   levelData.ts  terrain.ts (heightfield, surfaceY, slopeAngle)
   bike/    BikePhysics.ts (pure, no Phaser — unit-testable)  BikeView.ts
   entities/ Diya.ts  Obstacle.ts  Monkey.ts  Cow.ts  Checkpoint.ts
-  art/     assets.ts  placeholders.ts  palette.ts
+  art/     assets.ts  placeholders.ts  palette.ts  Parallax.ts  Ambience.ts
   audio/   sfx.ts
 tests/
   unit/  physics.test.ts
-  e2e/   run.spec.ts  river.spec.ts  consoleAllowlist.ts
+  e2e/   run.spec.ts  river.spec.ts  reverse.spec.ts  consoleAllowlist.ts
 DECISIONS.md
 ```

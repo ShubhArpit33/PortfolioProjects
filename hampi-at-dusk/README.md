@@ -18,7 +18,8 @@ The e2e tests need Chromium. The first time, install it with `npx playwright ins
 
 | Key | Action |
 |---|---|
-| Right arrow / Left arrow | Throttle / brake |
+| Right arrow | Throttle |
+| Left arrow | Brake; at a standstill, back the bike up slowly with your feet |
 | Space | Hop |
 | Up arrow / Down arrow | Tilt the nose in the air |
 | Shift | Boost |

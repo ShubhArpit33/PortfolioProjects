@@ -4,7 +4,7 @@
 // y grows downward (screen space), so "above the surface" means a smaller y.
 
 import { CONFIG, type Config } from '../config';
-import { WATER_KILL_Y, WORLD_END_X } from '../level/levelData';
+import { WATER_KILL_Y, WORLD_END_X, WORLD_START_X } from '../level/levelData';
 import { TERRAIN, type Box, type Terrain } from '../level/terrain';
 
 export const FIXED_DT = 1 / 120;
@@ -30,7 +30,7 @@ export interface BikeState {
   y: number;
   vx: number;
   vy: number;
-  /** speed along the slope while grounded (>= 0); |velocity| snapshot while airborne */
+  /** speed along the slope while grounded (negative = backing up, never below -reverseSpeed); |velocity| snapshot while airborne */
   v: number;
   angle: number;
   grounded: boolean;
@@ -49,6 +49,11 @@ export interface BikeState {
   hopHeld: boolean;
   /** true while boost is actually being applied this step */
   boosting: boolean;
+  /**
+   * Seconds Left must still be held at a standstill before it starts backing the bike up. Armed whenever
+   * Left is used as a brake on a forward-moving bike; cleared on release (a fresh press backs up at once).
+   */
+  reverseWait: number;
 
   // --- one-step events (reset at the start of every step) ---
   evLanding: LandingKind | null;
@@ -64,7 +69,7 @@ export function createBikeState(x: number, terrain: Terrain = TERRAIN): BikeStat
     grounded: true,
     boost: 1,
     crashed: null,
-    airTime: 0, coyote: 0, hopBuffer: 0, hopHeld: false, boosting: false,
+    airTime: 0, coyote: 0, hopBuffer: 0, hopHeld: false, boosting: false, reverseWait: 0,
     evLanding: null, evHop: false,
   };
 }
@@ -118,13 +123,19 @@ export function step(
 
   if (s.hopBuffer > 0) s.hopBuffer = Math.max(0, s.hopBuffer - dt);
 
-  // World bounds: invisible wall at the end of the stage, nothing behind x = 0.
+  // World bounds: invisible walls at both ends of the stage.
   if (s.x > WORLD_END_X) {
     s.x = WORLD_END_X;
     s.vx = 0;
     if (s.grounded) s.v = 0;
-  } else if (s.x < 0) {
-    s.x = 0;
+  } else if (s.x < WORLD_START_X) {
+    s.x = WORLD_START_X;
+    if (s.vx < 0) s.vx = 0;
+    if (s.grounded) {
+      if (s.v < 0) s.v = 0;
+      const y = terrain.surfaceY(s.x);
+      if (y !== null) s.y = y;
+    }
   }
   return s;
 }
@@ -135,29 +146,56 @@ function stepGround(s: BikeState, input: BikeInput, dt: number, terrain: Terrain
   const cos = Math.cos(theta);
 
   // 1. Speed along the slope.
-  let v = s.v - cfg.gravity * sin * cfg.slopeGravityFactor * dt;
+  const v0 = s.v;
+  let v = v0 - cfg.gravity * sin * cfg.slopeGravityFactor * dt;
   const boosting = input.boost === true && s.boost > 0;
+  const brake = input.brake === true;
+  if (!brake) s.reverseWait = 0;
   if (boosting) {
-    v = Math.min(cfg.boostSpeed, v + cfg.boostAccel * dt);
+    v = Math.max(0, Math.min(cfg.boostSpeed, v + cfg.boostAccel * dt));
     s.boost = Math.max(0, s.boost - cfg.boostDrainPerSec * dt);
     s.boosting = true;
   } else {
-    if (input.brake) v -= cfg.brake * dt;
-    else if (v > cfg.topSpeed) v = Math.max(cfg.topSpeed, v - cfg.brake * dt); // decay, no instant clamp
-    else if (input.throttle) v = Math.min(cfg.topSpeed, v + cfg.accel * dt);
-    else v -= cfg.coastDrag * dt;
+    if (v0 > 0) {
+      // Moving forward: Left is a brake and never carries the bike through zero.
+      if (brake) {
+        v -= cfg.brake * dt;
+        s.reverseWait = cfg.reverseHoldDelayMs / 1000;
+      } else if (v > cfg.topSpeed) v = Math.max(cfg.topSpeed, v - cfg.brake * dt); // decay, no instant clamp
+      else if (input.throttle) v = Math.min(cfg.topSpeed, v + cfg.accel * dt);
+      else v -= cfg.coastDrag * dt;
+      if (v < 0) v = 0;
+    } else if (brake) {
+      // Standstill or already backing up: paddle backward with the feet. The rider's feet hold the bike
+      // against the slope, so slope gravity does not apply here. A brake press that has just stopped
+      // the bike first has to be held for reverseHoldDelayMs.
+      if (v0 === 0 && s.reverseWait > 0) {
+        s.reverseWait -= dt;
+        if (s.reverseWait < 1e-9) s.reverseWait = 0; // whole number of steps, whatever the rounding
+        v = 0;
+      } else {
+        v = Math.max(-cfg.reverseSpeed, v0 - cfg.reverseAccel * dt);
+      }
+    } else if (v0 < 0) {
+      // Backing up with Left released (or Right pressed): stop first, at the brake rate.
+      v = Math.min(0, v0 + cfg.brake * dt);
+    } else {
+      // At rest.
+      if (input.throttle) v = Math.min(cfg.topSpeed, v + cfg.accel * dt);
+      else v -= cfg.coastDrag * dt;
+      if (v < 0) v = 0;
+    }
     // No regen while Shift is held.
     if (!input.boost) s.boost = Math.min(1, s.boost + cfg.boostRegenPerSec * dt);
   }
-  if (v < 0) v = 0;
   s.v = v;
 
   // 2. Velocity vector along the slope.
   s.vx = v * cos;
   s.vy = -v * sin;
 
-  // 4. Hop (ground only; not on noHop segments).
-  if (s.hopBuffer > 0 && !terrain.isNoHop(s.x)) {
+  // 4. Hop (ground only; not on noHop segments, and not while backing up).
+  if (s.hopBuffer > 0 && v >= 0 && !terrain.isNoHop(s.x)) {
     doHop(s, cfg);
     integrateAir(s, dt, terrain, cfg);
     return;
@@ -166,10 +204,21 @@ function stepGround(s: BikeState, input: BikeInput, dt: number, terrain: Terrain
   // 3. Move one step as a projectile.
   const fromPiece = terrain.pieceAt(s.x);
   const leftNoHop = fromPiece !== null && fromPiece.noHop;
+  const fromX = s.x;
+  const fromY = s.y;
   s.vy += cfg.gravity * dt;
   s.x += s.vx * dt;
   s.y += s.vy * dt;
   const surf = terrain.surfaceY(s.x);
+  if (v < 0 && surf !== null && fromY - surf > cfg.wallTolerance) {
+    // Backing into a vertical face (the foot of the cliff): the bike just stops against it.
+    s.x = fromX;
+    s.y = fromY;
+    s.v = 0;
+    s.vx = 0;
+    s.vy = 0;
+    return;
+  }
   let airborne = surf === null || s.y < surf - cfg.airborneEps;
   if (!airborne && surf !== null) {
     // Crossing onto another segment: apply the airborneEps rule as if this step had started exactly

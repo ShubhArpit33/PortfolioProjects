@@ -199,10 +199,57 @@ function pavilion(p: Pen, c: number, cx: number, topY: number, w: number, cols: 
   p.r(c, cx - w / 2 - 2, topY + 23, w + 4, 40);
 }
 
+/**
+ * A hill of stacked granite boulders (Hampi's signature): round rocks piled in shrinking tiers with a
+ * balanced one on top. `rim` is the faint sun-lit edge on top of each rock; crevices are a shade darker.
+ */
+function boulderHill(
+  p: Pen, c: number, rim: number, cx: number, baseY: number, w: number, h: number, rand: () => number,
+): void {
+  const shade = mix(c, PAL.ink, 0.2);
+  const rock = (x: number, y: number, r: number): void => {
+    x = Math.round(x); y = Math.round(y);
+    p.disc(shade, x, y + 1, r);
+    p.disc(rim, x, y - 1, r);
+    p.disc(c, x, y, r);
+  };
+  const r0 = Math.max(6, Math.min(15, Math.round(w / 5)));
+  const tiers = Math.max(2, Math.round(h / (r0 * 1.1)));
+  for (let k = 0; k < tiers; k++) {
+    const f = k / tiers;
+    const tw = Math.max(r0 * 2, w * Math.pow(1 - f, 0.85));
+    const r = Math.max(4, Math.round(r0 * (1 - 0.45 * f)));
+    const y = baseY - f * h - r * 0.4;
+    const n = Math.max(1, Math.round((tw - 2 * r) / (r * 1.7)) + 1);
+    // solid core so no sky shows through the pile
+    p.r(c, Math.round(cx - tw / 2 + r), Math.round(y), Math.round(tw - 2 * r), Math.round(baseY - y) + 24);
+    for (let i = 0; i < n; i++) {
+      const t = n === 1 ? 0.5 : i / (n - 1);
+      const x = cx - tw / 2 + r + t * (tw - 2 * r) + (rand() - 0.5) * r * 0.5;
+      rock(x, y - rand() * r * 0.5, r + Math.floor(rand() * 3) - 1);
+    }
+  }
+  // the balanced boulder
+  const rt = Math.max(4, Math.round(r0 * 0.55));
+  rock(cx + (rand() - 0.5) * r0, baseY - h - rt * 0.7, rt);
+  if (rand() < 0.6) rock(cx + (rand() < 0.5 ? -1 : 1) * (rt + 3), baseY - h + rt * 0.4, Math.max(3, rt - 2));
+}
+
+/** Top of the small skyline shrine the smoke wisp rises from (skyline layer coordinates). */
+export function shrineSmokeOrigin(): { x: number; y: number } {
+  return { x: 540, y: Math.min(skylineRidgeY(526), skylineRidgeY(554)) - 28 };
+}
+
 function drawSkyline(p: Pen): void {
   const far = mix(PAL.skyline, PAL.skyHorizon, 0.3);
   for (let x = 0; x < LAYER_W; x += 2) p.r(far, x, farHillY(x), 2, LAYER_H - farHillY(x));
   const rand = rng(23);
+  // Distant boulder hills, hazy against the sunset.
+  const farRim = mix(far, PAL.skyHorizon, 0.16);
+  const hillRand = rng(29);
+  for (const [x, w, h] of [[95, 120, 30], [300, 90, 22], [585, 140, 36], [840, 100, 26]] as const) {
+    boulderHill(p, far, farRim, x, farHillY(x) + 6, w, h, hillRand);
+  }
   for (let i = 0; i < 10; i++) {
     const x = Math.floor(rand() * LAYER_W);
     p.disc(far, x, farHillY(x) + 2, 5 + Math.floor(rand() * 8));
@@ -217,6 +264,11 @@ function drawSkyline(p: Pen): void {
     if (x > 350 && x < 450) continue;
     p.disc(c, x, skylineRidgeY(x) + Math.floor(rad / 3), rad);
     if (rand() < 0.4) p.disc(c, x + rad, skylineRidgeY(x) - rad + 3, Math.max(3, rad - 4));
+  }
+  // Nearer boulder hills between the monuments (clear of the chariot spot).
+  const rim = mix(c, PAL.skyHorizon, 0.13);
+  for (const [x, w, h] of [[198, 44, 16], [310, 52, 24], [484, 70, 30], [712, 56, 26], [826, 48, 18], [934, 40, 20]] as const) {
+    boulderHill(p, c, rim, x, skylineRidgeY(x) + 6, w, h, hillRand);
   }
   gopuram(p, c, 130, skylineRidgeY(130) + 4, 54, 7, 9);
   gopuram(p, c, 640, skylineRidgeY(640) + 4, 42, 6, 8);
@@ -267,13 +319,96 @@ function banana(p: Pen, c: number, x: number, baseY: number, rand: () => number)
   p.r(c, x - 1, baseY - 8, 3, 10);
 }
 
+/** A ruined pillared hall: a row of pillars on a plinth, lintels only where both neighbours still stand. */
+function mandapa(
+  p: Pen, c: number, x: number, baseY: number, cols: number, gap: number, h: number, broken: readonly number[],
+): void {
+  const w = (cols - 1) * gap + 4;
+  p.r(c, x - 4, baseY - 3, w + 8, 16);
+  p.r(c, x - 2, baseY - 5, w + 4, 2);
+  const top = baseY - 5 - h;
+  for (let i = 0; i < cols; i++) {
+    const px = x + i * gap;
+    const isBroken = broken.includes(i);
+    const ph = isBroken ? Math.round(h * 0.4) + (i % 2) * 5 : h;
+    p.r(c, px, baseY - 5 - ph, 4, ph);
+    p.r(c, px - 1, baseY - 8, 6, 3);
+    if (isBroken) p.r(c, px, baseY - 5 - ph - 1, 2, 1);
+    else p.r(c, px - 1, top, 6, 2).r(c, px - 2, top - 1, 8, 1);
+    if (i < cols - 1 && !isBroken && !broken.includes(i + 1)) {
+      p.r(c, px - 2, top - 5, gap + 8, 4);
+      p.r(c, px - 3, top - 7, gap + 10, 2);
+    }
+  }
+}
+
+/** A crumbling arched gateway: two piers, a round arch, and a wall above that has fallen away on one side. */
+function ruinedArch(p: Pen, c: number, x: number, baseY: number, w: number, h: number): void {
+  const r = w >> 1;
+  const inner = r - 5;
+  const cy = baseY - h + r;
+  for (let dx = 0; dx <= w; dx++) {
+    const u = dx - r;
+    const open = Math.abs(u) < inner;
+    const bottom = open ? cy - Math.round(Math.sqrt(inner * inner - u * u)) : baseY + 10;
+    const fallen = dx > w * 0.55 ? Math.floor((dx - w * 0.55) / 4) * 3 : 0;
+    const top = baseY - h - 6 + fallen;
+    p.r(c, x + dx, top, 1, bottom - top);
+  }
+  p.r(c, x - 2, baseY - h - 8, Math.round(w * 0.55) + 3, 2);
+  p.r(c, x - 1, cy, 7, 2).r(c, x + w - 5, cy, 7, 2);
+}
+
+const midBase = (x: number): number => midGroundY(x) + 2;
+/** [x, ground-reference x, cols, gap, pillar height, broken pillars] */
+const MANDAPAS: ReadonlyArray<readonly [number, number, number, number, number, readonly number[]]> = [
+  [60, 90, 5, 14, 30, [3]],
+  [432, 470, 6, 14, 34, [0, 4]],
+  [640, 665, 4, 15, 28, []],
+  [850, 880, 4, 14, 32, [1]],
+];
+/** [x, ground-reference x, span, height] */
+const ARCHES: ReadonlyArray<readonly [number, number, number, number]> = [[252, 270, 38, 34], [742, 760, 30, 28]];
+
+/** Lamps hung in the mid-layer ruins (mid layer coordinates); Ambience flickers a small glow on each. */
+export const MID_LAMPS: ReadonlyArray<readonly [number, number]> = [
+  ...([[0, 1], [1, 1], [1, 2], [2, 1], [3, 2]] as const).map(([m, bay]): [number, number] => {
+    const [x, refX, , gap, h] = MANDAPAS[m]!;
+    return [x + bay * gap + 4 + ((gap - 4) >> 1) - 1, midBase(refX) - 5 - h + 6];
+  }),
+  ...ARCHES.map(([x, refX, w, h]): [number, number] => [x + (w >> 1) - 1, midBase(refX) - h + 10]),
+];
+
+function drawMidBack(p: Pen): void {
+  // A hazier row behind the main silhouettes: pillared halls, an arch, boulder stacks, banana clumps.
+  const c = mix(PAL.mid, PAL.skyline, 0.55);
+  const rim = mix(c, PAL.skyHorizon, 0.1);
+  const rand = rng(41);
+  const base = midBase;
+  boulderHill(p, c, rim, 20, base(20), 70, 30, rand);
+  boulderHill(p, c, rim, 535, base(535), 64, 34, rand);
+  boulderHill(p, c, rim, 790, base(790), 80, 26, rand);
+  for (const [x, refX, cols, gap, h, broken] of MANDAPAS) mandapa(p, c, x, base(refX), cols, gap, h, broken);
+  for (const [x, refX, w, h] of ARCHES) ruinedArch(p, c, x, base(refX), w, h);
+  for (const x of [190, 370, 610, 925]) banana(p, c, x, base(x), rand);
+  for (const [lx, ly] of MID_LAMPS) p.r(PAL.gold, lx, ly, 2, 2, 0.55).r(PAL.sun, lx, ly - 1, 2, 1, 0.3);
+}
+
 function drawMid(p: Pen): void {
+  drawMidBack(p);
   const c = PAL.mid;
   const rand = rng(37);
   // Trees first, then the ground band over their feet.
   const palms: Array<[number, number, number]> = [[40, 70, 8], [210, 58, -6], [232, 74, 5], [470, 64, -8], [700, 72, 6], [716, 56, -4], [905, 66, -7]];
   for (const [x, h, lean] of palms) palm(p, c, x, midGroundY(x) + 2, h, lean, rand);
   for (const x of [110, 300, 392, 600, 820]) banana(p, c, x, midGroundY(x) + 2, rand);
+  // More banana clumps and two free-standing broken pillars for density (separate stream: keeps the palms as they were).
+  const rand2 = rng(43);
+  for (const x of [140, 425, 580, 745, 868]) banana(p, c, x, midGroundY(x) + 2, rand2);
+  for (const [x, h] of [[322, 26], [331, 14], [653, 22]] as const) {
+    const y = midGroundY(x) + 2;
+    p.r(c, x, y - h, 4, h).r(c, x - 1, y - h, 6, 2).r(c, x - 1, y - 3, 6, 3);
+  }
   // Round boulder piles.
   for (const x of [160, 345, 560, 770, 945]) {
     const y = midGroundY(x);
@@ -607,6 +742,43 @@ function drawGlow(p: Pen): void {
   }
 }
 
+function drawRiderLeg(p: Pen): void {
+  const PN = mix(PAL.skyTop, PAL.chrome, 0.38);
+  p.r(PN, 1, 0, 2, 15).r(mix(PN, PAL.ink, 0.35), 1, 0, 1, 15);
+  p.r(PAL.tyre, 1, 14, 3, 1).r(PAL.tyre, 0, 15, 4, 2);
+}
+
+/** Two 5x3 frames: wings up, wings down. */
+function drawBird(p: Pen): void {
+  const c = mix(PAL.skyTop, PAL.ink, 0.6);
+  p.r(c, 0, 0, 1, 1).r(c, 1, 1, 3, 1).r(c, 4, 0, 1, 1);
+  p.r(c, 5, 1, 2, 1).r(c, 7, 2, 1, 1).r(c, 8, 1, 2, 1);
+}
+
+/** Two 9x5 frames: wings spread, wings beating down. */
+function drawBat(p: Pen): void {
+  const c = PAL.ink;
+  p.rows(c, 0, 0, [[3, 1], [0, 2], [0, 9], [0, 1]]);
+  p.r(c, 5, 0, 1, 1).r(c, 3, 1, 3, 1).r(c, 7, 1, 2, 1).r(c, 2, 3, 1, 1).r(c, 4, 3, 1, 1).r(c, 6, 3, 1, 1).r(c, 8, 3, 1, 1);
+  const o = 9;
+  p.r(c, o + 3, 0, 1, 1).r(c, o + 5, 0, 1, 1).r(c, o + 3, 1, 3, 1).r(c, o + 1, 2, 7, 1);
+  p.r(c, o, 3, 3, 1).r(c, o + 4, 3, 1, 1).r(c, o + 6, 3, 3, 1).r(c, o, 4, 1, 1).r(c, o + 8, 4, 1, 1);
+}
+
+function drawFirefly(p: Pen): void {
+  const c = mix(PAL.mossLight, PAL.gold, 0.45);
+  p.r(c, 1, 0, 1, 3, 0.3).r(c, 0, 1, 3, 1, 0.3).r(c, 1, 1, 1, 1);
+}
+
+function drawWisp(p: Pen): void {
+  const c = mix(PAL.skyline, PAL.cream, 0.5);
+  p.r(c, 1, 0, 3, 1, 0.45).r(c, 0, 1, 5, 2, 0.45).r(c, 1, 3, 4, 1, 0.45).r(c, 1, 1, 3, 2, 0.3);
+}
+
+function drawLampGlow(p: Pen): void {
+  p.r(PAL.sun, 2, 0, 2, 6, 0.22).r(PAL.sun, 0, 2, 6, 2, 0.22).r(PAL.sun, 1, 1, 4, 4, 0.3).r(PAL.gold, 2, 2, 2, 2, 0.9);
+}
+
 function drawStar(p: Pen, c: number, shade: number | null): void {
   p.rows(c, 0, 0, [[6, 1], [5, 3], [5, 3], [4, 5], [0, 13], [1, 11], [2, 9], [3, 7], [2, 9], [2, 4], [1, 3], [1, 1]]);
   p.r(c, 7, 9, 4, 1).r(c, 9, 10, 3, 1).r(c, 11, 11, 1, 1);
@@ -661,6 +833,12 @@ const EXTRAS: Record<string, Def> = {
   p_smoke: { w: 3, h: 3, draw: (p) => p.r(PAL.cream, 0, 0, 3, 3, 0.3).r(PAL.cream, 0, 1, 2, 2, 0.25) },
   p_spark: { w: 2, h: 2, draw: (p) => p.r(PAL.gold, 0, 0, 2, 2).r(PAL.cream, 0, 0, 1, 1) },
   p_splash: { w: 2, h: 2, draw: (p) => p.r(mix(PAL.water, PAL.cream, 0.65), 0, 0, 2, 2) },
+  rider_leg: { w: 4, h: 17, draw: drawRiderLeg },
+  bird: { w: 10, h: 3, draw: drawBird, frameW: 5 },
+  bat: { w: 18, h: 5, draw: drawBat, frameW: 9 },
+  p_firefly: { w: 3, h: 3, draw: drawFirefly },
+  p_wisp: { w: 5, h: 4, draw: drawWisp },
+  lamp_glow: { w: 6, h: 6, draw: drawLampGlow },
   p_glint: { w: 6, h: 1, draw: (p) => p.r(PAL.glint, 0, 0, 6, 1).r(PAL.sun, 2, 0, 2, 1) },
 };
 

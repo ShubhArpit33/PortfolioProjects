@@ -136,5 +136,48 @@ In headless WebGL the only warning is SwiftShader's "GPU stall due to ReadPixels
 
 In the live game, 0.18 of the boost meter is left after the river jump (the diya collected in mid-air adds 0.1).
 
+## v1.2: play-test changes (reverse at a standstill, background ambience)
+
+### Backing up
+1. **Values:** `reverseSpeed` 45 px/s, `reverseAccel` 120 px/s² (full speed in 0.375 s), `reverseHoldDelayMs` 300.
+2. **When Left backs up:** only on the ground with `v = 0` exactly (braking always ends at exactly 0, so no fuzzy threshold is needed).
+   While `v > 0`, and in the air, Left behaves exactly as before.
+3. **No instant reverse:** a Left press that braked the bike must be held 300 ms at rest before it starts backing up.
+   Releasing clears that, so a fresh press at a standstill backs up at once. The pause keeps "brake hard and hold" from turning into a surprise roll-back
+   (it matters when stopping for the cow or at a canal edge).
+4. **Stopping:** with Left released the bike stops at the `brake` rate (0.11 s from full reverse speed). Right while backing up does the same, then accelerates forward
+   from 0. Boost stops the bike in one step and then boosts forward.
+5. **Slopes:** position follows the surface as usual, but slope gravity isn't applied while backing up, because the rider's feet are holding the bike.
+   So backing speed is the same up or down a ramp, and the bike never runs away backward. A bike at rest on an uphill still holds, as before.
+6. **`v` is now signed** while grounded (negative = backing up), in `BikeState` and in `__test.state()`.
+7. **No hop while backing up.** A hop from a standstill still works, and a buffered press fires once the bike has stopped.
+   This also means a bike can only be airborne with backward speed by backing off an edge into a canal or the river.
+8. **Walls:** backing into the foot of the cliff (a vertical face more than `wallTolerance` high) just stops the bike. The level start has a wall at x = 24
+   (`WORLD_START_X`, was 0), so a backed-up bike stays fully on screen. Backing into a canal or the river falls in and crashes with the normal rules.
+9. **Unaffected:** the boost meter (plain regen, the same as standing still), landings, the cow (45 px/s is below `cowCrashSpeed`, so she is simply solid), checkpoints.
+10. **Finish:** the auto-brake after the line is released once the bike has stopped, so it doesn't back out of the gateway.
+11. **Look:** the rider puts a foot down at a standstill and shuffles it while backing up, leans back 5°, and the wheels turn backwards.
+    The engine just idles. The title hint now says `LEFT BRAKE/BACK`.
+
+### Ambience
+1. **Palette:** only section 6.1 colours and mixes of them. Fireflies are a moss-light / gold mix. No new teal or green.
+2. **Baked into the tiled layers:** stacked-boulder hills on the far skyline (two haze levels). The middle ground gets a hazier back row
+   (4 ruined mandapas, 2 arches, 3 boulder hills, 4 banana clumps, 7 small lamps) plus 5 more banana clumps and 3 broken pillars in the main tone.
+   The existing palms, boulder piles and monuments are pixel-for-pixel where they were (the new art uses its own random streams).
+3. **Animated (`src/art/Ambience.ts`, owned by `Parallax`, so the title screen has it too):** 3 bird flocks (15 birds), 6 bats, up to 16 fireflies, a 7-puff smoke wisp,
+   7 lamp glows. A fixed pool of 51 images, created once and repositioned each frame; no particles, no allocations per frame.
+4. **Deterministic:** every position, frame and alpha is a function of game time and camera scroll, with an integer hash instead of `Math.random`.
+5. **Depths:** all below the terrain (10): birds 0.5, bats and smoke 1.7, lamp glows 2.1, fireflies 3. Nothing is added in front of the bike.
+6. **Birds and bats:** birds fade out over camera scroll 4000–4700 and bats fade in over 3300–4000, so section 4 has both and the river section has bats only.
+7. **Fireflies:** one candidate per 36 px cell of a 0.8-scroll layer, at y 172–212. A cell holds one with probability 0.9 by the canals, 0.75 by the river and 0.22 elsewhere.
+   They are 1 px with a faint cross, so they can't be mistaken for a diya (8 px with a 32 px glow).
+8. **Coracles:** the river already had three bobbing coracles from M3, so none were added.
+9. **If a PNG replaces `bg_skyline` or `bg_mid`,** the smoke and lamp glows still sit where the code-drawn shrine and lamps were.
+
+### Results (v1.2)
+- 42 Vitest tests (31 + 11 for backing up) and 5 Playwright tests (4 + `reverse.spec.ts`) pass. The M2 measurements above are unchanged: the bot run is still 23.22 s, 0 crashes, 17/17.
+- Screenshots: 12 PNGs in `test-results/shots/` (the 10 from before plus `reverse` and `reverse-start-wall`), reviewed by Fable.
+- Still open: 60 fps on real hardware needs a manual check, now with 51 more small images on screen.
+
 ## Attribution
 - Commits made by Fable carry a `Co-Authored-By: Claude Fable 5.2` trailer, which names the model that actually wrote them. Commits made by the coordinator carry the Opus trailer.
