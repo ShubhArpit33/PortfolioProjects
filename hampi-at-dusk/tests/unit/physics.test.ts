@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { CONFIG } from '../../src/config';
 import {
-  FIXED_DT, createBikeState, evaluateLanding, hitsObstacle, normalizeAngle, step, touchesDiya,
+  FIXED_DT, countFlips, createBikeState, evaluateLanding, hitsObstacle, normalizeAngle, step, touchesDiya,
   type BikeInput, type BikeState,
 } from '../../src/bike/BikePhysics';
 import {
@@ -534,6 +534,159 @@ describe('kicker (section 6)', () => {
     expect(windowMs).toBeGreaterThanOrEqual(120);
     expect(minAir).toBeGreaterThanOrEqual(1);
     expect(minMargin).toBeGreaterThanOrEqual(16);
+  });
+});
+
+describe('tricks: flips (v1.3)', () => {
+  const lipX = KICKER.lipCol * TILE;
+  const rampX = KICKER.rampCol * TILE;
+
+  interface FlipRun { s: BikeState; airS: number; fullTurnS: number; boostBefore: number }
+
+  /**
+   * Ride at the kicker, hop at hopX, hold a tilt key until |spin| reaches `release`, then level out
+   * (the same +/- 3 deg rule the bot uses) until the bike lands or crashes.
+   */
+  const flipRun = (
+    hopX: number, dir: 1 | -1, release: number,
+    opts: { from?: number; level?: boolean; cfg?: typeof CONFIG } = {},
+  ): FlipRun => {
+    const cfg = opts.cfg ?? CONFIG;
+    let s = rolling(opts.from ?? rampX - 160, 240);
+    s.boost = 0.2;
+    let hopped = false;
+    let air = 0;
+    let fullTurn = -1;
+    let released = false;
+    let boostBefore = s.boost;
+    for (let i = 0; i < 120 * 10 && !s.crashed; i++) {
+      boostBefore = s.boost; // the meter just before the landing step (it regenerates on the run-up)
+      const inAir = hopped && !s.grounded;
+      if (inAir && Math.abs(s.spin) >= release) released = true; // latched: levelling back must not re-arm the hold
+      const holding = inAir && !released;
+      const level = opts.level !== false && inAir && released;
+      s = step(s, {
+        throttle: true,
+        hop: !hopped && s.x >= hopX,
+        tiltUp: holding ? dir === 1 : level && s.angle < -3,
+        tiltDown: holding ? dir === -1 : level && s.angle > 3,
+      }, FIXED_DT, TERRAIN, cfg);
+      if (s.evHop) hopped = true;
+      if (hopped && !s.grounded) {
+        air++;
+        if (fullTurn < 0 && Math.abs(s.spin) >= 360) fullTurn = air * FIXED_DT;
+      }
+      if (hopped && s.evLanding) break;
+    }
+    return { s, airS: air * FIXED_DT, fullTurnS: fullTurn, boostBefore };
+  };
+
+  it('countFlips rounds the air rotation to whole turns, signed', () => {
+    expect(countFlips(0)).toBe(0);
+    expect(countFlips(27)).toBe(0);
+    expect(countFlips(-170)).toBe(0);
+    expect(countFlips(333)).toBe(1);
+    expect(countFlips(395)).toBe(1);
+    expect(countFlips(-386)).toBe(-1);
+    expect(countFlips(700)).toBe(2);
+    expect(countFlips(-1080)).toBe(-3);
+  });
+
+  it('a tap still turns at airTiltSpeed; a held key speeds up to airTiltMaxSpeed', () => {
+    let s = step(rolling(200, 240), { hop: true });
+    const a0 = s.angle;
+    s = step(s, { tiltUp: true });
+    expect(s.angle - a0).toBeCloseTo(CONFIG.airTiltSpeed * FIXED_DT, 9);
+    let prev = s.angle;
+    let rate = 0;
+    for (let i = 0; i < 60; i++) {
+      s = step(s, { tiltUp: true });
+      rate = normalizeAngle(s.angle - prev) / FIXED_DT;
+      prev = s.angle;
+      expect(rate).toBeLessThanOrEqual(CONFIG.airTiltMaxSpeed + 1e-6);
+    }
+    expect(rate).toBeCloseTo(CONFIG.airTiltMaxSpeed, 6);
+    // releasing drops the rate back: the next press is a tap again
+    s = step(s, {});
+    prev = s.angle;
+    s = step(s, { tiltDown: true });
+    expect(prev - s.angle).toBeCloseTo(CONFIG.airTiltSpeed * FIXED_DT, 9);
+    // spin follows the turns (grounded bikes have none)
+    expect(s.spin).toBeGreaterThan(100);
+    expect(createBikeState(200).spin).toBe(0);
+  });
+
+  it.each([-64, -32, -1])('kicker, hop %i px from the lip: a held backflip fits in the air and lands', (off) => {
+    const r = flipRun(lipX + off, 1, 330);
+    console.log(
+      `[flip, kicker lip${off}] air ${r.airS.toFixed(2)} s; landing ${r.s.evLanding}, flips ${r.s.evFlips}, ` +
+      `boost ${r.boostBefore.toFixed(2)} -> ${r.s.boost.toFixed(2)}`,
+    );
+    expect(r.s.crashed).toBeNull();
+    expect(r.s.evFlips).toBe(1);
+    expect(r.s.spin).toBe(0); // reset on landing
+    const clean = r.s.evLanding === 'clean' ? CONFIG.boostCleanLanding : 0;
+    expect(r.s.boost).toBeCloseTo(r.boostBefore + CONFIG.boostFlip + clean, 6);
+    expect(r.s.x).toBeGreaterThan(KICKER_GAP.x1);
+    // enough airtime for the full turn with the key simply held (measured without releasing)
+    const held = flipRun(lipX + off, 1, Infinity, { level: false });
+    expect(held.fullTurnS).toBeGreaterThan(0);
+    expect(held.airS - held.fullTurnS).toBeGreaterThanOrEqual(0.12);
+    console.log(`[flip, kicker lip${off}] full turn with the key held: ${held.fullTurnS.toFixed(2)} s of ${held.airS.toFixed(2)} s in the air`);
+  });
+
+  it('a frontflip counts too (negative)', () => {
+    const r = flipRun(lipX - 32, -1, 345);
+    expect(r.s.crashed).toBeNull();
+    expect(r.s.evFlips).toBe(-1);
+    expect(r.s.boost).toBeGreaterThanOrEqual(r.boostBefore + CONFIG.boostFlip - 1e-9);
+  });
+
+  it('a partial rotation that is levelled back out is not a flip', () => {
+    const r = flipRun(lipX - 32, 1, 90);
+    expect(r.s.crashed).toBeNull();
+    expect(r.s.evLanding === 'clean' || r.s.evLanding === 'safe').toBe(true);
+    expect(r.s.evFlips).toBe(0);
+    const clean = r.s.evLanding === 'clean' ? CONFIG.boostCleanLanding : 0;
+    expect(r.s.boost).toBeCloseTo(r.boostBefore + clean, 6);
+  });
+
+  it('a flip that crashes awards nothing', () => {
+    // over-rotated: the key is held to 420 deg and never corrected
+    const r = flipRun(lipX - 32, 1, 420, { level: false });
+    expect(r.s.crashed).toBe('landing');
+    expect(r.s.evLanding).toBe('crash');
+    expect(r.s.evFlips).toBe(0);
+    expect(r.s.boost).toBeCloseTo(r.boostBefore, 6);
+    // under-rotated: half a turn, landing upside down
+    const half = flipRun(lipX - 32, 1, 180, { level: false });
+    expect(half.s.crashed).toBe('landing');
+    expect(half.s.evFlips).toBe(0);
+  });
+
+  it('a flat-ground hop is too short for a flip: holding the key all the way crashes', () => {
+    for (const dir of [1, -1] as const) {
+      const r = flipRun(400, dir, Infinity, { from: 300, level: false });
+      expect(r.airS).toBeLessThan(0.85);
+      expect(r.s.crashed).toBe('landing');
+      expect(r.s.evFlips).toBe(0);
+    }
+  });
+
+  it('two full turns in one air count as a double flip (needs more air than the stage gives: low gravity here)', () => {
+    const cfg = { ...CONFIG, gravity: 280 };
+    const r = flipRun(400, 1, 690, { from: 300, cfg });
+    expect(r.airS).toBeGreaterThan(1.8);
+    expect(r.s.crashed).toBeNull();
+    expect(r.s.evFlips).toBe(2);
+    const clean = r.s.evLanding === 'clean' ? CONFIG.boostCleanLanding : 0;
+    expect(r.s.boost).toBeCloseTo(Math.min(1, r.boostBefore + 2 * CONFIG.boostFlip + clean), 6);
+  });
+
+  it('flips stay optional: the kicker hop with no tilt at all lands safely with no flip', () => {
+    const r = flipRun(lipX - 32, 1, 0, { level: false });
+    expect(r.s.crashed).toBeNull();
+    expect(r.s.evFlips).toBe(0);
   });
 });
 

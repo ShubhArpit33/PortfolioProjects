@@ -9,6 +9,7 @@ export interface FinishData {
   timeMs: number;
   diyas: number;
   crashes: number;
+  flips: number;
 }
 
 export class FinishScene extends Phaser.Scene {
@@ -31,9 +32,10 @@ export class FinishScene extends Phaser.Scene {
       ['TIME', formatTime(data.timeMs)],
       ['DIYAS', `${data.diyas}/${total}`],
       ['CRASHES', String(data.crashes)],
+      ['FLIPS', String(data.flips)],
     ];
     rows.forEach(([label, value], i) => {
-      const ry = y + 46 + i * 14;
+      const ry = y + 42 + i * 13;
       pixelText(this, x + 40, ry, label, PAL.cream);
       pixelText(this, x + w - 40, ry, value, PAL.uiYellow).setOrigin(1, 0);
     });

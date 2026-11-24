@@ -12,9 +12,12 @@ export const CONFIG = {
   boostRegenPerSec: 0.08,
   boostCleanLanding: 0.25,
   boostDiya: 0.1,
+  boostFlip: 0.35,           // meter refill per full flip landed without crashing (v1.3)
   hopVelocity: 280,
   slopeGravityFactor: 0.5,   // how much slopes slow you on the way up / speed you up on the way down
-  airTiltSpeed: 180,         // deg/s with up/down
+  airTiltSpeed: 180,         // deg/s with up/down (the rate of a tap, and where a hold starts)
+  airTiltAccel: 700,         // deg/s^2 added while the same tilt key stays held (v1.3, for flips)
+  airTiltMaxSpeed: 450,      // deg/s cap of a held tilt: a full flip takes about 0.92 s
   airNoseDropSpeed: 20,      // deg/s drift with no input
   safeLandingAngle: 35,      // |bike angle - slope angle| at or below this = safe
   cleanLandingAngle: 10,     // at or below this = "CLEAN!" + boost bonus

@@ -2,7 +2,7 @@
 // inside a real (trusted) DOM keydown / pointerdown handler; until then every call here is a no-op,
 // so the test hooks never create audio.
 
-export type SfxName = 'honk' | 'hop' | 'thud' | 'clean' | 'diya' | 'crash' | 'splash' | 'bell';
+export type SfxName = 'honk' | 'hop' | 'thud' | 'clean' | 'diya' | 'crash' | 'splash' | 'bell' | 'flip';
 
 interface Engine {
   saw: OscillatorNode;
@@ -149,6 +149,12 @@ export function play(name: SfxName): void {
     case 'splash':
       noise(0.55, 0.4, 'bandpass', 2600, 500);
       noise(0.3, 0.2, 'highpass', 3000, 1500, 0.08);
+      break;
+    case 'flip': // a quick rising run
+      tone('triangle', 659, 659, 0.1, 0.2, 0.1);
+      tone('triangle', 880, 880, 0.1, 0.2, 0.18);
+      tone('triangle', 1319, 1319, 0.12, 0.2, 0.26);
+      tone('square', 1760, 1760, 0.3, 0.06, 0.34);
       break;
     case 'bell':
       tone('sine', 660, 660, 0.9, 0.22);

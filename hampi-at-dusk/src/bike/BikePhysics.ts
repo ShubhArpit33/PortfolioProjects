@@ -54,13 +54,24 @@ export interface BikeState {
    * Left is used as a brake on a forward-moving bike; cleared on release (a fresh press backs up at once).
    */
   reverseWait: number;
+  /**
+   * Degrees turned since leaving the ground (signed: positive = nose up / backflip direction). Tilt input
+   * and the idle nose drift both count. 0 while grounded.
+   */
+  spin: number;
+  /** current rate of a held tilt, deg/s (airTiltSpeed .. airTiltMaxSpeed) */
+  tiltRate: number;
+  /** direction of the tilt held on the previous airborne step: 1 up, -1 down, 0 none */
+  tiltDir: number;
 
   // --- one-step events (reset at the start of every step) ---
   evLanding: LandingKind | null;
   evHop: boolean;
+  /** full flips completed by the landing of this step (signed: + backflips, - frontflips); 0 on a crash */
+  evFlips: number;
 }
 
-export function createBikeState(x: number, terrain: Terrain = TERRAIN): BikeState {
+export function createBikeState(x: number, terrain: Terrain = TERRAIN, cfg: Config = CONFIG): BikeState {
   const y = terrain.surfaceY(x);
   if (y === null) throw new Error(`createBikeState: x=${x} is over a gap`);
   return {
@@ -70,7 +81,8 @@ export function createBikeState(x: number, terrain: Terrain = TERRAIN): BikeStat
     boost: 1,
     crashed: null,
     airTime: 0, coyote: 0, hopBuffer: 0, hopHeld: false, boosting: false, reverseWait: 0,
-    evLanding: null, evHop: false,
+    spin: 0, tiltRate: cfg.airTiltSpeed, tiltDir: 0,
+    evLanding: null, evHop: false, evFlips: 0,
   };
 }
 
@@ -94,6 +106,17 @@ export function evaluateLanding(
   return 'crash';
 }
 
+/**
+ * Full flips in a cumulative air rotation (degrees), signed: + backflips (nose up), - frontflips.
+ * Rounded to the nearest whole turn: a landing the bike survives is within safeLandingAngle of the
+ * slope, so the rotation is always close to a multiple of 360 (give or take the take-off / landing
+ * slope difference), and anything under half a turn is just levelling out.
+ */
+export function countFlips(spinDeg: number): number {
+  const n = Math.round(Math.abs(spinDeg) / 360);
+  return n === 0 ? 0 : spinDeg < 0 ? -n : n;
+}
+
 function approach(value: number, target: number, maxDelta: number): number {
   if (value < target) return Math.min(target, value + maxDelta);
   return Math.max(target, value - maxDelta);
@@ -111,7 +134,7 @@ export function step(
   cfg: Config = CONFIG,
 ): BikeState {
   if (prev.crashed !== null) return prev;
-  const s: BikeState = { ...prev, evLanding: null, evHop: false, boosting: false };
+  const s: BikeState = { ...prev, evLanding: null, evHop: false, evFlips: 0, boosting: false };
 
   // Hop buffer: a press (rising edge) stays valid for HOP_BUFFER_S.
   const hop = input.hop === true;
@@ -267,10 +290,16 @@ function stepAir(s: BikeState, input: BikeInput, dt: number, terrain: Terrain, c
   }
 
   // Tilt: up / down rotate; with no input the nose drifts down.
-  if (input.tiltUp && !input.tiltDown) s.angle += cfg.airTiltSpeed * dt;
-  else if (input.tiltDown && !input.tiltUp) s.angle -= cfg.airTiltSpeed * dt;
-  else if (!input.tiltUp && !input.tiltDown) s.angle -= cfg.airNoseDropSpeed * dt;
-  s.angle = normalizeAngle(s.angle);
+  // A tap turns at airTiltSpeed; holding the same key speeds the turn up to airTiltMaxSpeed (flips).
+  const dir = input.tiltUp && !input.tiltDown ? 1 : input.tiltDown && !input.tiltUp ? -1 : 0;
+  if (dir !== 0 && dir === s.tiltDir) s.tiltRate = Math.min(cfg.airTiltMaxSpeed, s.tiltRate + cfg.airTiltAccel * dt);
+  else s.tiltRate = cfg.airTiltSpeed;
+  s.tiltDir = dir;
+  let turn = 0;
+  if (dir !== 0) turn = dir * s.tiltRate * dt;
+  else if (!input.tiltUp && !input.tiltDown) turn = -cfg.airNoseDropSpeed * dt;
+  s.spin += turn;
+  s.angle = normalizeAngle(s.angle + turn);
 
   integrateAir(s, dt, terrain, cfg);
 }
@@ -304,11 +333,23 @@ function integrateAir(s: BikeState, dt: number, terrain: Terrain, cfg: Config): 
   else kind = evaluateLanding(s.angle, slope, cfg);
   s.evLanding = kind;
   s.y = surf;
+  const spin = s.spin;
+  s.spin = 0;
+  s.tiltRate = cfg.airTiltSpeed;
+  s.tiltDir = 0;
   if (kind === 'crash') {
     s.crashed = 'landing';
     return;
   }
   if (kind === 'clean') s.boost = Math.min(1, s.boost + cfg.boostCleanLanding);
+  if (kind !== 'silent') {
+    // Tricks: every full turn that ends in a landing the bike survives counts as a flip.
+    const flips = countFlips(spin);
+    if (flips !== 0) {
+      s.evFlips = flips;
+      s.boost = Math.min(1, s.boost + cfg.boostFlip * Math.abs(flips));
+    }
+  }
   const th = slope * DEG;
   s.v = Math.max(0, s.vx * Math.cos(th) - s.vy * Math.sin(th));
   s.vx = s.v * Math.cos(th);

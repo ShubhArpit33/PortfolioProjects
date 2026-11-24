@@ -37,10 +37,22 @@ const FINISH_BRAKE = 1200;
 
 type Phase = 'ride' | 'crash';
 
+/** Popup text for n full flips in one air. */
+export function flipLabel(n: number): string {
+  if (n <= 1) return '+FLIP';
+  if (n === 2) return '+DOUBLE FLIP';
+  if (n === 3) return '+TRIPLE FLIP';
+  return `+${n}X FLIP`;
+}
+
 export interface GameSnapshot {
   x: number; y: number; vx: number; vy: number; v: number; angle: number;
   grounded: boolean; boost: number; crashed: boolean; crashes: number; diyas: number;
   finished: boolean; checkpoint: number; timeMs: number;
+  /** full flips landed this run (the trick tally) */
+  flips: number;
+  /** degrees turned in the current air (0 while grounded) */
+  spin: number;
 }
 
 export class GameScene extends Phaser.Scene {
@@ -50,6 +62,8 @@ export class GameScene extends Phaser.Scene {
   checkpoint = 0;
   crashes = 0;
   diyaCount = 0;
+  /** trick tally: full flips landed without crashing */
+  flips = 0;
   finished = false;
   paused = false;
   /** HUD hint (cp4): text and seconds left */
@@ -99,6 +113,7 @@ export class GameScene extends Phaser.Scene {
     this.checkpoint = this.startCp;
     this.crashes = 0;
     this.diyaCount = 0;
+    this.flips = 0;
     this.finished = false;
     this.paused = false;
     this.hintText = '';
@@ -210,6 +225,7 @@ export class GameScene extends Phaser.Scene {
       x: b.x, y: b.y, vx: b.vx, vy: b.vy, v: b.v, angle: b.angle, grounded: b.grounded, boost: b.boost,
       crashed: this.phase === 'crash', crashes: this.crashes, diyas: this.diyaCount,
       finished: this.finished, checkpoint: this.checkpoint, timeMs: this.timeMs,
+      flips: this.flips, spin: b.spin,
     };
   }
 
@@ -325,13 +341,19 @@ export class GameScene extends Phaser.Scene {
     }
 
     if (b.evHop) sfx.play('hop');
-    if (b.evLanding === 'clean') {
-      sfx.play('clean');
-      this.view.landed(false, b.x, b.y);
-      this.popup('CLEAN!', b.x, b.y - 36);
-    } else if (b.evLanding === 'safe') {
-      sfx.play('thud');
-      this.view.landed(true, b.x, b.y);
+    if (b.evLanding === 'clean' || b.evLanding === 'safe') {
+      const clean = b.evLanding === 'clean';
+      sfx.play(clean ? 'clean' : 'thud');
+      this.view.landed(!clean, b.x, b.y);
+      // One landing popup at a time: a flip replaces "CLEAN!" (the clean bonus still applies).
+      if (b.evFlips !== 0) {
+        const n = Math.abs(b.evFlips);
+        this.flips += n;
+        sfx.play('flip');
+        this.popups.show(flipLabel(n), b.x, b.y - 36, undefined, 1.3, 'land');
+      } else if (clean) {
+        this.popups.show('CLEAN!', b.x, b.y - 36, undefined, undefined, 'land');
+      }
     }
 
     if (b.crashed === null) b = this.collide(prev, b);
@@ -477,7 +499,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private onFinishScreen(): void {
-    const data: FinishData = { timeMs: this.timeMs, diyas: this.diyaCount, crashes: this.crashes };
+    const data: FinishData = { timeMs: this.timeMs, diyas: this.diyaCount, crashes: this.crashes, flips: this.flips };
     this.scene.launch('Finish', data);
   }
 

@@ -13,24 +13,26 @@ export class HudScene extends Phaser.Scene {
   private timer!: Phaser.GameObjects.Text;
   private diyas!: Phaser.GameObjects.Text;
   private crashes!: Phaser.GameObjects.Text;
+  private flips!: Phaser.GameObjects.Text;
   private hint!: Phaser.GameObjects.Text;
   private mute!: Phaser.GameObjects.Text;
   private bar!: Phaser.GameObjects.Graphics;
   private pause!: Phaser.GameObjects.Container;
-  private last = { time: '', diyas: -1, crashes: -1, boost: -1, boosting: false };
+  private last = { time: '', diyas: -1, crashes: -1, flips: 0, boost: -1, boosting: false };
 
   constructor() {
     super('Hud');
   }
 
   create(): void {
-    this.last = { time: '', diyas: -1, crashes: -1, boost: -1, boosting: false };
+    this.last = { time: '', diyas: -1, crashes: -1, flips: 0, boost: -1, boosting: false };
     this.timer = pixelText(this, 6, 6, '00:00.00', PAL.cream);
     this.add.image(6, 18, 'diya').setOrigin(0, 0);
     this.diyas = pixelText(this, 18, 18, `0/${DIYAS.length}`, PAL.uiYellow);
     pixelText(this, BAR.x - 4, 6, 'BOOST', PAL.uiYellow).setOrigin(1, 0);
     this.bar = this.add.graphics();
     this.crashes = pixelText(this, 474, 18, 'CRASHES 0', PAL.cream).setOrigin(1, 0);
+    this.flips = pixelText(this, 474, 30, '', PAL.uiYellow).setOrigin(1, 0).setVisible(false);
     this.hint = pixelText(this, 240, 52, '', PAL.uiYellow).setOrigin(0.5, 0).setVisible(false);
     this.mute = pixelText(this, 474, 256, 'MUTED', PAL.cream).setOrigin(1, 0).setVisible(false);
 
@@ -49,6 +51,8 @@ export class HudScene extends Phaser.Scene {
     if (time !== l.time) { l.time = time; this.timer.setText(time); }
     if (game.diyaCount !== l.diyas) { l.diyas = game.diyaCount; this.diyas.setText(`${game.diyaCount}/${DIYAS.length}`); }
     if (game.crashes !== l.crashes) { l.crashes = game.crashes; this.crashes.setText(`CRASHES ${game.crashes}`); }
+
+    if (game.flips !== l.flips) { l.flips = game.flips; this.flips.setText(`FLIPS ${game.flips}`).setVisible(game.flips > 0); }
 
     const fill = Math.round(game.bike.boost * (BAR.w - 4));
     if (fill !== l.boost || game.boosting !== l.boosting) {
