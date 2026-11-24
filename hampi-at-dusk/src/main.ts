@@ -1,7 +1,11 @@
 import '@fontsource/press-start-2p/latin-400.css';
 import Phaser from 'phaser';
+import { installAudio } from './audio/sfx';
 import { BootScene } from './scenes/Boot';
+import { FinishScene } from './scenes/Finish';
 import { GameScene } from './scenes/Game';
+import { HudScene } from './scenes/Hud';
+import { TitleScene } from './scenes/Title';
 import { installTestHooks } from './testHooks';
 
 const params = new URLSearchParams(window.location.search);
@@ -20,8 +24,10 @@ const game = new Phaser.Game({
     mode: Phaser.Scale.FIT,
     autoCenter: Phaser.Scale.CENTER_BOTH,
   },
-  scene: [BootScene, GameScene],
+  scene: [BootScene, TitleScene, GameScene, HudScene, FinishScene],
 });
+
+installAudio();
 
 if (import.meta.env.DEV || import.meta.env.MODE === 'test') installTestHooks(game);
 

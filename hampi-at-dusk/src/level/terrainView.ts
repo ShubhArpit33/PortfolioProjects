@@ -10,8 +10,9 @@ export const CHUNK_W = 960;
 const H = 270;
 
 function surfaceRow(terrain: Terrain, wx: number): number | null {
-  if (wx < 0 || wx >= terrain.width) return null;
-  const y = terrain.surfaceY(wx + 0.5);
+  // Past either end of the stage the ground simply continues (no exposed wall at the edges).
+  const x = Math.min(terrain.width - 1, Math.max(0, wx));
+  const y = terrain.surfaceY(x + 0.5);
   return y === null ? null : Math.round(y);
 }
 
@@ -92,12 +93,20 @@ function bakeChunk(scene: Phaser.Scene, key: string, x0: number, terrain: Terrai
   tex.refresh();
 }
 
-/** Create (once) and place the terrain chunk images. */
-export function addTerrain(scene: Phaser.Scene, depth: number, terrain: Terrain = TERRAIN): void {
-  const chunks = Math.ceil(STAGE_WIDTH / CHUNK_W);
-  for (let i = 0; i < chunks; i++) {
+const chunkCount = Math.ceil(STAGE_WIDTH / CHUNK_W);
+
+/** Bake the chunk textures (once per page load). */
+export function bakeTerrain(scene: Phaser.Scene, terrain: Terrain = TERRAIN): void {
+  for (let i = 0; i < chunkCount; i++) {
     const key = `terrain_${i}`;
     if (!scene.textures.exists(key)) bakeChunk(scene, key, i * CHUNK_W, terrain);
-    scene.add.image(i * CHUNK_W, 0, key).setOrigin(0, 0).setDepth(depth);
+  }
+}
+
+/** Place the terrain chunk images in a scene. */
+export function addTerrain(scene: Phaser.Scene, depth: number): void {
+  bakeTerrain(scene);
+  for (let i = 0; i < chunkCount; i++) {
+    scene.add.image(i * CHUNK_W, 0, `terrain_${i}`).setOrigin(0, 0).setDepth(depth);
   }
 }

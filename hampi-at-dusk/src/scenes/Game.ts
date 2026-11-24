@@ -4,6 +4,7 @@
 import Phaser from 'phaser';
 import { DEPTH, Parallax } from '../art/Parallax';
 import { PAL } from '../art/palette';
+import * as sfx from '../audio/sfx';
 import {
   FIXED_DT, aabbOverlap, addBoost, bikeAABB, crash, createBikeState, hitsObstacle, step, touchesDiya,
   type BikeState, type CrashCause,
@@ -15,12 +16,14 @@ import { Cow } from '../entities/Cow';
 import { Diya } from '../entities/Diya';
 import { MonkeyTroop } from '../entities/Monkey';
 import { Obstacle } from '../entities/Obstacle';
-import { URL_DEBUG, runtime, testInput, type GameInput } from '../input';
+import { URL_DEBUG, onKeyPress, runtime, testInput, type GameInput } from '../input';
 import {
   BASELINE_Y, CAMERA_MAX_SCROLL_X, CHECKPOINTS, COW, DIYAS, FINISH, OBSTACLES, TILE, WATER_LINE_Y,
 } from '../level/levelData';
 import { TERRAIN } from '../level/terrain';
 import { addTerrain } from '../level/terrainView';
+import { Popups } from '../ui/Popups';
+import type { FinishData } from './Finish';
 
 const VIEW_W = 480;
 const VIEW_H = 270;
@@ -36,9 +39,6 @@ export interface GameSnapshot {
   finished: boolean; checkpoint: number; timeMs: number;
 }
 
-// Audio and popups arrive with the UI milestone.
-const sfx = { play(_name: string): void {} };
-
 export class GameScene extends Phaser.Scene {
   // --- sim state ---
   bike!: BikeState;
@@ -48,6 +48,9 @@ export class GameScene extends Phaser.Scene {
   diyaCount = 0;
   finished = false;
   paused = false;
+  /** HUD hint (cp4): text and seconds left */
+  hintText = '';
+  hintT = 0;
   /** fixed steps counted by the run timer */
   private timerSteps = 0;
   private crashT = 0;
@@ -68,6 +71,7 @@ export class GameScene extends Phaser.Scene {
   private acc = 0;
   private visT = 0;
   private parallax!: Parallax;
+  private popups!: Popups;
   private view!: BikeView;
   private diyas: Diya[] = [];
   private obstacles: Obstacle[] = [];
@@ -93,6 +97,8 @@ export class GameScene extends Phaser.Scene {
     this.diyaCount = 0;
     this.finished = false;
     this.paused = false;
+    this.hintText = '';
+    this.hintT = 0;
     this.timerSteps = 0;
     this.crashT = 0;
     this.fadeInT = 0;
@@ -141,12 +147,15 @@ export class GameScene extends Phaser.Scene {
     this.troop = new MonkeyTroop(this, DEPTH.animal);
     this.diyas = DIYAS.map((def, i) => new Diya(this, def, i, DEPTH.diya));
     this.view = new BikeView(this, DEPTH.bike, DEPTH.fx);
+    this.popups = new Popups(this, DEPTH.popup);
     this.fade = this.add.rectangle(0, 0, VIEW_W, VIEW_H, PAL.ink).setOrigin(0, 0).setScrollFactor(0)
       .setDepth(DEPTH.fade).setAlpha(0);
 
     for (const cp of this.checkpoints) cp.setLit(cp.id <= this.checkpoint);
     this.bike = createBikeState(this.checkpoints[this.checkpoint]!.x);
     this.camX = this.cameraTarget();
+    const startHint = this.checkpoints[this.checkpoint]!.hint;
+    if (startHint) this.showHint(startHint);
 
     const kb = this.input.keyboard!;
     const K = Phaser.Input.Keyboard.KeyCodes;
@@ -154,10 +163,10 @@ export class GameScene extends Phaser.Scene {
       right: kb.addKey(K.RIGHT), left: kb.addKey(K.LEFT), up: kb.addKey(K.UP), down: kb.addKey(K.DOWN),
       space: kb.addKey(K.SPACE), shift: kb.addKey(K.SHIFT),
     };
-    kb.on('keydown-H', () => { this.honkQueued = true; });
-    kb.on('keydown-R', () => { this.restartQueued = true; });
-    kb.on('keydown-P', () => this.togglePause());
-    kb.on('keydown-ESC', () => this.togglePause());
+    onKeyPress(this, 'H', () => { if (!this.paused) this.honkQueued = true; });
+    onKeyPress(this, 'R', () => { if (!this.paused) this.restartQueued = true; });
+    onKeyPress(this, 'P', () => this.togglePause());
+    onKeyPress(this, 'ESC', () => this.togglePause());
 
     if (URL_DEBUG) {
       this.debugGfx = this.add.graphics().setDepth(DEPTH.debug);
@@ -166,6 +175,8 @@ export class GameScene extends Phaser.Scene {
       }).setScrollFactor(0).setDepth(DEPTH.debug).setLineSpacing(2);
     }
 
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => sfx.setEngine(false));
+    this.scene.launch('Hud');
     this.renderFrame(0);
   }
 
@@ -213,6 +224,7 @@ export class GameScene extends Phaser.Scene {
       return;
     }
     if (this.paused) {
+      sfx.setEngine(false);
       this.renderFrame(0);
       return;
     }
@@ -418,6 +430,7 @@ export class GameScene extends Phaser.Scene {
     if (this.troop.triggerX > cp.x) this.troop.reset();
     this.view.reset();
     this.camX = this.cameraTarget();
+    if (cp.hint) this.showHint(cp.hint);
   }
 
   private cameraTarget(): number {
@@ -431,12 +444,22 @@ export class GameScene extends Phaser.Scene {
   }
 
   // ---------------------------------------------------------------------------------------------
-  // UI hooks (filled in by the UI milestone)
+  // UI
   // ---------------------------------------------------------------------------------------------
 
-  private popup(_text: string, _x: number, _y: number): void {}
-  private showHint(_text: string): void {}
-  private onFinishScreen(): void {}
+  private popup(text: string, x: number, y: number): void {
+    this.popups.show(text, x, y);
+  }
+
+  private showHint(text: string): void {
+    this.hintText = text;
+    this.hintT = 5;
+  }
+
+  private onFinishScreen(): void {
+    const data: FinishData = { timeMs: this.timeMs, diyas: this.diyaCount, crashes: this.crashes };
+    this.scene.launch('Finish', data);
+  }
 
   // ---------------------------------------------------------------------------------------------
   // Drawing
@@ -482,6 +505,13 @@ export class GameScene extends Phaser.Scene {
     if (this.phase === 'crash') fade = Phaser.Math.Clamp((this.crashT - this.respawnDelay) / FADE_S, 0, 1);
     else if (this.fadeInT > 0) fade = this.fadeInT / FADE_S;
     this.fade.setAlpha(fade);
+
+    this.popups.update(dt);
+    if (this.hintT > 0) this.hintT = Math.max(0, this.hintT - dt);
+    const riding = this.phase === 'ride' && !this.paused && !(this.finished && b.v < 1);
+    const inp = this.lastInput;
+    sfx.setEngine(riding, Math.hypot(b.vx, b.vy) / CONFIG.topSpeed,
+      !this.finished && (inp.throttle === true || b.boosting), b.boosting);
 
     if (this.debugGfx) this.drawDebug();
   }

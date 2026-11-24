@@ -608,12 +608,9 @@ function drawGlow(p: Pen): void {
 }
 
 function drawStar(p: Pen, c: number, shade: number | null): void {
-  p.rows(c, 0, 0, [
-    [6, 1], [6, 1], [5, 3], [5, 3], [0, 13], [1, 11], [2, 9], [3, 7], [3, 7], [2, 9], [2, 9], [1, 11],
-  ]);
-  // notch between the legs
-  p.r(PAL.ink, 6, 9, 1, 1).r(PAL.ink, 5, 10, 3, 1).r(PAL.ink, 4, 11, 5, 1);
-  if (shade !== null) p.r(shade, 6, 2, 1, 2).r(shade, 3, 5, 4, 1);
+  p.rows(c, 0, 0, [[6, 1], [5, 3], [5, 3], [4, 5], [0, 13], [1, 11], [2, 9], [3, 7], [2, 9], [2, 4], [1, 3], [1, 1]]);
+  p.r(c, 7, 9, 4, 1).r(c, 9, 10, 3, 1).r(c, 11, 11, 1, 1);
+  if (shade !== null) p.r(shade, 6, 2, 1, 2).r(shade, 3, 5, 3, 1);
 }
 
 function drawBubble(p: Pen): void {
