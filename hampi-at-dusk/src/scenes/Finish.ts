@@ -1,11 +1,12 @@
 // Finish screen: a yellow pixel frame over the stopped game. This run next to the best, the medal
-// earned and the next target, three stars, and the way back in (Enter or R).
+// earned and the next target, three stars, and the way out: RIDE AGAIN (Enter or R) or MAIN MENU.
 import Phaser from 'phaser';
 import { PAL } from '../art/palette';
 import { tickMusic } from '../audio/music';
 import { onKeyPress } from '../input';
 import { DIYAS } from '../level/levelData';
 import type { Medal } from '../progress';
+import { Menu } from '../ui/Menu';
 import { formatTime, pixelFrame, pixelText } from '../ui/text';
 import type { GameScene } from './Game';
 
@@ -30,7 +31,7 @@ export interface FinishData {
 const MEDAL_NAME: Record<Medal, string> = { gold: 'GOLD', silver: 'SILVER', bronze: 'BRONZE' };
 
 export class FinishScene extends Phaser.Scene {
-  private again!: Phaser.GameObjects.Text;
+  menu!: Menu;
   private blink: Phaser.GameObjects.Text[] = [];
   private t = 0;
 
@@ -43,7 +44,7 @@ export class FinishScene extends Phaser.Scene {
     this.blink = [];
     const total = DIYAS.length;
     this.add.rectangle(0, 0, 480, 270, PAL.ink, 0.45).setOrigin(0, 0);
-    const x = 80, y = 24, w = 320, h = 222;
+    const x = 80, y = 18, w = 320, h = 236;
     pixelFrame(this.add.graphics(), x, y, w, h);
 
     pixelText(this, 240, y + 12, 'STAGE CLEAR', PAL.uiYellow, 16).setOrigin(0.5, 0);
@@ -104,14 +105,21 @@ export class FinishScene extends Phaser.Scene {
       pixelText(this, sx, y + 178, labels[i]!, on ? PAL.uiYellow : PAL.graniteLight).setOrigin(0.5, 0);
     });
 
-    this.again = pixelText(this, 240, y + h - 20, 'ENTER / R - RIDE AGAIN', PAL.uiYellow).setOrigin(0.5, 0);
-    // R is handled by the Game scene (it restarts the run from any state); Enter does the same from here.
-    onKeyPress(this, 'ENTER', () => (this.scene.get('Game') as GameScene).restartRun());
+    // RIDE AGAIN is selected, so Enter still rides again at once. R is handled by the Game scene
+    // (it restarts the run from any state).
+    const game = this.scene.get('Game') as GameScene;
+    this.menu = new Menu(this, [
+      { label: 'RIDE AGAIN', x: 240 - 72, y: y + 200, action: () => game.restartRun() },
+      { label: 'MAIN MENU', x: 240 + 72, y: y + 200, action: () => game.toTitle() },
+    ]);
+    pixelText(this, 240, y + 216, 'LEFT/RIGHT + ENTER  R AGAIN', PAL.graniteLight).setOrigin(0.5, 0);
+    for (const key of ['LEFT', 'UP']) onKeyPress(this, key, () => this.menu.move(-1));
+    for (const key of ['RIGHT', 'DOWN']) onKeyPress(this, key, () => this.menu.move(1));
+    onKeyPress(this, 'ENTER', () => this.menu.activate());
   }
 
   override update(_time: number, delta: number): void {
     this.t += Math.min(delta / 1000, 0.1);
-    this.again.setVisible(Math.floor(this.t * 2.5) % 2 === 0);
     const show = Math.floor(this.t * 4) % 4 !== 3;
     for (const b of this.blink) b.setVisible(show);
     tickMusic();

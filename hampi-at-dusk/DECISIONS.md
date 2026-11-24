@@ -366,3 +366,39 @@ Tests: 75 Vitest (60 physics, 15 progress / music score) and 8 Playwright.
   ears. The preview WAV is there for that.
 - The new low end is a deliberate, clean sine bass (31% of the energy below 150 Hz, 6% below 80 Hz). If it is still too
   much on the player's speakers, the bass level is one number (`0.09` in `scheduleStep`).
+
+---
+
+## v1.5: pause menu and the way back to the main menu
+
+"can u add a button go back to main menu too"
+
+1. **Pause menu.** P / Esc (or the small "II" button at the top centre of the HUD, clear of the timer and of
+   BOOST / CRASHES) opens a yellow pixel frame: RESUME, RESTART, MAIN MENU. Up / Down + Enter, or click / tap an option;
+   P / Esc again resumes. It always opens on RESUME. The HUD scene draws it and takes its keys; the Game scene owns the flag.
+2. **Pause really is a freeze.** No fixed steps run and every frame is drawn with dt 0, so the timer, physics, ghost
+   recording, hints, popups and animals all stand still. The two things that ran on Phaser's frame clock are stopped
+   too: the bike's particle emitters are paused, and a crash shake in progress is cancelled. `__test.step` no longer
+   unpauses (it used to, v1.0 note 8): while paused it advances nothing. Music keeps playing; the engine sound stops.
+3. **Finish screen.** "ENTER / R - RIDE AGAIN" became two options, RIDE AGAIN (selected) and MAIN MENU. Enter and R still
+   ride again at once; Left / Right (or Up / Down) + Enter, or a click, picks the other. The panel is 14 px taller for the
+   key hint line.
+4. **Back to the title** is `GameScene.toTitle()`: stop Finish and Hud, start Title. Phaser tears the scenes down
+   (objects, key and pointer listeners); the Game scene also resets its keys on shutdown so nothing stays held. The
+   AudioContext and the music are untouched (the title keeps ticking the same music, intensity 0). Best / medal / ghost
+   live in the module-level session best and in storage, so they survive.
+5. **Title:** "PRESS ENTER" is also a click target. The hint line now reads "R RETRY ... P/ESC MENU" (58 characters,
+   the widest that fits).
+6. **One menu class** (`src/ui/Menu.ts`) serves both screens: text options, a "> <" marker on the selected one, and a
+   click zone per option that is wider than the text.
+7. **Tests** (`tests/e2e/menu.spec.ts`, 3 tests): pause freezes the state over 240 manual frames and over 1 s of real
+   time; resume / restart / main menu by keys and by mouse; three title -> game -> title round trips with identical
+   listener, object, interactive-object, tween and timer counts each time (new `__test.leaks()`), the Right key held
+   through the exit and no stuck throttle on the next start; finish -> ride again / main menu by keys and mouse with the
+   stored best unchanged and the ghost back on the next ranked run. `__test.screen()` and `__test.targets()` are new.
+
+Tests: 75 Vitest and 11 Playwright.
+
+### Open questions (v1.5)
+- There are still no touch controls for riding; the click / tap targets only cover the menus.
+- The game does not pause by itself when the tab loses focus.

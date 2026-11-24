@@ -44,7 +44,7 @@ Commands that must work: `npm run dev`, `npm run build`, `npm test`.
 | Shift | Boost: while held, meter > 0 and grounded, acceleration is `boostAccel` (replaces `accel`, no throttle needed) and the cap is `boostSpeed`. No regen while held. When boost ends, speed above `topSpeed` decays at `brake` rate. The meter starts full. No effect in the air. The meter drains only while boost is actually applied (held, grounded, meter > 0); in the air it neither drains nor regenerates. |
 | H | Honk (two-tone "pom-pom") |
 | M | Sound: cycles all sound -> music off -> everything muted (remembered) |
-| P / Esc | Pause |
+| P / Esc | Pause menu (Resume / Restart / Main menu) |
 | R | Restart the run from the start, at once (also on the finish screen). Timer, diyas, crashes and flips reset |
 | C | Back to the last checkpoint (counts as a crash; the timer keeps running) |
 | G | Show / hide the ghost of the best run (remembered) |
@@ -352,8 +352,10 @@ All on-screen text is ASCII only. Wait for `document.fonts.load('8px "Press Star
   side of "STAGE CLEAR", "GOLD MEDAL" / "NO MEDAL YET"); time, diyas and flips for this run next to the best before it, with a
   blinking "NEW BEST!" where the run beat it; crashes; the next target ("NEXT: SILVER UNDER 00:46.00", or after gold
   "GOLD! BEAT YOUR mm:ss.cc"); three code-drawn star icons: star 1 finished · star 2 all 30 diyas · star 3 zero crashes.
-  "ENTER / R - RIDE AGAIN". A practice run (`?cp=N`) shows "PRACTICE RUN - NO MEDAL" and saves nothing.
-- **Pause:** dim overlay, "PAUSED".
+  Two options: "RIDE AGAIN" (selected; Enter or R) and "MAIN MENU" (Left / Right + Enter, or click). A practice run (`?cp=N`) shows "PRACTICE RUN - NO MEDAL" and saves nothing.
+- **Pause** (v1.5): dim overlay and the same yellow pixel frame: "PAUSED", then RESUME / RESTART / MAIN MENU
+  (Up / Down + Enter, or click / tap; P / Esc resumes). Game time stands still while it is open. A small pause
+  button at the top centre of the HUD opens it with the mouse.
 
 ### 8.1 Replay loop (v1.3)
 

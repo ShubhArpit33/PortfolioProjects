@@ -1,13 +1,18 @@
 // HUD: a separate UI scene that never scrolls. Timer, diyas, boost bar, crash count, the cp4 hint,
-// the mute tag and the pause overlay.
+// the mute tag, the pause button and the pause menu (RESUME / RESTART / MAIN MENU).
 import Phaser from 'phaser';
 import { PAL, mix } from '../art/palette';
 import { soundLabel } from '../audio/sfx';
 import { DIYAS } from '../level/levelData';
-import { formatTime, pixelText } from '../ui/text';
+import { onKeyPress } from '../input';
+import { Menu } from '../ui/Menu';
+import { formatTime, pixelFrame, pixelText } from '../ui/text';
 import type { GameScene } from './Game';
 
 const BAR = { x: 412, y: 6, w: 62, h: 9 };
+/** Pause button: top centre, clear of the timer (left) and BOOST / CRASHES (right). */
+const PAUSE_BTN = { x: 240, y: 11, w: 15, h: 11, hitW: 30, hitH: 22 };
+const PANEL = { x: 128, y: 76, w: 224, h: 118 };
 
 export class HudScene extends Phaser.Scene {
   private timer!: Phaser.GameObjects.Text;
@@ -19,6 +24,10 @@ export class HudScene extends Phaser.Scene {
   private mute!: Phaser.GameObjects.Text;
   private bar!: Phaser.GameObjects.Graphics;
   private pause!: Phaser.GameObjects.Container;
+  private pauseBtn!: Phaser.GameObjects.Graphics;
+  private pauseZone!: Phaser.GameObjects.Zone;
+  menu!: Menu;
+  private wasPaused = false;
   private last = { time: '', diyas: -1, crashes: -1, flips: 0, boost: -1, boosting: false };
 
   constructor() {
@@ -38,10 +47,44 @@ export class HudScene extends Phaser.Scene {
     this.hint = pixelText(this, 240, 52, '', PAL.uiYellow).setOrigin(0.5, 0).setVisible(false);
     this.mute = pixelText(this, 474, 256, '', PAL.cream).setOrigin(1, 0).setVisible(false);
 
+    const game = this.scene.get('Game') as GameScene;
+
+    // Pause button (click / tap): a small framed "II".
+    const b = PAUSE_BTN;
+    const g = this.pauseBtn = this.add.graphics();
+    const bx = b.x - Math.floor(b.w / 2), by = b.y - Math.floor(b.h / 2);
+    g.fillStyle(PAL.ink, 1).fillRect(bx - 1, by - 1, b.w + 2, b.h + 2);
+    g.fillStyle(PAL.uiYellow, 1).fillRect(bx, by, b.w, b.h);
+    g.fillStyle(PAL.ink, 1).fillRect(bx + 1, by + 1, b.w - 2, b.h - 2);
+    g.fillStyle(PAL.uiYellow, 1).fillRect(bx + 4, by + 3, 2, b.h - 6).fillRect(bx + b.w - 6, by + 3, 2, b.h - 6);
+    this.pauseZone = this.add.zone(b.x, b.y, b.hitW, b.hitH).setInteractive({ useHandCursor: true });
+    this.pauseZone.on('pointerdown', () => game.setPaused(true));
+
+    // Pause menu: the same yellow pixel frame as the finish screen, over a dimmed game.
+    const p = PANEL;
     const dim = this.add.rectangle(0, 0, 480, 270, PAL.ink, 0.6).setOrigin(0, 0);
-    const title = pixelText(this, 240, 118, 'PAUSED', PAL.uiYellow, 16).setOrigin(0.5, 0);
-    const sub = pixelText(this, 240, 144, 'P / ESC - RESUME', PAL.cream).setOrigin(0.5, 0);
-    this.pause = this.add.container(0, 0, [dim, title, sub]).setVisible(false);
+    const frame = this.add.graphics();
+    pixelFrame(frame, p.x, p.y, p.w, p.h);
+    const title = pixelText(this, 240, p.y + 12, 'PAUSED', PAL.uiYellow, 16).setOrigin(0.5, 0);
+    const sub = pixelText(this, 240, p.y + p.h - 18, 'UP/DOWN + ENTER  ESC BACK', PAL.graniteLight).setOrigin(0.5, 0);
+    this.pause = this.add.container(0, 0, [dim, frame, title, sub]).setVisible(false);
+    this.menu = new Menu(this, [
+      { label: 'RESUME', x: 240, y: p.y + 42, action: () => game.setPaused(false) },
+      { label: 'RESTART', x: 240, y: p.y + 58, action: () => game.restartRun() },
+      { label: 'MAIN MENU', x: 240, y: p.y + 74, action: () => game.toTitle() },
+    ]);
+    this.menu.setVisible(false);
+    this.wasPaused = false;
+    // The menu only takes keys while it is shown (Up / Down are the tilt keys otherwise).
+    onKeyPress(this, 'UP', () => this.menu.move(-1));
+    onKeyPress(this, 'DOWN', () => this.menu.move(1));
+    onKeyPress(this, 'ENTER', () => this.menu.activate());
+  }
+
+  /** Screen rectangle of the pause button's click target (for tests). */
+  get pauseHit(): { x: number; y: number; w: number; h: number } {
+    const b = PAUSE_BTN;
+    return { x: b.x - b.hitW / 2, y: b.y - b.hitH / 2, w: b.hitW, h: b.hitH };
   }
 
   override update(): void {
@@ -80,6 +123,18 @@ export class HudScene extends Phaser.Scene {
     const tag = soundLabel();
     if (tag !== this.mute.text) this.mute.setText(tag);
     this.mute.setVisible(tag !== '');
-    this.pause.setVisible(game.paused);
+
+    if (game.paused !== this.wasPaused) {
+      this.wasPaused = game.paused;
+      this.pause.setVisible(game.paused);
+      this.menu.setVisible(game.paused);
+      if (game.paused) this.menu.select(0); // always opens on RESUME
+    }
+    const showBtn = !game.paused && !game.finished;
+    if (showBtn !== this.pauseBtn.visible) {
+      this.pauseBtn.setVisible(showBtn);
+      if (showBtn) this.pauseZone.setInteractive({ useHandCursor: true });
+      else this.pauseZone.disableInteractive();
+    }
   }
 }

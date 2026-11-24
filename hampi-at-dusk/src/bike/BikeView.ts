@@ -103,6 +103,14 @@ export class BikeView {
     }).setDepth(fxDepth);
   }
 
+  /** Freeze / unfreeze the particles (they run on Phaser's frame clock, not on game time). */
+  setPaused(on: boolean): void {
+    for (const e of [this.smoke, this.dust, this.sparks, this.splash]) {
+      if (on) e.pause();
+      else e.resume();
+    }
+  }
+
   /** Normal riding pose. dt is the visual frame time in seconds. */
   ride(x: number, y: number, angleDeg: number, drive: BikeDrive, dt: number): void {
     const c = this.container;

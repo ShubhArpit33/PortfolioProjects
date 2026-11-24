@@ -254,6 +254,7 @@ export class GameScene extends Phaser.Scene {
     onKeyPress(this, 'R', () => this.restartRun());
     onKeyPress(this, 'C', () => { if (!this.paused) this.restartQueued = true; });
     onKeyPress(this, 'G', () => this.toggleGhost());
+    // P / Esc open and close the pause menu (the HUD scene draws it and takes its Up / Down / Enter).
     onKeyPress(this, 'P', () => this.togglePause());
     onKeyPress(this, 'ESC', () => this.togglePause());
 
@@ -264,7 +265,12 @@ export class GameScene extends Phaser.Scene {
       }).setScrollFactor(0).setDepth(DEPTH.debug).setLineSpacing(2);
     }
 
-    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => sfx.setEngine(false));
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      sfx.setEngine(false);
+      // No key stays "held" into the next scene or the next run.
+      this.input.keyboard?.resetKeys();
+      this.lastInput = {};
+    });
     this.scene.launch('Hud');
     this.renderFrame(0);
   }
@@ -292,15 +298,36 @@ export class GameScene extends Phaser.Scene {
     };
   }
 
-  /** Run n fixed steps right now (used by window.__test.step). */
+  /** Run n fixed steps right now (used by window.__test.step). Nothing advances while paused. */
   simulate(n: number): void {
-    this.paused = false;
+    if (this.paused) return;
     for (let i = 0; i < n; i++) this.fixedStep();
   }
 
   togglePause(): void {
-    if (this.finished) return;
-    this.paused = !this.paused;
+    this.setPaused(!this.paused);
+  }
+
+  /**
+   * Pause is a flag, not a Phaser scene pause: no fixed steps run and every frame is drawn with dt 0,
+   * so the run timer, the physics, the ghost recording and all frame-time animation stand still.
+   */
+  setPaused(on: boolean): void {
+    if (this.finished || on === this.paused) return;
+    this.paused = on;
+    // The only wall-clock visuals are Phaser's own: the particle emitters and the crash shake.
+    this.view.setPaused(on);
+    if (on) {
+      this.cameras.main.resetFX();
+      this.acc = 0;
+    }
+  }
+
+  /** Leave the run for the title screen (from the pause menu or the finish screen). */
+  toTitle(): void {
+    this.scene.stop('Finish');
+    this.scene.stop('Hud');
+    this.scene.start('Title');
   }
 
   /** Best time so far (ms), or null. Practice runs show it too. */
@@ -327,14 +354,14 @@ export class GameScene extends Phaser.Scene {
 
   override update(_time: number, delta: number): void {
     const dt = Math.min(delta / 1000, 0.1);
-    if (runtime.manual) {
-      // __test.step already ran the fixed steps; this frame only draws.
-      this.renderFrame(dt);
-      return;
-    }
     if (this.paused) {
       sfx.setEngine(false);
       this.renderFrame(0);
+      return;
+    }
+    if (runtime.manual) {
+      // __test.step already ran the fixed steps; this frame only draws.
+      this.renderFrame(dt);
       return;
     }
     this.acc = Math.min(this.acc + dt, 0.1);

@@ -4,7 +4,9 @@ import { audioDebug, type AudioDebug } from './audio/sfx';
 import { runtime, testInput, type GameInput } from './input';
 import { LEVEL } from './level/levelData';
 import type { FinishData } from './scenes/Finish';
+import type { FinishScene } from './scenes/Finish';
 import type { GameScene, GameSnapshot } from './scenes/Game';
+import type { HudScene } from './scenes/Hud';
 
 const STEP_MS = 1000 / 120;
 
@@ -19,6 +21,12 @@ export interface TestHooks {
   finish(): FinishData | null;
   /** audio state and output levels (never creates audio) */
   audio(): AudioDebug;
+  /** what is on screen: 'title' | 'game' | 'paused' | 'finish' */
+  screen(): 'boot' | 'title' | 'game' | 'paused' | 'finish';
+  /** click targets in game pixels (480x270): the shown menu's options, and the HUD pause button */
+  targets(): { menu: Array<{ x: number; y: number; w: number; h: number }>; index: number; pause: { x: number; y: number; w: number; h: number } | null };
+  /** counts that must not grow from one title -> game -> title round trip to the next */
+  leaks(): Record<string, number>;
   levelData: typeof LEVEL;
 }
 
@@ -81,6 +89,49 @@ export function installTestHooks(game: Phaser.Game): void {
     finish: () => gameScene()?.finishData ?? null,
 
     audio: () => audioDebug(),
+
+    screen() {
+      if (game.scene.isActive('Finish')) return 'finish';
+      const g = gameScene();
+      if (g) return g.paused ? 'paused' : 'game';
+      return game.scene.isActive('Title') ? 'title' : 'boot';
+    },
+
+    targets() {
+      const finish = game.scene.isActive('Finish') ? (game.scene.getScene('Finish') as FinishScene) : null;
+      const hud = game.scene.isActive('Hud') ? (game.scene.getScene('Hud') as HudScene) : null;
+      const menu = finish?.menu ?? (hud?.menu.shown ? hud.menu : null);
+      return {
+        menu: menu ? Array.from({ length: menu.length }, (_, i) => menu.hitRect(i)) : [],
+        index: menu ? menu.index : -1,
+        pause: hud && !finish && !hud.menu.shown ? hud.pauseHit : null,
+      };
+    },
+
+    leaks() {
+      const count = (e: Phaser.Events.EventEmitter | null | undefined): number =>
+        e ? e.eventNames().reduce((n, name) => n + e.listenerCount(name), 0) : 0;
+      const out: Record<string, number> = {
+        scenes: game.scene.scenes.length,
+        running: game.scene.getScenes(true).length,
+        gameEvents: count(game.events),
+        inputManagerEvents: count(game.input.events),
+        scaleEvents: count(game.scale),
+      };
+      for (const s of game.scene.scenes) {
+        const k = s.sys.settings.key;
+        const on = game.scene.isActive(k);
+        out[`${k}.sceneEvents`] = count(s.events);
+        out[`${k}.inputEvents`] = count(s.input);
+        out[`${k}.keyEvents`] = count(s.input.keyboard);
+        out[`${k}.objects`] = on ? s.children.length : 0;
+        out[`${k}.updating`] = on ? s.sys.updateList.length : 0;
+        out[`${k}.interactive`] = on ? (s.input as unknown as { _list: unknown[] })._list.length : 0;
+        out[`${k}.tweens`] = s.tweens.getTweens().length;
+        out[`${k}.timers`] = (s.time as unknown as { _active: unknown[] })._active.length;
+      }
+      return out;
+    },
 
     levelData: LEVEL,
   };

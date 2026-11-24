@@ -50,12 +50,15 @@ export class TitleScene extends Phaser.Scene {
     this.add.rectangle(0, 232, 480, 38, PAL.ink, 0.72).setOrigin(0, 0).setDepth(ui - 1);
     const hints = [
       'RIGHT GAS  LEFT BRAKE/BACK  SPACE HOP  UP/DOWN TILT+FLIP',
-      'SHIFT BOOST  H HONK  P PAUSE  R RESTART  M SOUND  G GHOST',
+      'SHIFT BOOST  H HONK  R RETRY  M SOUND  G GHOST  P/ESC MENU',
     ];
     hints.forEach((line, i) => pixelText(this, 240, 239 + i * 13, line, PAL.cream).setOrigin(0.5, 0).setDepth(ui));
     this.mute = pixelText(this, 474, 6, '', PAL.cream).setOrigin(1, 0).setDepth(ui).setVisible(false);
 
-    onKeyPress(this, 'ENTER', () => this.scene.start('Game', { cp: URL_CP ?? 0 }));
+    const start = (): void => { this.scene.start('Game', { cp: URL_CP ?? 0 }); };
+    onKeyPress(this, 'ENTER', start);
+    // "PRESS ENTER" is also a click / tap target (it blinks, so the target is a zone of its own).
+    this.add.zone(240, 132, 136, 20).setInteractive({ useHandCursor: true }).once('pointerdown', start);
     this.draw(0);
   }
 
