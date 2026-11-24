@@ -60,5 +60,44 @@ Fable, the advisor and builder, makes each call; Opus, the coordinator, writes i
 
 **Risk for M5 (the bot run):** after the river jump only 0.08 of the boost meter is left. The bot must not use any boost before the cp4 run-up.
 
+## M3: game world
+1. **Optional PNG art:** `vite.config.ts` scans `public/assets/*.png` when the build or dev server starts and passes the list in as `__ASSET_PNGS__`.
+   That way a PNG that isn't there never causes a 404. If you add a PNG, restart the dev server.
+2. **Strip frames:** `deepastambha` (16×48) is two 8×48 frames side by side (unlit, lit). `monkey` is two 16×16 frames (running, sitting).
+3. **Textures drawn only in code** (not in the manifest): chariot, glow, stars, speech bubble, and particles. There is one particle texture per colour because the Canvas renderer can't tint.
+4. **Terrain:** baked into 960 px-wide chunks, drawn one pixel column at a time with the 2D canvas API so ramps stay sharp. The title screen reuses `terrain_0`.
+5. **Near foliage:** one tiled layer, with grass only along the bottom edge and vines only along the top, so it never hides an obstacle.
+6. **Stone chariot:** a separate image at scroll factor 0.2, placed so it sits at screen x = 300 at the end of the stage. It isn't baked into the tiled skyline because it would repeat.
+7. **No Phaser tweens:** tweens run on wall-clock time, which would break manual stepping. Popups, flame flicker and the crash tumble are all driven by the frame delta.
+8. **Manual stepping:** `setManual(true)` puts Phaser's game loop to sleep, and `step(n)` runs n fixed steps, then one update and render. `step` also unpauses. `__test.ready()` says when the scene can take commands.
+9. **`state().crashed`** stays true for the whole crash sequence, until the bike respawns.
+10. **Crash timeline:** a tumble lasting `respawnDelayMs`, a 0.25 s fade out, the respawn, then a 0.25 s fade in (you can ride during the fade-in).
+    Hitting something solid bounces the bike back, a bad landing tumbles it forward, and water sinks it. R skips straight to the fade and still counts as a crash.
+11. **Cow:** compares horizontal speed `|vx|` against `cowCrashSpeed`, so hopping in place next to her doesn't crash. She stops being solid the moment she starts walking.
+    "Within 3 tiles" means a gap of 48 px or less between the bike box and the cow box. The wait timer resets if you move out of range or go over 20 px/s. A honk only gets the "..." bubble if it's within `honkRange`.
+12. **Monkeys:** a monkey's x is the left edge of its 12×12 box. They can be hit while running and while sitting. A stumble scales both `v` and `vx`, at most once per monkey, and honk range is measured to the monkey's centre.
+13. **Finish:** crossing the line stops the timer and leaves only braking active. A bad landing after the line settles the bike instead of crashing it. The finish screen appears 1.2 s of game time later, and Enter starts a new run from cp0.
+14. **`?cp=N`** skips the title screen.
+15. **Boost hint:** "HOLD SHIFT - BOOST!" shows for 5 s when you pass cp4, and also when you start or respawn there.
+16. **Added text:** "+1" when you collect a diya, "OOK!" when you bump a monkey, "POM-POM!" when you honk.
+    The title screen has the subtitle "A SUNSET RIDE THROUGH THE RUINS". The finish screen header is "STAGE CLEAR", with star labels FINISH / DIYAS / CLEAN.
+17. **One-shot keys** (H, R, P/Esc, M, Enter) go through `onKeyPress` in `src/input.ts`. This works around Phaser re-processing its key queue,
+    which could fire a key twice when two keys landed in the same frame.
+18. **Camera:** smoothing runs once per fixed step, and the bike's screen position is rounded relative to the camera so it doesn't shimmer by a pixel.
+
+## M4: UI and audio
+1. **Pause:** a flag inside the Game scene, not a Phaser scene pause. H and R do nothing while paused, and you can't pause after finishing.
+2. **Mute:** a window-level listener, so M works on every screen. Pressing M first is a real key press, so it also creates the AudioContext.
+3. **Font:** only `latin-400.css` is imported (the game uses ASCII only), at sizes 8, 16 and 24 px.
+
+**Checked:** the screenshots were reviewed, by Fable and by the coordinator. The Canvas renderer logs no errors or warnings.
+In headless WebGL the only warning is SwiftShader's "GPU stall due to ReadPixels", which comes from taking screenshots.
+
+**Known issues carried into M5 and M6:**
+- After crossing the finish line at boost speed, the bike rolls out to the end wall (harmless).
+- At cp0 the bike spawns overlapping the lamp pillar.
+- Rotated sprites look slightly jagged at some angles.
+- The bundle is about 1.5 MB, almost all of it Phaser.
+
 ## Attribution
 - Commits made by Fable carry a `Co-Authored-By: Claude Fable 5.2` trailer, which names the model that actually wrote them. Commits made by the coordinator carry the Opus trailer.
