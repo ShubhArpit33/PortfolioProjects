@@ -5,12 +5,13 @@ import Phaser from 'phaser';
 import { BoostStreaks, Fx } from '../art/Fx';
 import { DEPTH, Parallax } from '../art/Parallax';
 import { PAL } from '../art/palette';
+import { setMusicIntensity, tickMusic } from '../audio/music';
 import * as sfx from '../audio/sfx';
 import {
   FIXED_DT, aabbOverlap, addBoost, bikeAABB, crash, createBikeState, hitsObstacle, step, touchesDiya,
   type BikeState, type CrashCause,
 } from '../bike/BikePhysics';
-import { BikeView } from '../bike/BikeView';
+import { BikeView, GhostBike } from '../bike/BikeView';
 import { CONFIG } from '../config';
 import { Checkpoint } from '../entities/Checkpoint';
 import { Cow } from '../entities/Cow';
@@ -23,6 +24,10 @@ import {
 } from '../level/levelData';
 import { TERRAIN } from '../level/terrain';
 import { addTerrain } from '../level/terrainView';
+import {
+  GHOST_MAX_SAMPLES, GHOST_SAMPLE_STEPS, decodeGhost, encodeGhost, ghostPoseAt, loadBest, loadPrefs, medalFor,
+  nextMedal, saveBest, savePrefs, submitRun, type Best, type GhostPose,
+} from '../progress';
 import { Popups } from '../ui/Popups';
 import type { FinishData } from './Finish';
 
@@ -42,6 +47,17 @@ const BUMP_DAMPING = 30;
 
 type Phase = 'ride' | 'crash';
 
+/**
+ * The bests as of the last finished run in this page session. Storage is only a copy of this: when it
+ * is unavailable or throws, best / medal / ghost still work until the page is closed.
+ */
+let sessionBest: Best | null = null;
+
+/** The bests: this session's if a run has finished, else whatever storage holds. */
+export function currentBest(): Best {
+  return sessionBest ?? loadBest();
+}
+
 /** Popup text for n full flips in one air. */
 export function flipLabel(n: number): string {
   if (n <= 1) return '+FLIP';
@@ -60,6 +76,8 @@ export interface GameSnapshot {
   spin: number;
   /** camera scroll (world px of the left screen edge), before rounding */
   camX: number;
+  /** where the ghost is drawn this frame (null when hidden or there is none) */
+  ghost: { x: number; y: number; angle: number } | null;
 }
 
 export class GameScene extends Phaser.Scene {
@@ -96,6 +114,16 @@ export class GameScene extends Phaser.Scene {
   private honkHeld = false;
   private honkQueued = false;
   private restartQueued = false;
+  /** a run from cp0 counts for best / medal / ghost; a ?cp=N start is practice */
+  private ranked = true;
+  private best: Best = currentBest();
+  /** the best run's ghost (decoded), and this run's recording */
+  private ghostPoses: GhostPose[] = [];
+  private ghostRec: GhostPose[] = [];
+  private ghostOn = true;
+  private ghostPose: GhostPose | null = null;
+  /** set at the finish line (the run is scored there, not when the finish screen opens) */
+  finishData: FinishData | null = null;
   private lastInput: GameInput = {};
   private startCp = 0;
 
@@ -105,6 +133,7 @@ export class GameScene extends Phaser.Scene {
   private parallax!: Parallax;
   private popups!: Popups;
   private view!: BikeView;
+  private ghost!: GhostBike;
   private fx!: Fx;
   private streaks!: BoostStreaks;
   private diyas: Diya[] = [];
@@ -142,6 +171,13 @@ export class GameScene extends Phaser.Scene {
     this.honkHeld = false;
     this.honkQueued = false;
     this.restartQueued = false;
+    this.ranked = this.startCp === 0;
+    this.best = currentBest();
+    this.ghostPoses = this.ranked ? decodeGhost(this.best.ghost) : [];
+    this.ghostRec = [];
+    this.ghostOn = loadPrefs().ghost;
+    this.ghostPose = null;
+    this.finishData = null;
     this.lastInput = {};
     this.acc = 0;
     this.visT = 0;
@@ -193,6 +229,7 @@ export class GameScene extends Phaser.Scene {
     this.cow = new Cow(this, DEPTH.animal);
     this.troop = new MonkeyTroop(this, DEPTH.animal);
     this.diyas = DIYAS.map((def, i) => new Diya(this, def, i, DEPTH.diya));
+    this.ghost = new GhostBike(this, DEPTH.bike - 1);
     this.view = new BikeView(this, DEPTH.bike, DEPTH.fx);
     this.fx = new Fx(this, DEPTH.fx);
     this.streaks = new BoostStreaks(this, DEPTH.terrain - 1);
@@ -213,7 +250,10 @@ export class GameScene extends Phaser.Scene {
       space: kb.addKey(K.SPACE), shift: kb.addKey(K.SHIFT),
     };
     onKeyPress(this, 'H', () => { if (!this.paused) this.honkQueued = true; });
-    onKeyPress(this, 'R', () => { if (!this.paused) this.restartQueued = true; });
+    // R restarts the whole run at once (also from the finish screen); C goes back to the last checkpoint.
+    onKeyPress(this, 'R', () => this.restartRun());
+    onKeyPress(this, 'C', () => { if (!this.paused) this.restartQueued = true; });
+    onKeyPress(this, 'G', () => this.toggleGhost());
     onKeyPress(this, 'P', () => this.togglePause());
     onKeyPress(this, 'ESC', () => this.togglePause());
 
@@ -248,6 +288,7 @@ export class GameScene extends Phaser.Scene {
       crashed: this.phase === 'crash', crashes: this.crashes, diyas: this.diyaCount,
       finished: this.finished, checkpoint: this.checkpoint, timeMs: this.timeMs,
       flips: this.flips, spin: b.spin, camX: this.camX,
+      ghost: this.ghostPose ? { ...this.ghostPose } : null,
     };
   }
 
@@ -260,6 +301,24 @@ export class GameScene extends Phaser.Scene {
   togglePause(): void {
     if (this.finished) return;
     this.paused = !this.paused;
+  }
+
+  /** Best time so far (ms), or null. Practice runs show it too. */
+  get bestTimeMs(): number | null {
+    return this.best.timeMs;
+  }
+
+  /** Start the run again from its first checkpoint, right now. */
+  restartRun(): void {
+    this.scene.stop('Finish');
+    this.scene.restart({ cp: this.startCp });
+  }
+
+  toggleGhost(): void {
+    this.ghostOn = !this.ghostOn;
+    savePrefs({ ...loadPrefs(), ghost: this.ghostOn });
+    const text = !this.ghostOn ? 'GHOST OFF' : this.ghostPoses.length > 0 ? 'GHOST ON' : 'GHOST ON - NO BEST RUN YET';
+    if (!this.finished) this.showHint(text, 1.6);
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -302,7 +361,11 @@ export class GameScene extends Phaser.Scene {
 
   private fixedStep(): void {
     const dt = FIXED_DT;
-    if (!this.finished) this.timerSteps++;
+    if (!this.finished) {
+      // Ghost recording: the pose every GHOST_SAMPLE_STEPS of run time, starting at time 0.
+      if (this.ranked && this.timerSteps % GHOST_SAMPLE_STEPS === 0) this.recordGhost();
+      this.timerSteps++;
+    }
 
     // After the line only the brake is active (released once stopped, so the bike never backs up).
     const input: GameInput = this.finished
@@ -451,7 +514,37 @@ export class GameScene extends Phaser.Scene {
       this.finished = true;
       this.finishT = 0;
       sfx.play('bell');
+      this.scoreRun();
     }
+  }
+
+  private recordGhost(): void {
+    if (this.ghostRec.length > GHOST_MAX_SAMPLES) return;
+    const b = this.bike;
+    this.ghostRec.push({ x: b.x, y: b.y, angle: b.angle });
+  }
+
+  /** At the line: medal, bests and the ghost. Storage failing changes nothing here. */
+  private scoreRun(): void {
+    const run = { timeMs: this.timeMs, diyas: this.diyaCount, flips: this.flips };
+    const data: FinishData = {
+      ...run, crashes: this.crashes, ranked: this.ranked,
+      medal: this.ranked ? medalFor(run.timeMs) : null, next: this.ranked ? nextMedal(run.timeMs) : null,
+      prevBest: { timeMs: this.best.timeMs, diyas: this.best.diyas, flips: this.best.flips },
+      newTime: false, newDiyas: false, newFlips: false, saved: false,
+    };
+    if (this.ranked) {
+      this.recordGhost(); // the pose on the line closes the recording
+      const ghost = this.ghostRec.length <= GHOST_MAX_SAMPLES ? encodeGhost(this.ghostRec) : '';
+      const update = submitRun(this.best, run, ghost);
+      data.newTime = update.newTime;
+      data.newDiyas = update.newDiyas;
+      data.newFlips = update.newFlips;
+      sessionBest = update.best;
+      this.best = update.best;
+      data.saved = saveBest(update.best);
+    }
+    this.finishData = data;
   }
 
   private doHonk(): void {
@@ -542,14 +635,13 @@ export class GameScene extends Phaser.Scene {
     this.popups.show(text, x, y);
   }
 
-  private showHint(text: string): void {
+  private showHint(text: string, seconds = 5): void {
     this.hintText = text;
-    this.hintT = 5;
+    this.hintT = seconds;
   }
 
   private onFinishScreen(): void {
-    const data: FinishData = { timeMs: this.timeMs, diyas: this.diyaCount, crashes: this.crashes, flips: this.flips };
-    this.scene.launch('Finish', data);
+    if (this.finishData) this.scene.launch('Finish', this.finishData);
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -584,6 +676,11 @@ export class GameScene extends Phaser.Scene {
       }, dt);
     }
 
+    // Ghost of the best run: same clock as the run timer; hidden after the line and when toggled off.
+    this.ghostPose = this.ghostOn && !this.finished ? ghostPoseAt(this.ghostPoses, this.timerSteps / 120) : null;
+    if (this.ghostPose) this.ghost.show(this.ghostPose.x, this.ghostPose.y, this.ghostPose.angle);
+    else this.ghost.hide();
+
     for (const d of this.diyas) d.render(t, dt);
     for (const cp of this.checkpoints) cp.render(t);
     this.cow.render(t);
@@ -611,6 +708,11 @@ export class GameScene extends Phaser.Scene {
     const inp = this.lastInput;
     sfx.setEngine(riding, Math.hypot(b.vx, b.vy) / CONFIG.topSpeed,
       !this.finished && (inp.throttle === true || b.boosting), b.boosting);
+
+    // Music: lifted while boosting, a little on the river run-up.
+    const riverRunUp = this.checkpoint === this.checkpoints.length - 1 && !this.finished;
+    setMusicIntensity(boostOn ? 1 : riverRunUp ? 0.55 : 0);
+    tickMusic();
 
     if (this.debugGfx) this.drawDebug();
   }

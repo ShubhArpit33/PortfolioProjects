@@ -1,7 +1,9 @@
 // window.__test (GAME_SPEC.md section 9.1). Installed only in dev / test builds.
 import type Phaser from 'phaser';
+import { audioDebug, type AudioDebug } from './audio/sfx';
 import { runtime, testInput, type GameInput } from './input';
 import { LEVEL } from './level/levelData';
+import type { FinishData } from './scenes/Finish';
 import type { GameScene, GameSnapshot } from './scenes/Game';
 
 const STEP_MS = 1000 / 120;
@@ -13,6 +15,10 @@ export interface TestHooks {
   startAt(checkpoint: number): void;
   setManual(manual: boolean): void;
   step(n: number): void;
+  /** the finished run's result (medal, bests), or null before the finish line */
+  finish(): FinishData | null;
+  /** audio state and output levels (never creates audio) */
+  audio(): AudioDebug;
   levelData: typeof LEVEL;
 }
 
@@ -24,7 +30,7 @@ declare global {
 
 const IDLE: GameSnapshot = {
   x: 0, y: 0, vx: 0, vy: 0, v: 0, angle: 0, grounded: true, boost: 1, crashed: false,
-  crashes: 0, diyas: 0, finished: false, checkpoint: 0, timeMs: 0, flips: 0, spin: 0, camX: 0,
+  crashes: 0, diyas: 0, finished: false, checkpoint: 0, timeMs: 0, flips: 0, spin: 0, camX: 0, ghost: null,
 };
 
 export function installTestHooks(game: Phaser.Game): void {
@@ -71,6 +77,10 @@ export function installTestHooks(game: Phaser.Game): void {
       manualTime += delta;
       game.step(manualTime, delta);
     },
+
+    finish: () => gameScene()?.finishData ?? null,
+
+    audio: () => audioDebug(),
 
     levelData: LEVEL,
   };

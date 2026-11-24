@@ -1,6 +1,6 @@
 # DECISIONS
 
-These are the judgement calls made where `GAME_SPEC.md` (v1.1) left room for interpretation.
+These are the judgement calls made where `GAME_SPEC.md` (v1.1 to v1.3) left room for interpretation.
 Fable, the advisor and builder, makes each call; Opus, the coordinator, writes it down here.
 
 ## Spec process
@@ -178,6 +178,128 @@ In the live game, 0.18 of the boost meter is left after the river jump (the diya
 - 42 Vitest tests (31 + 11 for backing up) and 5 Playwright tests (4 + `reverse.spec.ts`) pass. The M2 measurements above are unchanged: the bot run is still 23.22 s, 0 crashes, 17/17.
 - Screenshots: 12 PNGs in `test-results/shots/` (the 10 from before plus `reverse` and `reverse-start-wall`), reviewed by Fable.
 - Still open: 60 fps on real hardware needs a manual check, now with 51 more small images on screen.
+
+## v1.3: the gameplay loop (longer stage, tricks, game feel, music, replay)
+
+Asked for: still one stage, a bit longer, and a loop worth replaying. Built in four milestones (M-A to M-D), each committed with
+the build clean and `npm test` green.
+
+### M-A: longer single stage
+1. **Length:** 360 → 580 columns (9280 px). Sections 1–4 are column-for-column where they were; two new sections go in before
+   the river, which moves to columns 520–579 unchanged (still the climax). World end wall 9264, camera max scroll 8800.
+2. **Section 5, Mandapa Run (300–409):** an h1 plinth (ramp 4 +1 up, ramp 4 −1 down) with fallen pillars at x324, x341, x358
+   and a cart at x377. 17-column spacing = a 12-column hop plus 5 columns of ground: a steady rhythm, then one longer beat
+   (19) before the taller cart. A dark colonnade behind the plinth is decoration only (85% alpha, behind every entity).
+3. **Section 6, Hemakuta Rocks (410–519):** roller (6 +1 / 6 −1), bigger roller (6 +2, flat 5, 5 −2), then the kicker:
+   ramp 4 +2 (26.6°, the river ramp's slope, but hop-able) ending over an 8-column tank with the far bank at h0, a 30-column
+   landing flat and a last small roller. The tank makes the kicker a real beat instead of scenery: it teaches "hop on the
+   ramp" (hint at cp5) one section before the river teaches "boost".
+4. **The tank is a new kind of gap** (`kicker: true`): rolling off the ramp at 240 falls in; a hop from anywhere on the ramp
+   clears it; boost alone clears it too (191 px of flight over a 128 px gap). So the canal rule "no gap can be rolled across,
+   even at boost speed" still holds for the six canals and is deliberately relaxed here, giving two ways across.
+5. **Checkpoints:** one per section start: cp0 x2, cp1 x62, cp2 x142, cp3 x222, cp4 x302, cp5 x412, cp6 x522. The longest
+   stretch between two is 110 columns (7.3 s at top speed). `?cp=N` now takes 0–6. The boost hint moved to cp6.
+6. **Diyas:** 17 → 30. Mandapa: one over each obstacle at hop height, two on the plinth where a centred hop lands (a hop
+   taken too late overshoots them). Rocks: two free ones on roller crests, two on the arc of a hop taken on the second roller's
+   up-ramp, three on the arc of a mid-ramp kicker hop (the third is missed by a hop at the very start or very lip of the ramp).
+7. **Bot:** unchanged logic; it plans the kicker like any gap (hop centred on it = 32 px before the lip, on the ramp).
+   One new rule: a floating diya further along the arc of the previous diya hop gets no hop of its own.
+8. **Ambience:** bird / bat cross-fade and the river firefly zone moved with the river; a firefly zone was added at the tank.
+
+### M-B: tricks
+1. **What counts:** the rotation of each air is added up (`spin`, signed). On a landing the bike survives, `round(|spin|/360)`
+   full turns are flips. Rounding is safe because a surviving landing is within 35° of the slope, so the total is always close
+   to a whole number of turns give or take the take-off / landing slope difference.
+2. **"Lands clean" read as "lands without crashing"** (`clean` or `safe`). Requiring the ≤ 10° CLEAN band after a turn at
+   450°/s would be a 44 ms window; the 35° band is about 155 ms. A flip that is also CLEAN gets both bonuses.
+3. **Reward:** `boostFlip` = 0.35 of the meter per flip (0.58 s of boost), "+FLIP" popup that replaces "CLEAN!", a rising
+   jingle, +1 on the flip tally (HUD, finish screen, best).
+4. **Tilt speed had to change, and how:** at the old fixed 180°/s a full turn takes 2 s; no jump in a 270 px tall stage lasts
+   that long. Instead of raising the rate (which would make every small correction twitchy), a held tilt now accelerates:
+   180°/s on the first step, +700°/s² while the same key stays held, capped at 450°/s. A tap is exactly what it was.
+   A full turn takes 0.93 s.
+5. **Where flips fit:** kicker hop 1.09–1.16 s of air (margin ≥ 0.16 s with the key simply held); also the x276 ramp hop
+   (0.96 s), a hop off the cliff (0.91 s), the rollers (0.92–1.03 s). A flat-ground hop is 0.8 s: holding a tilt key all the
+   way over-rotates to about 308° and crashes. So flips need a ramp and cannot be farmed on flat road.
+6. **Double flips:** counted and labelled, and unit-tested under low gravity, but no jump in this stage is long enough
+   (it would take about 1.7 s of air; the best is 1.3 s boosted off the kicker). Left as headroom for a bigger jump.
+7. **Hopping on a ramp adds the hop to the ramp's lift** (unchanged v1.1 physics). That is what makes the kicker big:
+   about twice the rise of a flat hop.
+
+### M-C: game feel
+1. **Landing:** dust puffs to both sides, count and speed scaled by the speed into the ground (flat hop about 280 px/s,
+   kicker about 430), 25% more for a rough landing; the body squash scales the same way; the camera dips on a damped spring.
+2. **Camera bump:** only ever moves the world down (at most 5 px), so nothing below the terrain textures is exposed.
+   The HUD is a separate scene and does not move.
+3. **Look-ahead:** the old fixed 80 px was less than it sounds: the scroll smoothing trails a moving bike by `v·0.158 s`
+   (38 px at 240, 57 px at 360), so the bike sat further right the faster it went. The new values (56 / 108 / 166 at
+   rest / top / boost) more than cancel that. Road visible ahead of the bike: 310 px at top speed (was 282),
+   349 px at boost speed (was 263).
+4. **"Zoom-out while boosting" is a pull-back, not a zoom.** A fractional zoom on a 480×270 pixel-art canvas shimmers,
+   so the boost value of the look-ahead moves the bike back instead.
+5. **Speed streaks** are screen-space lines in the sky band (y 40–190), at depth 9, just behind the terrain (10) and every
+   entity, at most 52% alpha. They cannot cover an obstacle or a diya.
+6. **Pooled and deterministic:** one pool of 56 world particles (dust, sparkles), 9 streak images, one flame sprite. No
+   allocation per frame, positions from an integer hash and game time. The older Phaser emitters (exhaust, wheel dust,
+   sparks, splash) are kept as they were.
+7. **Already there:** the wheel dust trail at speed dates from M3; it was left alone.
+
+### M-D: music and the replay loop
+1. **Music:** generative rather than a fixed loop: a seeded phrase generator in Bhupali over a Sa–Pa drone, so it never
+   repeats within a session yet is identical on every load. Chosen because Bhupali is an evening raag and a plain major
+   pentatonic that cannot hit a sour note against the drone. Sa = D (146.83 Hz), 76 bpm, lifting to 88 with an added
+   off-beat pulse and a high shimmer while boosting (55% of that on the river run-up).
+2. **Mix:** music bus gain 0.28 into the 0.5 master. Measured in headless Chromium: music peak about 0.10 on its bus,
+   master peak about 0.13 with engine and effects, no clipping. A crash dips the bus to 0.05 for 0.9 s.
+3. **Scheduling:** from the frame loop with a 0.3 s look-ahead, not a timer. A backgrounded tab simply stops scheduling and
+   picks up again; under manual stepping it schedules at most what real time allows.
+4. **M was already master mute**, so it now cycles: all sound → music off → muted. The HUD tag reads "MUSIC OFF" or "MUTED".
+   The mode is saved with the ghost preference.
+5. **R now restarts the whole run** (it used to respawn at the last checkpoint). For a 40 s time-attack stage, restarting is
+   the thing a player does most; the old behaviour moved to C.
+6. **Ranked vs practice:** only a run from cp0 is scored. A `?cp=N` start shows "PRACTICE RUN - NO MEDAL".
+7. **Scored at the line**, not when the finish screen opens 1.2 s later, so pressing R straight after the line still counts.
+8. **Medals:** gold ≤ 40.00 s, silver ≤ 46.00 s, bronze ≤ 56.00 s, from the bot's 38.13 s. Gold = the clean no-flip line
+   with about 2 s to spare, or a slip paid back with flips and boost. Silver allows about two crashes, bronze about five.
+   All diyas stays the middle star rather than a fourth medal.
+9. **Bests are independent** (fastest time, most diyas, most flips), not "the stats of the fastest run", so a slow
+   collect-everything run still registers.
+10. **Ghost:** 20 Hz, 7 base-36 characters per sample, 5348 characters for the bot's run. Stored inside the best record;
+    replaced only by a faster run. Hidden after the line (the run timer it follows has stopped). 45% alpha, one layer
+    behind the bike.
+11. **Storage:** two keys, `hampi-at-dusk.best` and `hampi-at-dusk.prefs`. The best record carries a version and the stage
+    length and is ignored when either differs. Every access is in try/catch; the session keeps its own copy of the bests,
+    so with storage blocked the medal, "NEW BEST!" and ghost all still work until the page closes.
+12. **Console allowlist:** unchanged.
+
+### Measured results (v1.3)
+
+| Check | Result | Requirement |
+|---|---|---|
+| Bot run | 38.13 s (38 125 ms), 0 crashes, 30/30 diyas, gold; 0.52 of the meter left | 0 crashes, all diyas, about 40 s |
+| River, no boost | Flight 127 px; 64.6 px short of bank height (61.4 px in the e2e crash position); water | Water |
+| River, boost from cp6 | Lip speed 360; lands at x = 8994.4, 34.4 px past the edge; 0.08 of the meter left (0.18 with the mid-air diya) | ≥ 16 px |
+| Canal hop windows | 135–540 ms (unchanged); paired gaps in one hop 198 ms | Clear with a hop |
+| Pillar / cart hop windows | 375 ms / 225 ms, the same for the four new ones on the plinth | ≥ 120 ms |
+| Kicker hop window | 65 px = 271 ms (the whole ramp); lands ≥ 44 px past the tank | ≥ 120 ms, ≥ 16 px |
+| Kicker airtime | 1.09–1.16 s with a hop (0.48 s without, which falls short) | A held flip fits |
+| Full turn, key held | 0.93 s; lands clean off the kicker with either a back- or frontflip | Fits the kicker hop |
+| Flat-ground hop | 0.80 s of air: a held tilt crashes, no flip | Flips need a ramp |
+| Camera | Never steps backward; largest step 3.56 px; bike at screen x 150–177 away from the stage ends | No jumps |
+| Medal thresholds | 40.00 / 46.00 / 56.00 s | From the bot time |
+| Ghost size | 5348 characters for 38.13 s | Compact |
+| Performance | 10 000 physics steps in about 4 ms | < 100 ms |
+
+Tests: 73 Vitest (60 physics, 13 progress / music score) and 8 Playwright (smoke, reverse, river ×2, flip, run + replay loop,
+storage throwing, audio). Run twice in a row at the end. 23 screenshots in `test-results/shots/`, reviewed by Fable.
+
+### Open questions (v1.3)
+- **Not heard by a person.** The music and the new jingle were checked for level, clipping and console warnings only.
+  The mix (0.28) and the timbres need ears.
+- **R / C swap** changes a v1.2 control. If checkpoint-respawn on R is preferred, the two handlers swap in one place.
+- **Gold at 40 s** is generous for anyone who uses boost and flips; tighten it once real times are known.
+- **60 fps on real hardware** still needs a manual check, now with the particle pool and the ghost.
+- **Palette:** nothing new was added (the pending teal decision is untouched). Medals use gold, chrome and brass.
 
 ## Attribution
 - Commits made by Fable carry a `Co-Authored-By: Claude Fable 5.2` trailer, which names the model that actually wrote them. Commits made by the coordinator carry the Opus trailer.

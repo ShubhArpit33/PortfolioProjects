@@ -23,6 +23,36 @@ export interface BikeDrive {
   v: number;
 }
 
+/** The ghost of the best run: a translucent bike with no effects and no collisions. */
+export class GhostBike {
+  private container: Phaser.GameObjects.Container;
+  private rear: Phaser.GameObjects.Image;
+  private front: Phaser.GameObjects.Image;
+  private lastX = 0;
+  private spin = 0;
+
+  constructor(scene: Phaser.Scene, depth: number) {
+    this.rear = scene.add.image(-WHEEL_DX, -WHEEL_R, 'wheel');
+    this.front = scene.add.image(WHEEL_DX, -WHEEL_R, 'wheel');
+    const body = scene.add.image(0, -WHEEL_R, 'bike_body').setOrigin(0.5, 1);
+    this.container = scene.add.container(0, 0, [this.rear, this.front, body]).setDepth(depth).setAlpha(0.45).setVisible(false);
+  }
+
+  show(x: number, y: number, angleDeg: number): void {
+    // Wheels turn with the distance covered since the last frame.
+    this.spin += (x - this.lastX) / WHEEL_R;
+    this.lastX = x;
+    this.rear.rotation = this.spin;
+    this.front.rotation = this.spin;
+    this.container.setVisible(true).setPosition(Math.round(x), Math.round(y));
+    this.container.rotation = -angleDeg * DEG;
+  }
+
+  hide(): void {
+    this.container.setVisible(false);
+  }
+}
+
 export class BikeView {
   readonly container: Phaser.GameObjects.Container;
   private body: Phaser.GameObjects.Image;

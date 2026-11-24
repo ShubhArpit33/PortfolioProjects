@@ -111,5 +111,21 @@ test.describe('river jump', () => {
 
     const end = await page.evaluate(() => window.__test!.state());
     expect(end.crashes).toBe(0);
+
+    // Riding on to the line from a checkpoint start is a practice run: no medal, nothing saved.
+    const fin = await page.evaluate(() => {
+      const t = window.__test!;
+      t.setInput({ throttle: true });
+      for (let i = 0; i < 120 * 10 && !t.state().finished; i++) t.step(1);
+      t.setInput({});
+      t.step(240);
+      return { data: t.finish(), stored: window.localStorage.getItem('hampi-at-dusk.best') };
+    });
+    expect(fin.data).not.toBeNull();
+    expect(fin.data!.ranked).toBe(false);
+    expect(fin.data!.medal).toBeNull();
+    expect([fin.data!.newTime, fin.data!.saved]).toEqual([false, false]);
+    expect(fin.stored).toBeNull();
+    await shot(page, 'finish-practice');
   });
 });

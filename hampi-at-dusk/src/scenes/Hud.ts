@@ -2,7 +2,7 @@
 // the mute tag and the pause overlay.
 import Phaser from 'phaser';
 import { PAL, mix } from '../art/palette';
-import { isMuted } from '../audio/sfx';
+import { soundLabel } from '../audio/sfx';
 import { DIYAS } from '../level/levelData';
 import { formatTime, pixelText } from '../ui/text';
 import type { GameScene } from './Game';
@@ -14,6 +14,7 @@ export class HudScene extends Phaser.Scene {
   private diyas!: Phaser.GameObjects.Text;
   private crashes!: Phaser.GameObjects.Text;
   private flips!: Phaser.GameObjects.Text;
+  private best!: Phaser.GameObjects.Text;
   private hint!: Phaser.GameObjects.Text;
   private mute!: Phaser.GameObjects.Text;
   private bar!: Phaser.GameObjects.Graphics;
@@ -32,9 +33,10 @@ export class HudScene extends Phaser.Scene {
     pixelText(this, BAR.x - 4, 6, 'BOOST', PAL.uiYellow).setOrigin(1, 0);
     this.bar = this.add.graphics();
     this.crashes = pixelText(this, 474, 18, 'CRASHES 0', PAL.cream).setOrigin(1, 0);
+    this.best = pixelText(this, 6, 30, '', PAL.graniteLight).setVisible(false);
     this.flips = pixelText(this, 474, 30, '', PAL.uiYellow).setOrigin(1, 0).setVisible(false);
     this.hint = pixelText(this, 240, 52, '', PAL.uiYellow).setOrigin(0.5, 0).setVisible(false);
-    this.mute = pixelText(this, 474, 256, 'MUTED', PAL.cream).setOrigin(1, 0).setVisible(false);
+    this.mute = pixelText(this, 474, 256, '', PAL.cream).setOrigin(1, 0).setVisible(false);
 
     const dim = this.add.rectangle(0, 0, 480, 270, PAL.ink, 0.6).setOrigin(0, 0);
     const title = pixelText(this, 240, 118, 'PAUSED', PAL.uiYellow, 16).setOrigin(0.5, 0);
@@ -45,6 +47,10 @@ export class HudScene extends Phaser.Scene {
   override update(): void {
     const game = this.scene.get('Game') as GameScene;
     if (!game.bike) return;
+    // The time to beat (the best before this run; it does not change under the finish screen).
+    if (!this.best.visible && !game.finished && game.bestTimeMs !== null) {
+      this.best.setText(`BEST ${formatTime(game.bestTimeMs)}`).setVisible(true);
+    }
     const l = this.last;
 
     const time = formatTime(game.timeMs);
@@ -71,7 +77,9 @@ export class HudScene extends Phaser.Scene {
     this.hint.setVisible(showHint && Math.floor(game.hintT * 4) % 4 !== 0);
     if (showHint && this.hint.text !== game.hintText) this.hint.setText(game.hintText);
 
-    this.mute.setVisible(isMuted());
+    const tag = soundLabel();
+    if (tag !== this.mute.text) this.mute.setText(tag);
+    this.mute.setVisible(tag !== '');
     this.pause.setVisible(game.paused);
   }
 }

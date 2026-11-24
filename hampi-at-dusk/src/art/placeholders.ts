@@ -815,6 +815,15 @@ function drawStreak(p: Pen): void {
   p.r(PAL.cream, 0, 0, 8, 1, 1).r(PAL.cream, 8, 0, 8, 1, 0.6).r(PAL.cream, 16, 0, 8, 1, 0.25);
 }
 
+/** Medal icon, 11 x 14: a short ribbon and a disc. main / light / dark are palette colours. */
+function drawMedal(p: Pen, main: number, light: number, dark: number): void {
+  p.r(PAL.bikeBody, 2, 0, 3, 5).r(PAL.cream, 6, 0, 3, 5).r(PAL.ink, 5, 0, 1, 5, 0.5);
+  p.disc(dark, 5, 9, 4);
+  p.disc(main, 5, 8, 4);
+  p.r(light, 3, 5, 4, 1).r(light, 2, 6, 2, 2);
+  p.r(dark, 4, 8, 3, 1, 0.55).r(dark, 5, 7, 1, 3, 0.55);
+}
+
 function drawStar(p: Pen, c: number, shade: number | null): void {
   p.rows(c, 0, 0, [[6, 1], [5, 3], [5, 3], [4, 5], [0, 13], [1, 11], [2, 9], [3, 7], [2, 9], [2, 4], [1, 3], [1, 1]]);
   p.r(c, 7, 9, 4, 1).r(c, 9, 10, 3, 1).r(c, 11, 11, 1, 1);
@@ -866,6 +875,9 @@ const EXTRAS: Record<string, Def> = {
   star_on: { w: 13, h: 12, draw: (p) => drawStar(p, PAL.uiYellow, PAL.cream) },
   star_off: { w: 13, h: 12, draw: (p) => drawStar(p, mix(PAL.ink, PAL.uiYellow, 0.28), null) },
   bubble: { w: 20, h: 13, draw: drawBubble },
+  medal_gold: { w: 11, h: 14, draw: (p) => drawMedal(p, PAL.gold, PAL.cream, PAL.brass) },
+  medal_silver: { w: 11, h: 14, draw: (p) => drawMedal(p, PAL.chrome, PAL.cream, mix(PAL.chrome, PAL.ink, 0.45)) },
+  medal_bronze: { w: 11, h: 14, draw: (p) => drawMedal(p, PAL.brass, PAL.sun, PAL.brown) },
   p_dust: { w: 2, h: 2, draw: (p) => p.r(PAL.graniteLight, 0, 0, 2, 2, 0.8) },
   p_puff: { w: 3, h: 3, draw: (p) => p.r(PAL.graniteLight, 0, 0, 3, 3, 0.45).r(mix(PAL.graniteLight, PAL.cream, 0.4), 0, 1, 2, 2, 0.6) },
   p_streak: { w: 24, h: 1, draw: drawStreak },

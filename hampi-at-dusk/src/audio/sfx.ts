@@ -1,6 +1,11 @@
 // All sound is generated with WebAudio (GAME_SPEC.md section 7). The AudioContext is created only
 // inside a real (trusted) DOM keydown / pointerdown handler; until then every call here is a no-op,
 // so the test hooks never create audio.
+//
+// Sound has three modes, cycled with M (v1.3): everything on, music off, everything muted.
+
+import { loadPrefs, savePrefs } from '../progress';
+import { attachMusic, duckMusic, setMusicOn } from './music';
 
 export type SfxName = 'honk' | 'hop' | 'thud' | 'clean' | 'diya' | 'crash' | 'splash' | 'bell' | 'flip';
 
@@ -16,15 +21,19 @@ let ctx: AudioContext | null = null;
 let master: GainNode | null = null;
 let engine: Engine | null = null;
 let noiseBuf: AudioBuffer | null = null;
-let muted = false;
+/** 0 = all sound, 1 = music off, 2 = everything muted */
+export type SoundMode = 0 | 1 | 2;
+let mode: SoundMode = 0;
 let installed = false;
+let musicTap: AnalyserNode | null = null;
+let masterTap: AnalyserNode | null = null;
 
 function create(): void {
   const Ctor = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
   if (!Ctor) return;
   ctx = new Ctor();
   master = ctx.createGain();
-  master.gain.value = muted ? 0 : 0.5;
+  master.gain.value = mode === 2 ? 0 : 0.5;
   master.connect(ctx.destination);
 
   noiseBuf = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
@@ -56,12 +65,47 @@ function create(): void {
   saw.start();
   sub.start();
   engine = { saw, sub, subGain, filter, gain };
+
+  // Music goes through its own bus so it can be switched off and ducked on its own.
+  const musicBus = ctx.createGain();
+  musicBus.connect(master);
+  attachMusic(ctx, musicBus, noiseBuf);
+
+  // Level taps for the test hooks (analysers that lead nowhere; they cost next to nothing).
+  musicTap = ctx.createAnalyser();
+  masterTap = ctx.createAnalyser();
+  musicBus.connect(musicTap);
+  master.connect(masterTap);
 }
 
-/** Install the unlock + mute listeners once. */
+export interface AudioDebug {
+  created: boolean;
+  state: string;
+  mode: SoundMode;
+  /** peak sample (0..1) in the last analyser window of the music bus / the master output */
+  musicPeak: number;
+  masterPeak: number;
+}
+
+function peak(tap: AnalyserNode | null): number {
+  if (!tap) return 0;
+  const buf = new Float32Array(tap.fftSize);
+  tap.getFloatTimeDomainData(buf);
+  let m = 0;
+  for (const s of buf) m = Math.max(m, Math.abs(s));
+  return m;
+}
+
+/** What the audio is doing right now (test hooks only). */
+export function audioDebug(): AudioDebug {
+  return { created: ctx !== null, state: ctx?.state ?? 'none', mode, musicPeak: peak(musicTap), masterPeak: peak(masterTap) };
+}
+
+/** Install the unlock + sound-mode listeners once. */
 export function installAudio(): void {
   if (installed) return;
   installed = true;
+  setSoundMode(loadPrefs().sound, false);
   const unlock = (e: Event): void => {
     if (!e.isTrusted) return;
     if (!ctx) create();
@@ -69,18 +113,25 @@ export function installAudio(): void {
   };
   window.addEventListener('keydown', (e) => {
     unlock(e);
-    if (e.code === 'KeyM' && !e.repeat) setMuted(!muted);
+    if (e.code === 'KeyM' && !e.repeat) setSoundMode(((mode + 1) % 3) as SoundMode);
   });
   window.addEventListener('pointerdown', unlock);
 }
 
-export function isMuted(): boolean {
-  return muted;
+export function soundMode(): SoundMode {
+  return mode;
 }
 
-export function setMuted(m: boolean): void {
-  muted = m;
-  if (ctx && master) master.gain.setTargetAtTime(m ? 0 : 0.5, ctx.currentTime, 0.01);
+/** HUD tag for the current mode ('' when everything is on). */
+export function soundLabel(): string {
+  return mode === 1 ? 'MUSIC OFF' : mode === 2 ? 'MUTED' : '';
+}
+
+export function setSoundMode(m: SoundMode, persist = true): void {
+  mode = m;
+  setMusicOn(m === 0);
+  if (ctx && master) master.gain.setTargetAtTime(m === 2 ? 0 : 0.5, ctx.currentTime, 0.01);
+  if (persist) savePrefs({ ...loadPrefs(), sound: m });
 }
 
 function tone(type: OscillatorType, f0: number, f1: number, dur: number, vol: number, delay = 0): void {
@@ -142,11 +193,13 @@ export function play(name: SfxName): void {
       tone('sine', 1976, 1976, 0.22, 0.16, 0.06);
       break;
     case 'crash':
+      duckMusic();
       noise(0.4, 0.5, 'lowpass', 2400, 200);
       tone('sawtooth', 150, 38, 0.35, 0.3);
       tone('square', 90, 30, 0.2, 0.2, 0.05);
       break;
     case 'splash':
+      duckMusic();
       noise(0.55, 0.4, 'bandpass', 2600, 500);
       noise(0.3, 0.2, 'highpass', 3000, 1500, 0.08);
       break;
