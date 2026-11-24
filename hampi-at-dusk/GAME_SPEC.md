@@ -19,7 +19,7 @@ simplest option and write it down in `DECISIONS.md`.
 | Language / build | TypeScript + Vite |
 | Font | `@fontsource/press-start-2p` (bundled, no CDN) |
 | Audio | WebAudio generated in code (no audio files) |
-| Tests | Vitest for `tests/unit/*.test.ts` (pure physics); Playwright (Chromium only) for `tests/e2e/*.spec.ts`, served by `vite --mode test`. `npm test` = `vitest run && playwright test`. |
+| Tests | Vitest for `tests/unit/*.test.ts` (pure physics); Playwright (Chromium only) for `tests/e2e/*.spec.ts`, served by `vite --mode test`. `npm test` = `vitest run && playwright test`. Vitest `include: ['tests/unit/**/*.test.ts']`; Playwright `testDir: 'tests/e2e'`. |
 | Resolution | Internal 480×270, `pixelArt: true`, `roundPixels: true`, `Scale.FIT`, centered |
 | Timestep | Fixed physics step of 1/120 s (accumulator), so the game behaves the same on every machine. Accumulator capped at 0.1 s per frame. Integrator (semi-implicit Euler): `vy += g·dt; x += vx·dt; y += vy·dt`. |
 
@@ -35,7 +35,7 @@ Commands that must work: `npm run dev`, `npm run build`, `npm test`.
 | ← | Brake (no reverse) |
 | Space | Hop (ground only; 80 ms coyote time, 100 ms jump buffer; works on slopes; disabled on `noHop` segments, including coyote time off them) |
 | ↑ / ↓ | In the air: tilt the nose up / down |
-| Shift | Boost: while held, meter > 0 and grounded, acceleration is `boostAccel` (replaces `accel`, no throttle needed) and the cap is `boostSpeed`. No regen while held. When boost ends, speed above `topSpeed` decays at `brake` rate. The meter starts full. No effect in the air. |
+| Shift | Boost: while held, meter > 0 and grounded, acceleration is `boostAccel` (replaces `accel`, no throttle needed) and the cap is `boostSpeed`. No regen while held. When boost ends, speed above `topSpeed` decays at `brake` rate. The meter starts full. No effect in the air. The meter drains only while boost is actually applied (held, grounded, meter > 0); in the air it neither drains nor regenerates. |
 | H | Honk (two-tone "pom-pom") |
 | M | Mute / unmute |
 | P / Esc | Pause |
@@ -104,7 +104,8 @@ Angles: positive = nose up or uphill; angle differences are normalised to [−18
 
 **On the ground:**
 1. Speed `v` along the slope changes with throttle, brake, drag, boost, and `−gravity·sin(slope)·slopeGravityFactor`.
-   Limit it to `topSpeed`, or `boostSpeed` while boosting. Clamp to ≥ 0.
+   While boosting, cap at `boostSpeed`. Otherwise throttle cannot accelerate past `topSpeed`, and any speed above it
+   (after boost, a landing, or a downhill) decays at `brake` rate, with no instant clamp. Clamp to ≥ 0.
 2. Velocity vector = `(v·cos θ, −v·sin θ)` where θ is the slope angle.
 3. Move one step as a projectile (with gravity). If the new y is **more than `airborneEps` (0.25 px) above the surface, or the surface is `null`**
    (ramp lip, cliff edge, gap), the bike becomes **airborne** and keeps its velocity. Otherwise snap to the surface
@@ -297,7 +298,7 @@ All on-screen text is ASCII only. Wait for `document.fonts.load('8px "Press Star
 
 Expose `window.__test` only when `import.meta.env.DEV || import.meta.env.MODE === 'test'`:
 - `setInput({ throttle, brake, hop, boost, tiltUp, tiltDown, honk })`
-- `state()` → `{ x, y, vx, vy, angle, grounded, crashed, crashes, diyas, finished, checkpoint, timeMs }`
+- `state()` → `{ x, y, vx, vy, v, angle, grounded, boost, crashed, crashes, diyas, finished, checkpoint, timeMs }`
 - `startAt(checkpoint)`
 - `setManual(true)` stops rAF-driven stepping; `step(n)` runs n fixed steps and one render synchronously
 - `levelData`
