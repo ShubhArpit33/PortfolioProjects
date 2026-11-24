@@ -563,6 +563,28 @@ function drawPillar(p: Pen): void {
   p.r(PAL.mossDark, 30, 1, 6, 2).r(PAL.mossLight, 31, 1, 3, 1);
 }
 
+/**
+ * Standing colonnade behind the Mandapa Run plinth (decoration only, low contrast so the fallen pillars
+ * and diyas in front of it stay readable). 192 x 72, four columns under a lintel, one of them broken.
+ */
+function drawColonnade(p: Pen): void {
+  const C = mix(PAL.mid, PAL.graniteDark, 0.55);
+  const HI = mix(C, PAL.graniteLight, 0.22);
+  const xs = [10, 58, 106, 154];
+  xs.forEach((x, i) => {
+    const broken = i === 2;
+    const top = broken ? 38 : 10;
+    p.r(C, x, top, 8, 72 - top);
+    p.r(HI, x, top, 2, 72 - top);
+    p.r(C, x - 2, 66, 12, 6).r(HI, x - 2, 66, 12, 1);       // base
+    if (broken) p.r(C, x + 1, top - 2, 4, 2).r(C, x + 5, top - 1, 2, 1);
+    else p.r(C, x - 2, top, 12, 3).r(C, x - 4, top - 3, 16, 3).r(HI, x - 4, top - 3, 16, 1); // capital
+  });
+  // lintel: whole between the first two columns, fallen away toward the broken one
+  p.r(C, 0, 0, 84, 7).r(HI, 0, 0, 84, 1).r(C, 84, 2, 10, 5).r(C, 94, 4, 5, 3);
+  p.r(C, 146, 0, 46, 7).r(HI, 146, 0, 46, 1).r(C, 140, 3, 6, 4);
+}
+
 function drawCart(p: Pen): void {
   const B = PAL.brown;
   const BD = mix(PAL.brown, PAL.ink, 0.45);
@@ -825,6 +847,7 @@ export const MANIFEST: Record<string, Def> = {
 /** Extra code-only textures (effects and UI icons); not part of the PNG manifest. */
 const EXTRAS: Record<string, Def> = {
   chariot: { w: 60, h: 48, draw: drawChariot },
+  colonnade: { w: 192, h: 72, draw: drawColonnade },
   glow: { w: 32, h: 32, draw: drawGlow },
   star_on: { w: 13, h: 12, draw: (p) => drawStar(p, PAL.uiYellow, PAL.cream) },
   star_off: { w: 13, h: 12, draw: (p) => drawStar(p, mix(PAL.ink, PAL.uiYellow, 0.28), null) },

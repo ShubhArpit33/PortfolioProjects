@@ -20,6 +20,8 @@ export interface Gap {
   x0: number; x1: number;   // [x0, x1) has no surface
   col0: number; cols: number;
   river: boolean;
+  /** the tank under the kicker (section 6): cleared by a hop on the ramp, or by boost */
+  kicker: boolean;
   nearY: number;            // surface y of the take-off lip
   farY: number;             // surface y of the far bank
 }
@@ -68,7 +70,7 @@ export function buildTerrain(sections: Section[] = SECTIONS): Terrain {
       if (seg.kind === 'gap') {
         const farH = seg.farBankH ?? h;
         gaps.push({
-          x0, x1, col0: col, cols: seg.cols, river: seg.river === true,
+          x0, x1, col0: col, cols: seg.cols, river: seg.river === true, kicker: seg.kicker === true,
           nearY: heightY(h), farY: heightY(farH),
         });
         for (let i = 0; i < seg.cols; i++) colIndex.push(-gaps.length);

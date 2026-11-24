@@ -144,6 +144,14 @@ export class GameScene extends Phaser.Scene {
       }
     }
 
+    // Mandapa Run: a standing colonnade behind the plinth (decoration, behind every entity).
+    const plinth = TERRAIN.pieces.find((p) => p.y0 === BASELINE_Y - TILE && p.y1 === p.y0 && p.cols >= 60);
+    if (plinth) {
+      for (let x = plinth.x0 + 24; x + 192 <= plinth.x1; x += 208) {
+        this.add.image(x, plinth.y0 + 1, 'colonnade').setOrigin(0, 1).setDepth(DEPTH.deco - 0.6).setAlpha(0.85);
+      }
+    }
+
     this.add.image(FINISH.col * TILE, BASELINE_Y, 'gateway').setOrigin(0, 1).setDepth(DEPTH.deco);
     this.checkpoints = CHECKPOINTS.map((def) => new Checkpoint(this, def, DEPTH.checkpoint));
     this.obstacles = OBSTACLES.map((def) => new Obstacle(this, def, DEPTH.obstacle));

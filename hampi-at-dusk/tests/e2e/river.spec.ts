@@ -1,6 +1,9 @@
-// The river jump needs boost (GAME_SPEC.md section 9, criterion 4). Both runs start at cp4.
+// The river jump needs boost (GAME_SPEC.md section 9, criterion 4). Both runs start at the river checkpoint.
 
 import { boot, expect, getLevel, layout, shot, startAt, test } from './helpers';
+
+/** The river checkpoint (cp6 since v1.3). */
+const RIVER_CP = 6;
 
 interface RiverResult {
   crashed: boolean;
@@ -17,7 +20,7 @@ test.describe('river jump', () => {
     await boot(page);
     const level = await getLevel(page);
     const { river } = layout(level);
-    await startAt(page, 4);
+    await startAt(page, RIVER_CP);
 
     const r = await page.evaluate(({ river, killY }) => {
       const t = window.__test!;
@@ -47,11 +50,11 @@ test.describe('river jump', () => {
     expect(r.y).toBeGreaterThan(level.waterLineY);
   });
 
-  test('boost held from cp4 clears the river with at least 1 tile to spare', async ({ page }) => {
+  test('boost held from the river checkpoint clears the river with at least 1 tile to spare', async ({ page }) => {
     await boot(page);
     const level = await getLevel(page);
     const { river } = layout(level);
-    await startAt(page, 4);
+    await startAt(page, RIVER_CP);
 
     const run = (untilLanded: boolean): Promise<RiverResult> =>
       page.evaluate(({ river, untilLanded }) => {
@@ -88,7 +91,7 @@ test.describe('river jump', () => {
       `[river, boost] lip speed ${mid.lipSpeed.toFixed(1)}; lands at x=${r.landingX!.toFixed(1)}, ` +
       `margin ${margin.toFixed(1)} px past the far edge (x=${river.x1}), meter left ${r.landingBoost!.toFixed(3)}`,
     );
-    expect(river.x1).toBe(5440);
+    expect(river.x1).toBe(8960);
     expect(mid.lipSpeed).toBeCloseTo(360, 0);
     expect(margin).toBeGreaterThanOrEqual(16);
 

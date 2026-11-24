@@ -50,15 +50,19 @@ function planHops(lay: Layout, level: LevelData): number[] {
   }
 
   // Diyas floating 2+ tiles above solid ground that no hazard hop passes through need their own
-  // hop (x276 on the up-ramp). Diyas just past a cliff are collected by rolling off it.
+  // hop (x276 and x437, on up-ramps). Diyas just past a cliff are collected by rolling off it.
   const T = level.tile;
   const heights = columnHeights(level);
+  let lastDiyaHop = -Infinity;
   for (const d of level.diyas) {
     const x = d.col * T + T / 2;
     const ground = heights.h[d.col];
     if (ground === null || ground === undefined || d.h - ground < 2) continue;
     if (groups.some((g) => x >= g.x0 - HOP_LEN && x <= g.x1 + HOP_LEN)) continue;
     if (heights.cliffCols.some((c) => d.col >= c && d.col < c + 8)) continue;
+    // A second diya further along the same arc (the hop line off the second roller) needs no hop of its own.
+    if (x - 24 < lastDiyaHop + HOP_LEN * 1.5) continue;
+    lastDiyaHop = x - 24;
     hops.push(x - 24); // 0.1 s before the diya: the bike box is centred on it while rising
   }
   return hops.sort((a, b) => a - b);
@@ -117,7 +121,7 @@ function advance(page: Page, plan: Plan, untilX: number, maxSteps = 120 * 60): P
   }, { plan, untilX, maxSteps });
 }
 
-test('bot: full run from the title - 0 crashes, 17 diyas, under 120 s', async ({ page }) => {
+test('bot: full run from the title - 0 crashes, all 30 diyas, under 120 s', async ({ page }) => {
   test.setTimeout(120_000);
   await boot(page);
   const level = await getLevel(page);
@@ -128,11 +132,13 @@ test('bot: full run from the title - 0 crashes, 17 diyas, under 120 s', async ({
     return ((s.startCol + s.endCol + 1) / 2) * T;
   };
 
+  const riverCp = lay.cpX.length - 1;
+  const kickerGap = lay.gaps[lay.gaps.length - 1]!; // the tank under the kicker is the last non-river gap
   const plan: Plan = {
     hops: planHops(lay, level),
     honkFrom: level.monkeys.triggerCol * T,
     honkTo: Math.max(...level.monkeys.spawnCols) * T,
-    boostFrom: lay.cpX[4]!, // boost only in the cp4 run-up: the meter budget is tight
+    boostFrom: lay.cpX[riverCp]!, // boost only in the river run-up: the meter budget is tight
   };
   console.log(`[bot] hops at x = ${plan.hops.map((x) => x.toFixed(0)).join(', ')}`);
 
@@ -156,8 +162,16 @@ test('bot: full run from the title - 0 crashes, 17 diyas, under 120 s', async ({
   await shot(page, 'section3');
   s = await advance(page, plan, sectionMid(4) - 60); // boulder field: top of the big ramp, cliff ahead
   await shot(page, 'section4');
-  s = await advance(page, plan, lay.cpX[4]! + 150); // cp4 lit, boost hint, run-up
-  await shot(page, 'section5');
+  s = await advance(page, plan, lay.boxes[6]!.x0 + 24); // mandapa run: over the second pillar on the plinth
+  await shot(page, 'section5-mandapa');
+  s = await advance(page, plan, kickerGap.x0 - 23 * T); // rocks: top of the hop line off the second roller
+  expect(s.grounded, 'airborne on the roller hop line').toBe(false);
+  await shot(page, 'section6-rocks');
+  s = await advance(page, plan, (kickerGap.x0 + kickerGap.x1) / 2); // big air off the kicker, over the tank
+  expect(s.grounded, 'airborne over the tank').toBe(false);
+  await shot(page, 'section6-kicker');
+  s = await advance(page, plan, lay.cpX[riverCp]! + 150); // river checkpoint lit, boost hint, run-up
+  await shot(page, 'section7');
   s = await advance(page, plan, (lay.river.x0 + lay.river.x1) / 2);
   expect(s.grounded, 'airborne over the middle of the river').toBe(false);
   await shot(page, 'river-midair');
@@ -181,7 +195,8 @@ test('bot: full run from the title - 0 crashes, 17 diyas, under 120 s', async ({
   expect(s.finished).toBe(true);
   expect(s.crashed).toBe(false);
   expect(s.crashes).toBe(0);
-  expect(s.diyas).toBe(17);
+  expect(level.diyas.length).toBe(30);
+  expect(s.diyas).toBe(level.diyas.length);
   expect(s.timeMs).toBeLessThan(120_000);
   expect(s.timeMs, 'the timer stops at the finish line').toBe(final.timeMs);
 });

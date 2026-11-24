@@ -22,7 +22,7 @@ export const URL_CP = ((): number | null => {
   const raw = params.get('cp');
   if (raw === null) return null;
   const n = Number.parseInt(raw, 10);
-  return Number.isFinite(n) ? Math.min(4, Math.max(0, n)) : null;
+  return Number.isFinite(n) ? Math.min(6, Math.max(0, n)) : null;
 })();
 
 /**

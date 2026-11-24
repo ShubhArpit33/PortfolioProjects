@@ -5,13 +5,14 @@ import {
   type BikeInput, type BikeState,
 } from '../../src/bike/BikePhysics';
 import {
-  BASELINE_Y, CHECKPOINTS, COW, DIYAS, OBSTACLES, SECTIONS, TILE, WORLD_START_X, checkpointX, diyaCentre,
+  BASELINE_Y, CHECKPOINTS, COW, DIYAS, FINISH, KICKER, OBSTACLES, SECTIONS, TILE, WORLD_START_X, checkpointX, diyaCentre,
 } from '../../src/level/levelData';
 import { TERRAIN, obstacleBox, type Box } from '../../src/level/terrain';
 
 const OBSTACLE_BOXES: Box[] = OBSTACLES.map((o) => obstacleBox(o));
 const COW_BOX: Box = { x: COW.col * TILE, y: BASELINE_Y - COW.h, w: COW.w, h: COW.h };
-const CANAL_GAPS = TERRAIN.gaps.filter((g) => !g.river);
+const CANAL_GAPS = TERRAIN.gaps.filter((g) => !g.river && !g.kicker);
+const KICKER_GAP = TERRAIN.gaps.find((g) => g.kicker)!;
 const RIVER = TERRAIN.gaps.find((g) => g.river)!;
 
 /** A grounded bike already moving at speed v. */
@@ -60,16 +61,18 @@ describe('level data (5.1)', () => {
       expect(sum, sec.name).toBe(sec.endCol - sec.startCol + 1);
       col += sum;
     }
-    expect(col).toBe(360);
-    expect(TERRAIN.width).toBe(5760);
+    expect(col).toBe(580);
+    expect(TERRAIN.width).toBe(9280);
   });
 
   it('gap columns match the spec', () => {
     const cols = TERRAIN.gaps.map((g) => [g.col0, g.col0 + g.cols - 1]);
-    expect(cols).toEqual([[68, 70], [79, 82], [91, 95], [102, 104], [108, 110], [119, 124], [328, 339]]);
+    expect(cols).toEqual([[68, 70], [79, 82], [91, 95], [102, 104], [108, 110], [119, 124], [466, 473], [548, 559]]);
     expect(RIVER.nearY).toBe(BASELINE_Y - 4 * TILE); // lip at h4
     expect(RIVER.farY).toBe(BASELINE_Y);             // far bank at h0
     for (const g of CANAL_GAPS) expect(g.farY).toBe(g.nearY);
+    expect(KICKER_GAP.nearY).toBe(BASELINE_Y - 2 * TILE); // kicker lip at h2
+    expect(KICKER_GAP.farY).toBe(BASELINE_Y);
   });
 
   it('heightfield is continuous, null over gaps, with one cliff', () => {
@@ -84,9 +87,9 @@ describe('level data (5.1)', () => {
     expect(TERRAIN.surfaceY(261 * 16 - 0.01)).toBe(174);
     expect(TERRAIN.surfaceY(261 * 16)).toBe(222);
     // river ramp is the only noHop segment
-    expect(TERRAIN.isNoHop(320 * 16)).toBe(true);
-    expect(TERRAIN.isNoHop(327 * 16 + 15)).toBe(true);
-    expect(TERRAIN.isNoHop(319 * 16 + 15)).toBe(false);
+    expect(TERRAIN.isNoHop(540 * 16)).toBe(true);
+    expect(TERRAIN.isNoHop(547 * 16 + 15)).toBe(true);
+    expect(TERRAIN.isNoHop(539 * 16 + 15)).toBe(false);
     expect(TERRAIN.pieces.filter((p) => p.noHop)).toHaveLength(1);
     // no steps between neighbouring ground pieces except at the cliff
     for (let i = 1; i < TERRAIN.pieces.length; i++) {
@@ -94,7 +97,7 @@ describe('level data (5.1)', () => {
       const b = TERRAIN.pieces[i]!;
       if (a.x1 === b.x0 && b.x0 !== 261 * 16) expect(a.y1).toBe(b.y0);
     }
-    expect(DIYAS).toHaveLength(17);
+    expect(DIYAS).toHaveLength(30);
   });
 });
 
@@ -163,7 +166,7 @@ describe('ground rules', () => {
   });
 
   it('holds 240 up the river ramp without boost', () => {
-    let s = rolling(319 * 16, 240);
+    let s = rolling(539 * 16, 240);
     let lipSpeed = 0;
     while (s.grounded) {
       lipSpeed = s.v;
@@ -242,7 +245,7 @@ describe('ground rules', () => {
     expect(coyote(12)).toBe(false); // 100 ms
 
     // noHop: mashing hop on the river ramp and past its lip never hops
-    let n = rolling(320 * 16 + 2, 240);
+    let n = rolling(540 * 16 + 2, 240);
     let hopped = false;
     for (let i = 0; i < 400 && !n.crashed; i++) {
       n = step(n, { throttle: true, hop: i % 2 === 0 });
@@ -370,7 +373,7 @@ describe('backing up at a standstill', () => {
   });
 
   it('follows the slope: backing down the river ramp stays glued to the surface, and holds when released', () => {
-    let s = createBikeState(324 * TILE);
+    let s = createBikeState(544 * TILE);
     const y0 = s.y;
     for (let i = 0; i < 120; i++) {
       s = step(s, { brake: true });
@@ -491,6 +494,49 @@ describe('canal gaps (criterion 5)', () => {
   });
 });
 
+describe('kicker (section 6)', () => {
+  const lipX = KICKER.lipCol * TILE;
+  const rampX = KICKER.rampCol * TILE;
+
+  it('the ramp ends at the tank: lip at h2, 8 columns of water, far bank h0', () => {
+    expect(KICKER_GAP.x0).toBe(lipX);
+    expect(KICKER_GAP.cols).toBe(8);
+    expect(TERRAIN.slopeAngle(rampX + 8)).toBeCloseTo(26.565, 2);
+    expect(TERRAIN.isNoHop(rampX + 8)).toBe(false);
+  });
+
+  it('rolling off it at 240 falls in the tank; boost alone clears it', () => {
+    const roll = runUntilLanding(rolling(rampX - 160, 240), () => ({ throttle: true }));
+    expect(roll.state.crashed).toBe('water');
+    const boosted = runUntilLanding(rolling(rampX - 180, CONFIG.boostSpeed), () => ({ boost: true }));
+    expect(boosted.state.crashed).toBeNull();
+    expect(boosted.landedAt!).toBeGreaterThan(KICKER_GAP.x1 + 16);
+  });
+
+  it('a hop anywhere on the ramp clears it: window >= 120 ms, airtime >= 1 s', () => {
+    const samples: boolean[] = [];
+    let minAir = Infinity;
+    let minMargin = Infinity;
+    for (let d = 120; d >= 0.5; d -= 0.5) {
+      let s = rolling(rampX - 160, 240);
+      while (s.x < lipX - d && s.grounded) s = step(s, { throttle: true });
+      const r = runUntilLanding(s, (_s, i) => ({ throttle: true, hop: i === 0 }));
+      const ok = r.landedAt !== null && r.landedAt >= KICKER_GAP.x1 && !r.state.crashed;
+      samples.push(ok);
+      if (ok && d <= 64) {
+        minAir = Math.min(minAir, r.steps * FIXED_DT);
+        minMargin = Math.min(minMargin, r.landedAt! - KICKER_GAP.x1);
+      }
+    }
+    const windowPx = longestWindowPx(samples, 0.5);
+    const windowMs = (windowPx / 240) * 1000;
+    console.log(`[kicker] hop window ${windowPx.toFixed(1)} px = ${windowMs.toFixed(0)} ms at 240; airtime >= ${minAir.toFixed(2)} s; lands >= ${minMargin.toFixed(0)} px past the tank`);
+    expect(windowMs).toBeGreaterThanOrEqual(120);
+    expect(minAir).toBeGreaterThanOrEqual(1);
+    expect(minMargin).toBeGreaterThanOrEqual(16);
+  });
+});
+
 describe('pillar and cart hop windows (criterion 6)', () => {
   it.each(OBSTACLES.map((o) => [`${o.type} x${o.col}`, o] as const))('%s has a window >= 120 ms at 240', (name, o) => {
     const box = obstacleBox(o);
@@ -514,7 +560,7 @@ describe('pillar and cart hop windows (criterion 6)', () => {
 });
 
 describe('river (criterion 4)', () => {
-  const cp4 = checkpointX(CHECKPOINTS[4]!);
+  const cp4 = checkpointX(CHECKPOINTS[6]!); // the river checkpoint (cp6 since v1.3)
 
   const ride = (input: BikeInput) => {
     let s = createBikeState(cp4);
@@ -532,10 +578,10 @@ describe('river (criterion 4)', () => {
     return { s, lipSpeed, lipX };
   };
 
-  it('starts at cp4 = 16*302 + 8', () => {
-    expect(cp4).toBe(16 * 302 + 8);
-    expect(RIVER.x0).toBe(5248);
-    expect(RIVER.x1).toBe(5440);
+  it('starts at cp6 = 16*522 + 8', () => {
+    expect(cp4).toBe(16 * 522 + 8);
+    expect(RIVER.x0).toBe(8768);
+    expect(RIVER.x1).toBe(8960);
   });
 
   it('at 240 with no boost and no hop it lands in the water', () => {
@@ -566,7 +612,7 @@ describe('river (criterion 4)', () => {
     const { s, lipSpeed, lipX } = ride({ boost: true });
     expect(s.crashed).toBeNull();
     expect(s.grounded).toBe(true);
-    const margin = s.x - 5440;
+    const margin = s.x - RIVER.x1;
     console.log(
       `[river, boost] lip speed ${lipSpeed.toFixed(1)}; lands at x=${s.x.toFixed(1)} (${(s.x - lipX).toFixed(1)} px of flight), ` +
       `margin ${margin.toFixed(1)} px, landing ${s.evLanding}, meter left ${s.boost.toFixed(3)}`,
@@ -578,8 +624,10 @@ describe('river (criterion 4)', () => {
 
 describe('diyas (5.2)', () => {
   // A simple script: hold throttle, hop at fixed x positions, hold boost from cp4 on.
-  const HOPS = [620, 1030, 1230, 1430, 1624, 1880, 2440, 2850, 3090, 3320, 4380];
-  const BOOST_FROM_X = checkpointX(CHECKPOINTS[4]!);
+  // The last six: the four mandapa hops, the hop line off the second roller, the kicker.
+  const HOPS = [620, 1030, 1230, 1430, 1624, 1880, 2440, 2850, 3090, 3320, 4380, 5112, 5384, 5656, 5960, 6976, 7424];
+  const BOOST_FROM_X = checkpointX(CHECKPOINTS[6]!);
+  const FINISH_X = FINISH.col * TILE;
 
   const scriptedRun = (hopOffset: number) => {
     const boxes = [...OBSTACLE_BOXES, COW_BOX];
@@ -588,7 +636,7 @@ describe('diyas (5.2)', () => {
     let next = 0;
     let steps = 0;
     let hit = false;
-    while (s.x < 16 * 352 && steps < 120 * 120 && !s.crashed && !hit) {
+    while (s.x < FINISH_X && steps < 120 * 120 && !s.crashed && !hit) {
       const hop = next < HOPS.length && s.x >= HOPS[next]! + hopOffset;
       s = step(s, { throttle: true, hop, boost: s.x >= BOOST_FROM_X });
       if (s.evHop) next++;
@@ -601,25 +649,25 @@ describe('diyas (5.2)', () => {
     return { s, collected, steps, hit };
   };
 
-  it('all 17 are collected in one crash-free scripted run (throttle + 11 hops + boost from cp4)', () => {
+  it('all 30 are collected in one crash-free scripted run (throttle + 17 hops + boost from cp6)', () => {
     const r = scriptedRun(0);
     const missing = DIYAS.filter((_, i) => !r.collected.has(i)).map((d) => `x${d.col}`);
     console.log(
-      `[diyas] ${r.collected.size}/17 collected, missing: ${missing.join(',') || 'none'}; ` +
+      `[diyas] ${r.collected.size}/${DIYAS.length} collected, missing: ${missing.join(',') || 'none'}; ` +
       `finish x=${r.s.x.toFixed(0)} after ${(r.steps * FIXED_DT).toFixed(2)} s, crashed=${r.s.crashed}, hit=${r.hit}`,
     );
     expect(r.s.crashed).toBeNull();
     expect(r.hit).toBe(false);
     expect(missing).toEqual([]);
-    expect(r.s.x).toBeGreaterThanOrEqual(16 * 352);
+    expect(r.s.x).toBeGreaterThanOrEqual(FINISH_X);
   });
 
-  it('the script is not a knife edge: +/- 4 px on every hop still gets all 17', () => {
+  it('the script is not a knife edge: +/- 4 px on every hop still gets all 30', () => {
     for (const off of [-4, -2, 2, 4]) {
       const r = scriptedRun(off);
       expect(r.s.crashed, `offset ${off}`).toBeNull();
       expect(r.hit, `offset ${off}`).toBe(false);
-      expect(r.collected.size, `offset ${off}`).toBe(17);
+      expect(r.collected.size, `offset ${off}`).toBe(30);
     }
   });
 
@@ -646,7 +694,7 @@ describe('performance (criterion 8)', () => {
       let s = createBikeState(40);
       for (let i = 0; i < n; i++) {
         s = step(s, { throttle: true, hop: i % 200 < 2, boost: i % 900 > 700 });
-        if (s.crashed || s.x > 5600) s = createBikeState(40);
+        if (s.crashed || s.x > 9100) s = createBikeState(40);
       }
       return s;
     };
