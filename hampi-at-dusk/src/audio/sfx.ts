@@ -5,14 +5,14 @@
 // Sound has three modes, cycled with M (v1.3): everything on, music off, everything muted.
 
 import { loadPrefs, savePrefs } from '../progress';
-import { attachMusic, duckMusic, setMusicOn } from './music';
+import { attachMusic, duckMusic, makeNoise, setMusicOn } from './music';
 
 export type SfxName = 'honk' | 'hop' | 'thud' | 'clean' | 'diya' | 'crash' | 'splash' | 'bell' | 'flip';
 
 interface Engine {
-  saw: OscillatorNode;
-  sub: OscillatorNode;
-  subGain: GainNode;
+  body: OscillatorNode;
+  buzz: OscillatorNode;
+  buzzGain: GainNode;
   filter: BiquadFilterNode;
   gain: GainNode;
 }
@@ -34,37 +34,42 @@ function create(): void {
   ctx = new Ctor();
   master = ctx.createGain();
   master.gain.value = mode === 2 ? 0 : 0.5;
-  master.connect(ctx.destination);
+  // A safety limiter on the way out: it does nothing at normal levels and catches stacked effects.
+  const limiter = ctx.createDynamicsCompressor();
+  limiter.threshold.value = -4;
+  limiter.knee.value = 4;
+  limiter.ratio.value = 16;
+  limiter.attack.value = 0.002;
+  limiter.release.value = 0.12;
+  master.connect(limiter).connect(ctx.destination);
 
-  noiseBuf = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
-  const data = noiseBuf.getChannelData(0);
-  let seed = 1234567;
-  for (let i = 0; i < data.length; i++) {
-    seed = (seed * 1664525 + 1013904223) >>> 0;
-    data[i] = (seed / 2147483648) - 1;
-  }
+  noiseBuf = makeNoise(ctx);
 
-  // Engine: sawtooth through a low-pass; a square sub-oscillator adds the rough boost tone.
-  const saw = ctx.createOscillator();
-  saw.type = 'sawtooth';
-  saw.frequency.value = 55;
-  const sub = ctx.createOscillator();
-  sub.type = 'square';
-  sub.frequency.value = 27.5;
-  const subGain = ctx.createGain();
-  subGain.gain.value = 0;
+  // Engine (v1.4, softened): a triangle body with a quiet sawtooth for the purr, through a low-pass and a
+  // 45 Hz high-pass. No square sub-octave any more: at 24-60 Hz, slightly detuned, it only rasped.
+  const body = ctx.createOscillator();
+  body.type = 'triangle';
+  body.frequency.value = 62;
+  const buzz = ctx.createOscillator();
+  buzz.type = 'sawtooth';
+  buzz.frequency.value = 62;
+  const buzzGain = ctx.createGain();
+  buzzGain.gain.value = 0.2;
   const filter = ctx.createBiquadFilter();
   filter.type = 'lowpass';
   filter.frequency.value = 300;
-  filter.Q.value = 2;
+  filter.Q.value = 1;
+  const hp = ctx.createBiquadFilter();
+  hp.type = 'highpass';
+  hp.frequency.value = 45;
   const gain = ctx.createGain();
   gain.gain.value = 0;
-  saw.connect(filter);
-  sub.connect(subGain).connect(filter);
-  filter.connect(gain).connect(master);
-  saw.start();
-  sub.start();
-  engine = { saw, sub, subGain, filter, gain };
+  body.connect(filter);
+  buzz.connect(buzzGain).connect(filter);
+  filter.connect(hp).connect(gain).connect(master);
+  body.start();
+  buzz.start();
+  engine = { body, buzz, buzzGain, filter, gain };
 
   // Music goes through its own bus so it can be switched off and ducked on its own.
   const musicBus = ctx.createGain();
@@ -75,7 +80,7 @@ function create(): void {
   musicTap = ctx.createAnalyser();
   masterTap = ctx.createAnalyser();
   musicBus.connect(musicTap);
-  master.connect(masterTap);
+  limiter.connect(masterTap);
 }
 
 export interface AudioDebug {
@@ -195,8 +200,9 @@ export function play(name: SfxName): void {
     case 'crash':
       duckMusic();
       noise(0.4, 0.5, 'lowpass', 2400, 200);
-      tone('sawtooth', 150, 38, 0.35, 0.3);
-      tone('square', 90, 30, 0.2, 0.2, 0.05);
+      // a dull thump under the crunch (was a falling sawtooth + square: a raspberry)
+      tone('triangle', 170, 60, 0.28, 0.3);
+      tone('sine', 95, 50, 0.18, 0.25, 0.04);
       break;
     case 'splash':
       duckMusic();
@@ -219,18 +225,18 @@ export function play(name: SfxName): void {
 
 /**
  * Engine tone, called every frame. speed01 = speed / topSpeed; pitch and volume follow speed and
- * throttle, and the tone gets rougher while boosting. on = false silences it.
+ * throttle, and the tone gets brighter while boosting. on = false silences it.
  */
 export function setEngine(on: boolean, speed01 = 0, throttle = false, boosting = false): void {
   if (!ctx || !engine) return;
   const t = ctx.currentTime;
   const s = Math.max(0, Math.min(1.6, speed01));
-  const freq = 48 + 78 * s + (throttle ? 10 : 0) + (boosting ? 14 : 0);
-  engine.saw.frequency.setTargetAtTime(freq, t, 0.06);
-  engine.sub.frequency.setTargetAtTime(freq * 0.5 * 1.01, t, 0.06);
-  engine.subGain.gain.setTargetAtTime(boosting ? 0.9 : 0.12, t, 0.05);
-  engine.filter.frequency.setTargetAtTime(260 + 900 * s + (throttle ? 500 : 0) + (boosting ? 1500 : 0), t, 0.08);
-  engine.filter.Q.setTargetAtTime(boosting ? 7 : 2, t, 0.08);
-  const vol = on ? 0.05 + 0.035 * Math.min(1, s) + (throttle ? 0.04 : 0) + (boosting ? 0.04 : 0) : 0;
+  const freq = 60 + 84 * s + (throttle ? 10 : 0) + (boosting ? 14 : 0);
+  engine.body.frequency.setTargetAtTime(freq, t, 0.06);
+  engine.buzz.frequency.setTargetAtTime(freq, t, 0.06);
+  engine.buzzGain.gain.setTargetAtTime(boosting ? 0.5 : throttle ? 0.3 : 0.18, t, 0.05);
+  engine.filter.frequency.setTargetAtTime(280 + 700 * s + (throttle ? 350 : 0) + (boosting ? 900 : 0), t, 0.08);
+  engine.filter.Q.setTargetAtTime(boosting ? 2.5 : 1, t, 0.08);
+  const vol = on ? 0.04 + 0.03 * Math.min(1, s) + (throttle ? 0.03 : 0) + (boosting ? 0.03 : 0) : 0;
   engine.gain.gain.setTargetAtTime(vol, t, on ? 0.06 : 0.03);
 }

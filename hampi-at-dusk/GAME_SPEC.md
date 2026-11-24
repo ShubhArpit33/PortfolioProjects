@@ -316,17 +316,22 @@ Animated details are a pure function of game time and camera scroll (no tweens, 
 
 ## 7. Audio (WebAudio, generated in code)
 
-- Engine: sawtooth plus a low-pass filter; pitch and volume follow speed and throttle; a rougher tone while boosting.
+- Engine (softened in v1.4): a triangle body with a quiet sawtooth purr, low-passed and high-passed at 45 Hz; pitch and
+  volume follow speed and throttle; a brighter tone while boosting. No square sub-octave.
 - Honk: two short square-wave tones ("pom-pom").
 - Hop, landing thud, "CLEAN!" chime, diya pickup chime, crash crunch, water splash, checkpoint bell.
 - "+FLIP" jingle (a quick rising run).
-- **Music (v1.3), original and generated in code** (`src/audio/music.ts`): a tanpura-style drone (strings Pa, Sa, Sa, low Sa,
-  one buzzing pluck per beat; Sa = D), a soft bansuri-like line in raag Bhupali (the evening pentatonic Sa Re Ga Pa Dha) with
-  slides and a slow vibrato on long notes, and a light tabla-like pulse on an 8-beat cycle. The line is generative: stepwise
-  phrases from a seeded PRNG that come to rest on Sa, Ga or Pa, with breaths between them, so it does not loop
-  (and is the same on every load). 76 bpm; while boosting the tempo lifts to 88, the pulse fills in its off-beats and a high
-  shimmer fades in (about half of that on the river run-up). Mixed well under the effects; dips for about a second on a crash.
-  Plays on the title, in the game and on the finish screen. Notes are scheduled about 0.3 s ahead from the frame loop.
+- **Music (rewritten in v1.4), original and generated in code** (`src/audio/music.ts`): an upbeat plucked loop in D, 104 bpm.
+  A santoor-like plucked lead (Karplus-Strong strings rendered into buffers) plays a 2-bar hook and its answers in raag
+  Bhupali (Sa Re Ga Pa Dha); a soft bansuri-like line (sines, a little breath noise, late vibrato) takes the B section;
+  a clean sine bass and a soft low-passed pad follow the chords (D Bm G A in A, G A Bm A in B); short tabla-flavoured
+  percussion (tight 'dha' kick, 'na' / 'tin' rim tones, shaker, clap in A'); a faint high-passed tanpura shimmer.
+  Form: intro 4 bars, A 8, B 8, A' 8 (ornaments and a second voice), breakdown 4, about 74 s; later passes skip the intro
+  and change the ornaments. While boosting the tempo lifts to 110 and hi-hats, an open hat and a four-on-the-floor kick
+  come in (about half of that on the river run-up). No sawtooth or square anywhere in the music; the music bus is
+  high-passed at 70 Hz and gently compressed, and the master has a safety limiter. Mixed well under the effects; dips for
+  about a second on a crash. Plays on the title, in the game and on the finish screen. Notes are scheduled about 0.3 s
+  ahead from the frame loop. `node scripts/render-music.mjs` renders a preview WAV offline and prints its levels.
 - Sound modes (M): all sound, music off, everything muted. The mode is remembered. Create the AudioContext only inside a real
   DOM `keydown`/`pointerdown` handler, so no sound or music before the first key press or click.
   `__test.setInput` never creates audio. Phaser's own audio is disabled (`noAudio: true`). No console warnings.

@@ -303,3 +303,66 @@ storage throwing, audio). Run twice in a row at the end. 23 screenshots in `test
 
 ## Attribution
 - Commits made by Fable carry a `Co-Authored-By: Claude Fable 5.2` trailer, which names the model that actually wrote them. Commits made by the coordinator carry the Opus trailer.
+
+---
+
+## v1.4: music rewrite ("a bit boring and farty")
+
+Player feedback on v1.3: "change the music to something better, this is a bit boring and farty".
+
+### What was farty
+1. **The tanpura drone.** One sawtooth "string" per beat at 73, 110 and 147 Hz, each through a resonant (Q 3) low-pass
+   that swept open and rang for 3.4 s, so four or five raw low sawtooths were always sounding. In a 45 s render 43% of the
+   energy sat at 150-500 Hz (the buzz harmonics of those strings) and almost nothing above 2 kHz.
+2. **The 'ge' drum:** a sine falling from 118 to 62 Hz over 0.16 s, a "bwomp" twice a bar.
+3. **The engine:** a 48-170 Hz sawtooth plus a square sub-octave (24-85 Hz) tuned 1% sharp, so the two beat against each
+   other, with filter Q 7 while boosting. This played for the whole run.
+4. **The crash:** a sawtooth falling 150 to 38 Hz with a square falling 90 to 30 Hz.
+
+"Boring": one static drone, no chords, 76 bpm, a wandering generative flute with no repeated phrase, a sparse pulse.
+
+### What replaced it
+1. **104 bpm, D major / Bhupali, a real song form:** intro 4 bars, A 8, B 8, A' 8, breakdown 4 = 32 bars, 73.8 s. Later
+   passes skip the intro (28 bars, 64.6 s) and draw different grace notes, so it is deterministic but not an exact loop.
+2. **Hook:** a 2-bar call (D E F# A F# E D / B D F# E) and a 2-bar answer, restated with an ending that lands on Sa.
+   Played on a santoor-like pluck: Karplus-Strong strings computed once per pitch into buffers (a DelayNode loop cannot
+   reach these pitches), doubled a few cents apart, with a quiet dotted-eighth echo.
+3. **B section:** a bansuri-like line (two sines, band-passed breath noise, vibrato that arrives late) over plucked chord
+   arpeggios; half-time drums. **A'** adds grace notes, a clap and a second voice a third / fourth below.
+4. **Harmony:** D Bm G A (A), G A Bm A G A D A (B). Bass = sine plus a quiet octave triangle, low-passed at 480 Hz,
+   lowest note D2 (73 Hz). Pad = low-passed triangles at D4-B4. The drone is now a faint plucked shimmer, high-passed at
+   500 Hz.
+5. **Percussion:** kick settles 150 to 82 Hz in 30 ms and is gone in 0.13 s; 'na' and 'tin' are short sine pings tuned to
+   Sa and Pa with a band-passed noise slap; shaker on 16ths. Nothing has a long falling pitch.
+6. **Boost lift:** tempo 104 to 110, 16th hi-hats, open hat on the off-beats, four-on-the-floor kick, extra 'tin'.
+7. **Bus:** voices, 70 Hz high-pass (plus a 55 Hz one), compressor (-16 dB, 3:1), bus gain 0.30, master 0.5, then a
+   new safety limiter (-4 dB, 16:1). The test tap for "no clipping" now reads after the limiter.
+8. **Engine and crash softened** (they were part of the complaint): triangle body plus a quiet sawtooth at the same
+   pitch (60-160 Hz), filter Q at most 2.5, 45 Hz high-pass, about 25% quieter; the crash keeps its noise crunch over a
+   triangle / sine thump.
+9. **The score is pure** (`barScore(bar)`), so the form, the raag, the bass range and the variation are unit-tested.
+   `createMusic()` runs on any BaseAudioContext; `scripts/render-music.mjs` bundles the module, renders it in headless
+   Chromium with an OfflineAudioContext and writes `music-preview.wav` (git-ignored, normalised to -1 dBFS).
+
+### Measured (45 s offline render, on the music bus, before the 0.5 master)
+
+| | New (v1.4) | Old (v1.3) |
+|---|---|---|
+| Peak | 0.260 (-11.7 dBFS) | 0.247 (-12.1 dBFS) |
+| RMS | 0.039 (-28.1 dBFS) | 0.057 (-24.9 dBFS) |
+| Below 80 Hz | 5.9% | 2.6% |
+| 80-150 Hz | 25.2% (sine bass, kick) | 9.1% |
+| 150-500 Hz | 28.0% | 43.2% (sawtooth buzz) |
+| 500 Hz-2 kHz | 37.3% | 45.0% |
+| Above 2 kHz | 3.5% | 0.2% |
+
+In the game (headless Chromium, real time): music bus peak 0.075, master peak 0.136 with engine and effects. No clipping,
+no console warnings.
+
+Tests: 75 Vitest (60 physics, 15 progress / music score) and 8 Playwright.
+
+### Open questions (v1.4)
+- **Still not heard by a person.** Levels, spectrum and the score were checked; whether the hook is actually catchy needs
+  ears. The preview WAV is there for that.
+- The new low end is a deliberate, clean sine bass (31% of the energy below 150 Hz, 6% below 80 Hz). If it is still too
+  much on the player's speakers, the bass level is one number (`0.09` in `scheduleStep`).

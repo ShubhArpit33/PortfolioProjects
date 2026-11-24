@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { MELODY_MAX, MELODY_MIN, MelodyGen, SCALE, degreeHz, type MelodyEvent } from '../../src/audio/music';
+import {
+  BASE_BPM, CHORDS, MELODY_MAX, MELODY_MIN, SCALE, SONG_BARS, STEPS_PER_BAR, barScore, degreeHz, songPosition, songSeconds,
+} from '../../src/audio/music';
 import { STAGE_COLS } from '../../src/level/levelData';
 import {
   BEST_KEY, DEFAULT_PREFS, EMPTY_BEST, GHOST_HZ, MEDAL_TIMES_MS, PREFS_KEY, decodeGhost, encodeGhost, ghostPoseAt,
@@ -160,7 +162,7 @@ describe('ghost', () => {
   });
 });
 
-describe('music score (generative melody)', () => {
+describe('music score', () => {
   it('Bhupali: Sa Re Ga Pa Dha, octaves double', () => {
     expect([...SCALE]).toEqual([0, 2, 4, 7, 9]);
     expect(degreeHz(0, 100)).toBeCloseTo(100, 9);
@@ -169,33 +171,75 @@ describe('music score (generative melody)', () => {
     expect(degreeHz(-2, 100)).toBeCloseTo(50 * 2 ** (7 / 12), 9); // lower Pa
   });
 
-  it('is deterministic, stays in range, breathes between phrases and does not loop early', () => {
-    const a = new MelodyGen();
-    const b = new MelodyGen();
-    const events: MelodyEvent[] = [];
-    for (let i = 0; i < 600; i++) {
-      const e = a.next();
-      expect(b.next()).toEqual(e);
-      events.push(e);
-      expect(e.halfBeats).toBeGreaterThanOrEqual(1);
-      expect(e.halfBeats).toBeLessThanOrEqual(8);
-      if (e.degree !== null) {
-        expect(e.degree).toBeGreaterThanOrEqual(MELODY_MIN);
-        expect(e.degree).toBeLessThanOrEqual(MELODY_MAX);
+  it('song form: intro, A, B, A\', breakdown in 60-90 s; later passes skip the intro', () => {
+    expect(SONG_BARS).toBe(32);
+    expect(BASE_BPM).toBeGreaterThanOrEqual(100);
+    expect(BASE_BPM).toBeLessThanOrEqual(112);
+    expect(songSeconds()).toBeGreaterThan(60);
+    expect(songSeconds()).toBeLessThan(90);
+    const first = Array.from({ length: SONG_BARS }, (_, i) => songPosition(i).section);
+    expect(first.join(' ')).toBe([
+      ...Array(4).fill('intro'), ...Array(8).fill('A'), ...Array(8).fill('B'), ...Array(8).fill('A2'), ...Array(4).fill('break'),
+    ].join(' '));
+    expect(songPosition(32)).toEqual({ section: 'A', bar: 0, loop: 1 });
+    expect(songPosition(59)).toEqual({ section: 'break', bar: 3, loop: 1 });
+    expect(songPosition(60)).toEqual({ section: 'A', bar: 0, loop: 2 });
+  });
+
+  it('is deterministic, in the raag and in range, with a clean bass and real chord movement', () => {
+    const chordsHeard = new Set<string>();
+    for (let bar = 0; bar < 200; bar++) {
+      const s = barScore(bar);
+      expect(barScore(bar)).toEqual(s);
+      for (const c of s.chords) chordsHeard.add(c);
+      for (const n of [...s.lead, ...s.flute]) {
+        expect(Number.isInteger(n.degree)).toBe(true); // a scale degree: cannot leave Bhupali
+        expect(n.degree).toBeGreaterThanOrEqual(MELODY_MIN);
+        expect(n.degree).toBeLessThanOrEqual(MELODY_MAX);
+      }
+      for (const e of [...s.lead, ...s.harmony, ...s.flute, ...s.arp, ...s.bass, ...s.drums, ...s.pad]) {
+        expect(e.step).toBeGreaterThanOrEqual(0);
+        expect(e.step).toBeLessThan(STEPS_PER_BAR);
+        if ('vel' in e) { expect(e.vel).toBeGreaterThan(0); expect(e.vel).toBeLessThanOrEqual(1); }
+      }
+      for (const b of s.bass) {
+        const hz = 73.415 * 2 ** (b.semis / 12);
+        expect(hz).toBeGreaterThan(70);  // nothing in the sub range
+        expect(hz).toBeLessThan(260);
+        // the bass plays the root, fifth or octave of the chord under it
+        expect([0, 7, 12]).toContain(b.semis - CHORDS[s.chords[b.step < 8 ? 0 : 1]].bass);
+      }
+      // a groove whenever the band is in: kick on the one
+      if (s.section === 'A' || s.section === 'A2' || s.section === 'B') {
+        expect(s.drums.some((d) => d.kind === 'kick' && d.step === 0)).toBe(true);
       }
     }
-    const rests = events.filter((e) => e.degree === null).length;
-    expect(rests).toBeGreaterThan(60);
-    expect(rests).toBeLessThan(200);
-    // no period of up to 64 events anywhere in the first 600 (far longer than 90 s of music)
-    const key = (i: number): string => `${events[i]!.degree}:${events[i]!.halfBeats}`;
-    for (let period = 1; period <= 64; period++) {
-      let same = true;
-      for (let i = 0; i + period < 400 && same; i++) same = key(i) === key(i + period);
-      expect(same, `repeats every ${period} events`).toBe(false);
+    expect([...chordsHeard].sort()).toEqual(['A', 'Bm', 'D', 'G']);
+  });
+
+  it('has a hook that returns, a flute B section, and passes that vary', () => {
+    const lead = (bar: number): string => barScore(bar).lead.map((n) => `${n.step}:${n.degree}`).join(' ');
+    // A: bar 4 of the section restates bar 0 (call, answer, call again)
+    expect(lead(4)).toBe(lead(8));
+    expect(lead(4)).not.toBe(lead(5));
+    // B: the flute carries the tune, the santoor only arpeggiates
+    for (let bar = 12; bar < 19; bar++) {
+      expect(barScore(bar).flute.length).toBeGreaterThan(0);
+      expect(barScore(bar).lead.length).toBe(0);
+      expect(barScore(bar).arp.length).toBe(8);
     }
-    // total length of 600 events at the base tempo: several minutes
-    const halfBeats = events.reduce((n, e) => n + e.halfBeats, 0);
-    expect((halfBeats * 60) / 76 / 2).toBeGreaterThan(180);
+    // A' = the hook with ornaments (every hook note is still there) and a second voice at the end
+    const a = barScore(4 + 2).lead;
+    const a2 = barScore(20 + 2).lead;
+    for (const n of a) expect(a2).toContainEqual(n);
+    expect(barScore(26).harmony.length).toBeGreaterThan(0);
+    expect(barScore(6).harmony.length).toBe(0);
+    // the second pass is not a copy of the first
+    const pass = (from: number): string => Array.from({ length: 28 }, (_, i) => lead(from + i)).join('|');
+    expect(pass(32)).not.toBe(pass(4));
+    expect(pass(60)).not.toBe(pass(32));
+    // the breakdown thins out: no kick until the last bar
+    expect(barScore(28).drums.some((d) => d.kind === 'kick')).toBe(false);
+    expect(barScore(28).bass.length).toBe(1);
   });
 });
