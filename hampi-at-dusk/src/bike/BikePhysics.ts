@@ -69,6 +69,8 @@ export interface BikeState {
   evHop: boolean;
   /** full flips completed by the landing of this step (signed: + backflips, - frontflips); 0 on a crash */
   evFlips: number;
+  /** speed into the ground (px/s) of a landing this step (clean, safe or crash); 0 otherwise */
+  evImpact: number;
 }
 
 export function createBikeState(x: number, terrain: Terrain = TERRAIN, cfg: Config = CONFIG): BikeState {
@@ -82,7 +84,7 @@ export function createBikeState(x: number, terrain: Terrain = TERRAIN, cfg: Conf
     crashed: null,
     airTime: 0, coyote: 0, hopBuffer: 0, hopHeld: false, boosting: false, reverseWait: 0,
     spin: 0, tiltRate: cfg.airTiltSpeed, tiltDir: 0,
-    evLanding: null, evHop: false, evFlips: 0,
+    evLanding: null, evHop: false, evFlips: 0, evImpact: 0,
   };
 }
 
@@ -134,7 +136,7 @@ export function step(
   cfg: Config = CONFIG,
 ): BikeState {
   if (prev.crashed !== null) return prev;
-  const s: BikeState = { ...prev, evLanding: null, evHop: false, evFlips: 0, boosting: false };
+  const s: BikeState = { ...prev, evLanding: null, evHop: false, evFlips: 0, evImpact: 0, boosting: false };
 
   // Hop buffer: a press (rising edge) stays valid for HOP_BUFFER_S.
   const hop = input.hop === true;
@@ -333,6 +335,8 @@ function integrateAir(s: BikeState, dt: number, terrain: Terrain, cfg: Config): 
   else kind = evaluateLanding(s.angle, slope, cfg);
   s.evLanding = kind;
   s.y = surf;
+  const th = slope * DEG;
+  if (kind !== 'silent') s.evImpact = Math.max(0, s.vx * Math.sin(th) + s.vy * Math.cos(th));
   const spin = s.spin;
   s.spin = 0;
   s.tiltRate = cfg.airTiltSpeed;
@@ -350,7 +354,6 @@ function integrateAir(s: BikeState, dt: number, terrain: Terrain, cfg: Config): 
       s.boost = Math.min(1, s.boost + cfg.boostFlip * Math.abs(flips));
     }
   }
-  const th = slope * DEG;
   s.v = Math.max(0, s.vx * Math.cos(th) - s.vy * Math.sin(th));
   s.vx = s.v * Math.cos(th);
   s.vy = -s.v * Math.sin(th);

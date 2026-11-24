@@ -53,7 +53,7 @@ test.describe('river jump', () => {
   test('boost held from the river checkpoint clears the river with at least 1 tile to spare', async ({ page }) => {
     await boot(page);
     const level = await getLevel(page);
-    const { river } = layout(level);
+    const { river, rampStartX } = layout(level);
     await startAt(page, RIVER_CP);
 
     const run = (untilLanded: boolean): Promise<RiverResult> =>
@@ -77,6 +77,20 @@ test.describe('river jump', () => {
         }
         return out;
       }, { river, untilLanded });
+
+    // On the run-up: boosting on the ground (speed streaks, exhaust flame, camera pulled back).
+    const runUp = await page.evaluate((untilX) => {
+      const t = window.__test!;
+      t.setInput({ throttle: true, boost: true });
+      let s = t.state();
+      const atRest = s.x - s.camX;
+      while (s.x < untilX) { t.step(1); s = t.state(); }
+      return { atRest, boosting: s.x - s.camX, v: s.v };
+    }, rampStartX + 48);
+    await shot(page, 'boost-streaks');
+    expect(runUp.v).toBeGreaterThan(340);
+    expect(runUp.boosting, 'the camera pulls back at boost speed').toBeLessThan(runUp.atRest - 15);
+    expect(runUp.boosting).toBeGreaterThan(90);
 
     // Stop over the middle of the river for the screenshot, then carry on to the landing.
     const mid = await run(false);

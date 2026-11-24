@@ -23,7 +23,15 @@ export const CONFIG = {
   cleanLandingAngle: 10,     // at or below this = "CLEAN!" + boost bonus
   monkeyStumbleFactor: 0.4,  // speed multiplier when hitting a monkey
   honkRange: 120,
-  cameraLookAhead: 80,
+  // Look-ahead (px ahead of the bike that the camera aims at) grows with speed (v1.3). The smoothing below
+  // makes the camera trail a moving bike by about v * 0.158 s, so these put the bike at screen x of about
+  // 184 at rest, 170 at topSpeed and 131 at boostSpeed.
+  cameraLookAhead: 108,      // at topSpeed (was a fixed 80)
+  cameraLookAheadRest: 56,   // at a standstill
+  cameraLookAheadBoost: 166, // at boostSpeed: the camera pulls back so more of the road ahead shows
+  cameraLookSmoothS: 0.3,    // time constant of the look-ahead smoothing (s)
+  cameraBumpPerImpact: 0.35, // landing bump: kick (px/s) per px/s of landing speed into the ground
+  cameraBumpMaxPx: 5,
   cameraLerp: 0.1,           // per 1/60 s; see section 4 Camera
   respawnDelayMs: 1000,
   bikeHitW: 24,              // bike AABB width

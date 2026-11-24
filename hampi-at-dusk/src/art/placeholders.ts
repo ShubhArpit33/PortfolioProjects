@@ -801,6 +801,20 @@ function drawLampGlow(p: Pen): void {
   p.r(PAL.sun, 2, 0, 2, 6, 0.22).r(PAL.sun, 0, 2, 6, 2, 0.22).r(PAL.sun, 1, 1, 4, 4, 0.3).r(PAL.gold, 2, 2, 2, 2, 0.9);
 }
 
+/** Boost exhaust flame, 2 frames of 9 x 5 (long, short). The nozzle is at the right edge. */
+function drawFlame(p: Pen): void {
+  // long
+  p.r(PAL.glint, 1, 1, 8, 3, 0.9).r(PAL.glint, 0, 2, 2, 1, 0.7);
+  p.r(PAL.sun, 4, 1, 5, 3).r(PAL.cream, 6, 2, 3, 1);
+  // short
+  p.r(PAL.glint, 12, 1, 6, 3, 0.9).r(PAL.sun, 14, 1, 4, 3).r(PAL.cream, 16, 2, 2, 1);
+}
+
+/** Speed streak: a 24 px line that fades toward its tail (the right-hand end). */
+function drawStreak(p: Pen): void {
+  p.r(PAL.cream, 0, 0, 8, 1, 1).r(PAL.cream, 8, 0, 8, 1, 0.6).r(PAL.cream, 16, 0, 8, 1, 0.25);
+}
+
 function drawStar(p: Pen, c: number, shade: number | null): void {
   p.rows(c, 0, 0, [[6, 1], [5, 3], [5, 3], [4, 5], [0, 13], [1, 11], [2, 9], [3, 7], [2, 9], [2, 4], [1, 3], [1, 1]]);
   p.r(c, 7, 9, 4, 1).r(c, 9, 10, 3, 1).r(c, 11, 11, 1, 1);
@@ -853,6 +867,9 @@ const EXTRAS: Record<string, Def> = {
   star_off: { w: 13, h: 12, draw: (p) => drawStar(p, mix(PAL.ink, PAL.uiYellow, 0.28), null) },
   bubble: { w: 20, h: 13, draw: drawBubble },
   p_dust: { w: 2, h: 2, draw: (p) => p.r(PAL.graniteLight, 0, 0, 2, 2, 0.8) },
+  p_puff: { w: 3, h: 3, draw: (p) => p.r(PAL.graniteLight, 0, 0, 3, 3, 0.45).r(mix(PAL.graniteLight, PAL.cream, 0.4), 0, 1, 2, 2, 0.6) },
+  p_streak: { w: 24, h: 1, draw: drawStreak },
+  flame: { w: 18, h: 5, draw: drawFlame, frameW: 9 },
   p_smoke: { w: 3, h: 3, draw: (p) => p.r(PAL.cream, 0, 0, 3, 3, 0.3).r(PAL.cream, 0, 1, 2, 2, 0.25) },
   p_spark: { w: 2, h: 2, draw: (p) => p.r(PAL.gold, 0, 0, 2, 2).r(PAL.cream, 0, 0, 1, 1) },
   p_splash: { w: 2, h: 2, draw: (p) => p.r(mix(PAL.water, PAL.cream, 0.65), 0, 0, 2, 2) },

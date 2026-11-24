@@ -2,6 +2,7 @@
 // dust and landing sparks (GAME_SPEC.md section 6.3). Purely visual; reads the physics state.
 
 import Phaser from 'phaser';
+import { fxHash } from '../art/Fx';
 
 const WHEEL_R = 6;
 const WHEEL_DX = 13;
@@ -28,6 +29,7 @@ export class BikeView {
   private rear: Phaser.GameObjects.Image;
   private front: Phaser.GameObjects.Image;
   private leg: Phaser.GameObjects.Image;
+  private flame: Phaser.GameObjects.Sprite;
   private smoke: Phaser.GameObjects.Particles.ParticleEmitter;
   private dust: Phaser.GameObjects.Particles.ParticleEmitter;
   private sparks: Phaser.GameObjects.Particles.ParticleEmitter;
@@ -41,6 +43,7 @@ export class BikeView {
   private smokeAcc = 0;
   private dustAcc = 0;
   private paddle = 0;      // phase of the backing-up foot shuffle, radians
+  private flameT = 0;      // game time spent boosting, drives the flame flicker
 
   constructor(scene: Phaser.Scene, depth: number, fxDepth: number) {
     this.rear = scene.add.image(-WHEEL_DX, -WHEEL_R, 'wheel');
@@ -48,7 +51,9 @@ export class BikeView {
     this.body = scene.add.image(0, -WHEEL_R, 'bike_body').setOrigin(0.5, 1);
     // The rider's leg reaching the ground (shown at a standstill and while backing up).
     this.leg = scene.add.image(LEG_X, 0, 'rider_leg').setOrigin(0.5, 1).setVisible(false);
-    this.container = scene.add.container(0, 0, [this.rear, this.front, this.body, this.leg]).setDepth(depth);
+    // Boost flame at the exhaust tip (flickers while boosting).
+    this.flame = scene.add.sprite(-19, -9, 'flame', 0).setOrigin(1, 0.5).setVisible(false);
+    this.container = scene.add.container(0, 0, [this.flame, this.rear, this.front, this.body, this.leg]).setDepth(depth);
 
     this.smoke = scene.add.particles(0, 0, 'p_smoke', {
       lifespan: { min: 260, max: 460 }, speedX: { min: -50, max: -15 }, speedY: { min: -26, max: -6 },
@@ -101,6 +106,17 @@ export class BikeView {
     this.leg.x = LEG_X + (drive.reversing ? Math.round(Math.sin(this.paddle) * 2) : 0);
     this.leg.y = drive.reversing && Math.cos(this.paddle) > 0.6 ? -1 : 0;
 
+    // Boost flame: two frames and a stretch, re-rolled 30 times a second of game time.
+    this.flame.setVisible(drive.boosting);
+    if (drive.boosting) {
+      this.flameT += dt;
+      const tick = Math.floor(this.flameT * 30);
+      const roll = fxHash(tick, 5);
+      this.flame.setFrame(roll < 0.3 ? 1 : 0);
+      this.flame.setScale(1 + 0.6 * fxHash(tick, 6), 1);
+      this.flame.setAlpha(0.75 + 0.25 * fxHash(tick, 7));
+    }
+
     // Exhaust puffs scale with throttle; dust trail when grounded and fast.
     const cos = Math.cos(c.rotation), sin = Math.sin(c.rotation);
     const at = (lx: number, ly: number): [number, number] => [x + lx * cos - ly * sin, y + lx * sin + ly * cos];
@@ -129,13 +145,13 @@ export class BikeView {
     this.body.rotation = 0;
     this.body.y = -WHEEL_R;
     this.leg.setVisible(false);
+    this.flame.setVisible(false);
   }
 
-  landed(hard: boolean, x: number, y: number): void {
-    this.squash = hard ? 3 : 2;
+  /** Landing squash (deeper for harder landings) and sparks on a hard one. The dust is drawn by Fx. */
+  landed(hard: boolean, x: number, y: number, impact = 280): void {
+    this.squash = Math.min(4, (hard ? 3 : 2) * Math.max(0.5, impact / 280));
     if (hard) this.sparks.emitParticleAt(x, y - 2, 8);
-    this.dust.emitParticleAt(x - 8, y - 1, hard ? 6 : 4);
-    this.dust.emitParticleAt(x + 8, y - 1, hard ? 6 : 4);
   }
 
   stumble(): void {

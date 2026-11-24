@@ -4,6 +4,7 @@
 
 import type { Page } from '@playwright/test';
 import { CONFIG } from '../../src/config';
+import { CAMERA_MAX_SCROLL_X } from '../../src/level/levelData';
 import {
   boot, expect, getLevel, getState, layout, shot, test,
   type GameSnapshot, type Layout, type LevelData, type Span,
@@ -20,6 +21,7 @@ const HALF_BIKE = CONFIG.bikeHitW / 2;
 /** Length of a flat-ground hop at top speed: 2·hopVelocity/gravity · topSpeed = 192 px. */
 const HOP_LEN = ((2 * CONFIG.hopVelocity) / CONFIG.gravity) * CONFIG.topSpeed;
 const MARGIN = 8;
+const CAM_MAX = CAMERA_MAX_SCROLL_X;
 
 /**
  * One hop per hazard (canal gap, cow, pillar, cart), centred over it. If a hop would come down
@@ -91,15 +93,23 @@ function columnHeights(level: LevelData): { h: Array<number | null>; cliffCols: 
   return { h, cliffCols };
 }
 
+interface BotMemory {
+  next: number; hopHeld: boolean; steps: number;
+  camMinStep: number; camMaxStep: number; minScreenX: number; maxScreenX: number;
+}
+
 /**
  * Play until the bike's x reaches untilX (or the run ends, or maxSteps pass). One fixed step per
  * decision. The bot's memory lives in window.__bot so the run can be resumed after a screenshot.
  */
 function advance(page: Page, plan: Plan, untilX: number, maxSteps = 120 * 60): Promise<GameSnapshot> {
-  return page.evaluate(({ plan, untilX, maxSteps }) => {
+  return page.evaluate(({ plan, untilX, maxSteps, camMax }) => {
     const t = window.__test!;
-    const w = window as unknown as { __bot?: { next: number; hopHeld: boolean; steps: number } };
-    const bot = (w.__bot ??= { next: 0, hopHeld: false, steps: 0 });
+    const w = window as unknown as { __bot?: BotMemory };
+    const bot = (w.__bot ??= {
+      next: 0, hopHeld: false, steps: 0,
+      camMinStep: Infinity, camMaxStep: -Infinity, minScreenX: Infinity, maxScreenX: -Infinity,
+    });
     let s = t.state();
     for (let i = 0; i < maxSteps && s.x < untilX && !s.finished && !s.crashed; i++) {
       // Hop: edge-triggered, so press for one step and release on the next.
@@ -114,11 +124,19 @@ function advance(page: Page, plan: Plan, untilX: number, maxSteps = 120 * 60): P
       t.step(1);
       bot.steps++;
       bot.hopHeld = hop;
+      const camBefore = s.camX;
       s = t.state();
+      // Camera bookkeeping: how far it moved this step, and where the bike sits on screen.
+      bot.camMinStep = Math.min(bot.camMinStep, s.camX - camBefore);
+      bot.camMaxStep = Math.max(bot.camMaxStep, s.camX - camBefore);
+      if (s.camX > 1 && s.x + 240 < camMax) { // not while the camera is held at either end of the stage
+        bot.minScreenX = Math.min(bot.minScreenX, s.x - s.camX);
+        bot.maxScreenX = Math.max(bot.maxScreenX, s.x - s.camX);
+      }
       if (hop && !s.grounded) bot.next++;
     }
     return s;
-  }, { plan, untilX, maxSteps });
+  }, { plan, untilX, maxSteps, camMax: CAM_MAX });
 }
 
 test('bot: full run from the title - 0 crashes, all 30 diyas, under 120 s', async ({ page }) => {
@@ -199,4 +217,16 @@ test('bot: full run from the title - 0 crashes, all 30 diyas, under 120 s', asyn
   expect(s.diyas).toBe(level.diyas.length);
   expect(s.timeMs).toBeLessThan(120_000);
   expect(s.timeMs, 'the timer stops at the finish line').toBe(final.timeMs);
+
+  // Camera (v1.3 look-ahead): it never jumps or runs backward in a crash-free run, and the bike stays
+  // in the left part of the screen with the road ahead visible.
+  const cam = await page.evaluate(() => (window as unknown as { __bot: BotMemory }).__bot);
+  console.log(
+    `[bot] camera: step ${cam.camMinStep.toFixed(3)}..${cam.camMaxStep.toFixed(3)} px, ` +
+    `bike screen x ${cam.minScreenX.toFixed(1)}..${cam.maxScreenX.toFixed(1)}`,
+  );
+  expect(cam.camMinStep).toBeGreaterThanOrEqual(-0.001);
+  expect(cam.camMaxStep).toBeLessThanOrEqual((CONFIG.boostSpeed / 120) * 1.5);
+  expect(cam.minScreenX).toBeGreaterThanOrEqual(110);
+  expect(cam.maxScreenX).toBeLessThanOrEqual(215);
 });

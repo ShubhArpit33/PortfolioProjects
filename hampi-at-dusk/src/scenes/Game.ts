@@ -2,6 +2,7 @@
 // deterministic and can be driven by window.__test.step. Everything visual happens in renderFrame().
 
 import Phaser from 'phaser';
+import { BoostStreaks, Fx } from '../art/Fx';
 import { DEPTH, Parallax } from '../art/Parallax';
 import { PAL } from '../art/palette';
 import * as sfx from '../audio/sfx';
@@ -35,6 +36,10 @@ const FINISH_SCREEN_DELAY_S = 1.2;
 const FINISH_STOP_PX = 64;
 const FINISH_BRAKE = 1200;
 
+/** Landing-bump spring: about 4 Hz, damping ratio 0.6 (one small rebound, then still). */
+const BUMP_STIFFNESS = 620;
+const BUMP_DAMPING = 30;
+
 type Phase = 'ride' | 'crash';
 
 /** Popup text for n full flips in one air. */
@@ -53,6 +58,8 @@ export interface GameSnapshot {
   flips: number;
   /** degrees turned in the current air (0 while grounded) */
   spin: number;
+  /** camera scroll (world px of the left screen edge), before rounding */
+  camX: number;
 }
 
 export class GameScene extends Phaser.Scene {
@@ -79,6 +86,13 @@ export class GameScene extends Phaser.Scene {
   private finishT = 0;
   private finishShown = false;
   private camX = 0;
+  /** smoothed look-ahead (px): grows with speed, so obstacles show earlier the faster the bike goes */
+  private look: number = CONFIG.cameraLookAheadRest;
+  /** landing bump: the view dips by bumpY px (a damped spring, game time) */
+  private bumpY = 0;
+  private bumpV = 0;
+  /** 0..1, eases toward 1 while boosting (drives the speed streaks) */
+  private boostFx = 0;
   private honkHeld = false;
   private honkQueued = false;
   private restartQueued = false;
@@ -91,6 +105,8 @@ export class GameScene extends Phaser.Scene {
   private parallax!: Parallax;
   private popups!: Popups;
   private view!: BikeView;
+  private fx!: Fx;
+  private streaks!: BoostStreaks;
   private diyas: Diya[] = [];
   private obstacles: Obstacle[] = [];
   private checkpoints: Checkpoint[] = [];
@@ -129,6 +145,10 @@ export class GameScene extends Phaser.Scene {
     this.lastInput = {};
     this.acc = 0;
     this.visT = 0;
+    this.look = CONFIG.cameraLookAheadRest;
+    this.bumpY = 0;
+    this.bumpV = 0;
+    this.boostFx = 0;
     this.diyas = [];
     this.obstacles = [];
     this.checkpoints = [];
@@ -174,6 +194,8 @@ export class GameScene extends Phaser.Scene {
     this.troop = new MonkeyTroop(this, DEPTH.animal);
     this.diyas = DIYAS.map((def, i) => new Diya(this, def, i, DEPTH.diya));
     this.view = new BikeView(this, DEPTH.bike, DEPTH.fx);
+    this.fx = new Fx(this, DEPTH.fx);
+    this.streaks = new BoostStreaks(this, DEPTH.terrain - 1);
     this.popups = new Popups(this, DEPTH.popup);
     this.fade = this.add.rectangle(0, 0, VIEW_W, VIEW_H, PAL.ink).setOrigin(0, 0).setScrollFactor(0)
       .setDepth(DEPTH.fade).setAlpha(0);
@@ -225,7 +247,7 @@ export class GameScene extends Phaser.Scene {
       x: b.x, y: b.y, vx: b.vx, vy: b.vy, v: b.v, angle: b.angle, grounded: b.grounded, boost: b.boost,
       crashed: this.phase === 'crash', crashes: this.crashes, diyas: this.diyaCount,
       finished: this.finished, checkpoint: this.checkpoint, timeMs: this.timeMs,
-      flips: this.flips, spin: b.spin,
+      flips: this.flips, spin: b.spin, camX: this.camX,
     };
   }
 
@@ -344,7 +366,10 @@ export class GameScene extends Phaser.Scene {
     if (b.evLanding === 'clean' || b.evLanding === 'safe') {
       const clean = b.evLanding === 'clean';
       sfx.play(clean ? 'clean' : 'thud');
-      this.view.landed(!clean, b.x, b.y);
+      this.view.landed(!clean, b.x, b.y, b.evImpact);
+      this.fx.landingPuff(b.x, b.y, b.evImpact, !clean);
+      // Camera bump, scaled by how hard the bike came down (harder still for a rough landing).
+      this.bumpV += b.evImpact * CONFIG.cameraBumpPerImpact * (clean ? 1 : 1.35);
       // One landing popup at a time: a flip replaces "CLEAN!" (the clean bonus still applies).
       if (b.evFlips !== 0) {
         const n = Math.abs(b.evFlips);
@@ -398,6 +423,7 @@ export class GameScene extends Phaser.Scene {
         this.diyaCount++;
         b = addBoost(b, CONFIG.boostDiya);
         sfx.play('diya');
+        this.fx.sparkle(d.x, d.y);
         this.popup('+1', d.x, d.y - 10);
       }
     }
@@ -471,18 +497,41 @@ export class GameScene extends Phaser.Scene {
     if (this.cow.homeX > cp.x) this.cow.reset();
     if (this.troop.triggerX > cp.x) this.troop.reset();
     this.view.reset();
+    this.look = CONFIG.cameraLookAheadRest;
+    this.bumpY = 0;
+    this.bumpV = 0;
     this.camX = this.cameraTarget();
     if (cp.hint) this.showHint(cp.hint);
   }
 
   private cameraTarget(): number {
     const x = this.phase === 'crash' ? this.crashFrom.x : this.bike.x;
-    return Phaser.Math.Clamp(x + CONFIG.cameraLookAhead - VIEW_W / 2, 0, CAMERA_MAX_SCROLL_X);
+    return Phaser.Math.Clamp(x + this.look - VIEW_W / 2, 0, CAMERA_MAX_SCROLL_X);
+  }
+
+  /** Look-ahead for a speed: Rest at 0, cameraLookAhead at topSpeed, Boost at boostSpeed. */
+  private lookFor(speed: number): number {
+    const c = CONFIG;
+    if (speed <= c.topSpeed) return c.cameraLookAheadRest + (c.cameraLookAhead - c.cameraLookAheadRest) * Math.max(0, speed / c.topSpeed);
+    const k = Math.min(1, (speed - c.topSpeed) / (c.boostSpeed - c.topSpeed));
+    return c.cameraLookAhead + (c.cameraLookAheadBoost - c.cameraLookAhead) * k;
   }
 
   private stepCamera(dt: number): void {
+    // The look-ahead is smoothed first and the scroll second, so a sudden speed change (a landing,
+    // a stumble) can never jerk the view. It is frozen during a crash.
+    if (this.phase === 'ride') {
+      const b = this.bike;
+      const speed = b.grounded ? b.v : Math.abs(b.vx);
+      this.look += (this.lookFor(speed) - this.look) * (1 - Math.exp(-dt / CONFIG.cameraLookSmoothS));
+    }
     const k = 1 - Math.pow(1 - CONFIG.cameraLerp, dt * 60);
     this.camX += (this.cameraTarget() - this.camX) * k;
+
+    // Landing bump: a damped spring back to rest.
+    this.bumpV += (-BUMP_STIFFNESS * this.bumpY - BUMP_DAMPING * this.bumpV) * dt;
+    this.bumpY += this.bumpV * dt;
+    if (this.bumpY > CONFIG.cameraBumpMaxPx) { this.bumpY = CONFIG.cameraBumpMaxPx; this.bumpV = Math.min(0, this.bumpV); }
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -513,6 +562,8 @@ export class GameScene extends Phaser.Scene {
     const cam = this.cameras.main;
     const scroll = Math.round(this.camX);
     cam.scrollX = scroll;
+    // The bump only ever dips the view (world moves down), so nothing below the terrain is exposed.
+    cam.scrollY = -Math.max(0, Math.round(this.bumpY));
     this.parallax.update(scroll, t);
 
     const b = this.bike;
@@ -551,6 +602,10 @@ export class GameScene extends Phaser.Scene {
     this.fade.setAlpha(fade);
 
     this.popups.update(dt);
+    this.fx.update(dt);
+    const boostOn = this.phase === 'ride' && b.boosting;
+    this.boostFx += ((boostOn ? 1 : 0) - this.boostFx) * Math.min(1, dt * (boostOn ? 9 : 5));
+    this.streaks.update(t, this.boostFx);
     if (this.hintT > 0) this.hintT = Math.max(0, this.hintT - dt);
     const riding = this.phase === 'ride' && !this.paused && !(this.finished && b.v < 1);
     const inp = this.lastInput;
