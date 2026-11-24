@@ -658,7 +658,7 @@ const EXTRAS: Record<string, Def> = {
   star_off: { w: 13, h: 12, draw: (p) => drawStar(p, mix(PAL.ink, PAL.uiYellow, 0.28), null) },
   bubble: { w: 20, h: 13, draw: drawBubble },
   p_dust: { w: 2, h: 2, draw: (p) => p.r(PAL.graniteLight, 0, 0, 2, 2, 0.8) },
-  p_smoke: { w: 3, h: 3, draw: (p) => p.r(PAL.cream, 1, 0, 1, 3, 0.45).r(PAL.cream, 0, 1, 3, 1, 0.45) },
+  p_smoke: { w: 3, h: 3, draw: (p) => p.r(PAL.cream, 0, 0, 3, 3, 0.3).r(PAL.cream, 0, 1, 2, 2, 0.25) },
   p_spark: { w: 2, h: 2, draw: (p) => p.r(PAL.gold, 0, 0, 2, 2).r(PAL.cream, 0, 0, 1, 1) },
   p_splash: { w: 2, h: 2, draw: (p) => p.r(mix(PAL.water, PAL.cream, 0.65), 0, 0, 2, 2) },
   p_glint: { w: 6, h: 1, draw: (p) => p.r(PAL.glint, 0, 0, 6, 1).r(PAL.sun, 2, 0, 2, 1) },

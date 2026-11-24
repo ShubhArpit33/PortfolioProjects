@@ -31,6 +31,10 @@ const FADE_S = 0.25;
 /** Sim seconds between crossing the finish line and the finish screen. */
 const FINISH_SCREEN_DELAY_S = 1.2;
 
+/** After the line the bike stops within this distance, braking at up to FINISH_BRAKE px/s². */
+const FINISH_STOP_PX = 64;
+const FINISH_BRAKE = 1200;
+
 type Phase = 'ride' | 'crash';
 
 export interface GameSnapshot {
@@ -293,6 +297,11 @@ export class GameScene extends Phaser.Scene {
         const x = TERRAIN.surfaceY(b.x) === null ? prev.x : b.x;
         b = { ...createBikeState(x), boost: b.boost };
       }
+      // Pull up inside the gateway instead of rolling out to the end wall (matters after a boosted finish).
+      if (b.grounded) {
+        const cap = Math.sqrt(2 * FINISH_BRAKE * Math.max(0, FINISH.col * TILE + FINISH_STOP_PX - b.x));
+        if (b.v > cap) b = { ...b, v: cap, vx: b.vx * (cap / b.v) };
+      }
       this.bike = b;
       this.finishT += dt;
       if (!this.finishShown && this.finishT >= FINISH_SCREEN_DELAY_S) {
@@ -375,7 +384,7 @@ export class GameScene extends Phaser.Scene {
         this.checkpoint = cp.id;
         cp.setLit(true);
         sfx.play('bell');
-        this.popup('CHECKPOINT', cp.x, cp.y - 58);
+        this.popup('CHECKPOINT', cp.lampX, cp.y - 58);
         if (cp.hint) this.showHint(cp.hint);
       }
     }
@@ -393,7 +402,7 @@ export class GameScene extends Phaser.Scene {
     this.troop.honked(x, CONFIG.honkRange);
     const cowMid = this.cow.x + COW.w / 2;
     if (Math.abs(x - cowMid) <= CONFIG.honkRange) this.cow.honked();
-    this.popup('POM-POM!', x + 8, this.bike.y - 40);
+    this.popups.show('POM-POM!', x + 8, this.bike.y - 40, undefined, undefined, 'honk');
   }
 
   private beginCrash(): void {

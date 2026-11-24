@@ -5,6 +5,7 @@ import { PAL } from '../art/palette';
 import { pixelText } from './text';
 
 interface Popup {
+  key?: string;
   text: Phaser.GameObjects.Text;
   y: number;
   age: number;
@@ -15,9 +16,17 @@ export class Popups {
   private items: Popup[] = [];
   constructor(private scene: Phaser.Scene, private depth: number) {}
 
-  show(text: string, x: number, y: number, colour: number = PAL.uiYellow, life = 0.9): void {
+  /** A popup with a key replaces any live popup with the same key (so repeated honks don't pile up). */
+  show(text: string, x: number, y: number, colour: number = PAL.uiYellow, life = 0.9, key?: string): void {
+    if (key !== undefined) {
+      this.items = this.items.filter((p) => {
+        if (p.key !== key) return true;
+        p.text.destroy();
+        return false;
+      });
+    }
     const t = pixelText(this.scene, Math.round(x), Math.round(y), text, colour).setOrigin(0.5, 1).setDepth(this.depth);
-    this.items.push({ text: t, y, age: 0, life });
+    this.items.push({ key, text: t, y, age: 0, life });
   }
 
   update(dt: number): void {

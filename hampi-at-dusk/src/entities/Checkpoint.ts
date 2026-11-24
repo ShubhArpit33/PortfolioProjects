@@ -3,10 +3,14 @@ import Phaser from 'phaser';
 import { checkpointX, type Checkpoint as CheckpointDef } from '../level/levelData';
 import { TERRAIN } from '../level/terrain';
 
+const LAMP_OFFSET_X = 26;
+
 export class Checkpoint {
   readonly id: number;
   readonly x: number;
   readonly y: number;
+  /** where the lamp is drawn */
+  readonly lampX: number;
   readonly hint: string | undefined;
   lit = false;
   private sprite: Phaser.GameObjects.Sprite;
@@ -17,12 +21,15 @@ export class Checkpoint {
     this.hint = def.hint;
     this.x = checkpointX(def);
     this.y = TERRAIN.surfaceY(this.x) ?? 222;
+    // The lamp stands just behind the activation / respawn x so a respawned bike doesn't cover it.
+    const lampX = this.x - LAMP_OFFSET_X;
+    this.lampX = lampX;
     this.glows = [
-      scene.add.image(this.x, this.y - 46, 'glow'),
-      scene.add.image(this.x, this.y - 26, 'glow').setScale(1, 1.5),
+      scene.add.image(lampX, this.y - 46, 'glow'),
+      scene.add.image(lampX, this.y - 26, 'glow').setScale(1, 1.5),
     ];
     for (const g of this.glows) g.setDepth(depth).setVisible(false);
-    this.sprite = scene.add.sprite(this.x, this.y, 'deepastambha', 0).setOrigin(0.5, 1).setDepth(depth + 0.1);
+    this.sprite = scene.add.sprite(lampX, this.y, 'deepastambha', 0).setOrigin(0.5, 1).setDepth(depth + 0.1);
   }
 
   setLit(lit: boolean): void {
