@@ -3,17 +3,36 @@
 
 import Phaser from 'phaser';
 import { PAL, css, mix, rng } from '../art/palette';
-import { STAGE_WIDTH, WATER_LINE_Y } from './levelData';
+import { BASELINE_Y, BONUS, BOULDER, STAGE_WIDTH, TILE, WATER_LINE_Y } from './levelData';
 import { TERRAIN, type Terrain } from './terrain';
 
 export const CHUNK_W = 960;
 const H = 270;
 
+/**
+ * The drawn top of the ground at a world x, or null over water. A riser's slot (v1.7) is dry: it is drawn
+ * as the lower step's stone carried up to the riser's face, in shadow.
+ */
 function surfaceRow(terrain: Terrain, wx: number): number | null {
   // Past either end of the stage the ground simply continues (no exposed wall at the edges).
   const x = Math.min(terrain.width - 1, Math.max(0, wx));
   const y = terrain.surfaceY(x + 0.5);
-  return y === null ? null : Math.round(y);
+  if (y !== null) return Math.round(y);
+  const gap = terrain.gapAt(x + 0.5);
+  return gap !== null && gap.step ? Math.round(gap.nearY) : null;
+}
+
+/**
+ * The Temple Steps are dressed stone (courses of cut blocks, a pale worn lip, no moss) from a little
+ * before the first riser to a little past the last drop: [x0, x1) in world px, or null without risers.
+ */
+export function dressedSpan(terrain: Terrain = TERRAIN): { x0: number; x1: number } | null {
+  const steps = terrain.gaps.filter((g) => g.step);
+  if (steps.length === 0) return null;
+  const last = steps[steps.length - 1]!;
+  const drops = terrain.cliffs.filter((c) => c.x > last.x1);
+  const end = drops.length > 0 ? drops[drops.length - 1]!.x : last.x1;
+  return { x0: steps[0]!.x0 - 2 * TILE, x1: end + 2 * TILE };
 }
 
 function bakeChunk(scene: Phaser.Scene, key: string, x0: number, terrain: Terrain): void {
@@ -32,6 +51,8 @@ function bakeChunk(scene: Phaser.Scene, key: string, x0: number, terrain: Terrai
 
   const rows: Array<number | null> = [];
   for (let x = 0; x < CHUNK_W; x++) rows.push(surfaceRow(terrain, x0 + x));
+  const dressed = dressedSpan(terrain);
+  const LIP = mix(PAL.graniteLight, PAL.cream, 0.35);
 
   for (let x = 0; x < CHUNK_W; x++) {
     const sy = rows[x]!;
@@ -60,6 +81,27 @@ function bakeChunk(scene: Phaser.Scene, key: string, x0: number, terrain: Terrai
       const n = surfaceRow(terrain, x0 + x + d);
       const bottom = n === null ? H : n;
       if (bottom - sy > 6) rect(PAL.ink, Math.abs(d) === 1 ? 0.45 : 0.22, x, sy + 2, 1, bottom - sy - 2);
+    }
+    const wx = x0 + x;
+    if (dressed !== null && wx >= dressed.x0 && wx < dressed.x1) {
+      // Dressed stone: courses 8 px deep with staggered joints, and a pale worn lip instead of moss.
+      rect(PAL.graniteLight, 0.16, x, sy, 1, 44);
+      for (let c = 0; c < 6; c++) {
+        const cy = sy + 4 + c * 8;
+        rect(PAL.ink, c === 0 ? 0.3 : 0.2, x, cy + 7, 1, 1);
+        if ((wx + (c % 2 === 0 ? 0 : 12)) % 24 === 0) rect(PAL.ink, 0.2, x, cy, 1, 7);
+      }
+      const slot = terrain.gapAt(wx + 0.5) !== null;
+      if (slot) {
+        // The foot of a riser: bare stone in the shadow of the step above it.
+        rect(PAL.ink, 0.5, x, sy, 1, 3);
+        rect(PAL.ink, 0.3, x, sy + 3, 1, 5);
+      } else {
+        rect(LIP, 1, x, sy, 1, 1);
+        rect(PAL.graniteLight, 1, x, sy + 1, 1, 1);
+        rect(PAL.ink, 0.28, x, sy + 2, 1, 1);
+      }
+      continue;
     }
     // 2 px moss line with the odd drip
     rect(PAL.mossLight, 1, x, sy, 1, 1);
@@ -109,4 +151,23 @@ export function addTerrain(scene: Phaser.Scene, depth: number): void {
   for (let i = 0; i < chunkCount; i++) {
     scene.add.image(i * CHUNK_W, 0, `terrain_${i}`).setOrigin(0, 0).setDepth(depth);
   }
+}
+
+/**
+ * Decoration that stands on the terrain (v1.7), all behind every entity and in a dark, low-contrast tone:
+ * ruins along the Ruins Road breather, and the temple doorway on the terrace that the boulder rolls out of.
+ */
+export function addDecor(scene: Phaser.Scene, depth: number): void {
+  const place = (key: string, col: number, alpha = 0.85): void => {
+    const x = col * TILE;
+    const y = TERRAIN.surfaceY(x + 0.5) ?? BASELINE_Y;
+    scene.add.image(x, y + 1, key).setOrigin(0, 1).setDepth(depth).setAlpha(alpha);
+  };
+  // Ruins Road: a broken hall before the bonus ramp, then more along the trail out after the drop.
+  place('ruins_a', BONUS.rampCol - 16);
+  place('ruins_b', BONUS.cliffCol + 6);
+  place('ruins_a', BONUS.cliffCol + 22);
+  place('ruins_b', BONUS.cliffCol + 37);
+  // The temple doorway stands where the boulder starts (it is 96 px wide: three columns either side).
+  place('temple_door', BOULDER.spawnCol - 3, 1);
 }

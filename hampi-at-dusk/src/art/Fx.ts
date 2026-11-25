@@ -1,4 +1,5 @@
-// Game-feel effects (v1.3): landing dust puffs, diya sparkles and boost speed streaks.
+// Game-feel effects (v1.3): landing dust puffs, diya sparkles and boost speed streaks;
+// the rolling boulder's dust and its break-up (v1.7).
 // Everything is pooled (no allocations per frame), advanced by the frame's game-time delta, and uses an
 // integer hash instead of Math.random, so it behaves the same under manual stepping.
 
@@ -74,6 +75,30 @@ export class Fx {
       const a = turn + (i / n) * Math.PI * 2;
       const speed = 48 + 30 * this.rand();
       this.emit('p_spark', x, y, Math.cos(a) * speed, Math.sin(a) * speed - 12, 110, 0.3 + 0.12 * this.rand(), 1);
+    }
+  }
+
+  /** A puff of dust behind the rolling boulder (it rolls left, so the dust trails to the right). */
+  rollDust(x: number, y: number): void {
+    this.emit(
+      this.rand() < 0.5 ? 'p_puff' : 'p_dust',
+      x + 4 * this.rand(), y - 1 - 3 * this.rand(),
+      14 + 26 * this.rand(), -(10 + 24 * this.rand()),
+      120, 0.3 + 0.25 * this.rand(), 0.8,
+    );
+  }
+
+  /** The boulder breaking up at the top of the steps: chips of rock thrown up and out, and a cloud of dust. */
+  rockBurst(x: number, y: number): void {
+    for (let i = 0; i < 10; i++) {
+      const a = Math.PI * (0.15 + 0.7 * this.rand());
+      const speed = 60 + 80 * this.rand();
+      this.emit('p_rock', x + 10 * (this.rand() - 0.5), y + 8 * (this.rand() - 0.5),
+        Math.cos(a) * speed, -Math.sin(a) * speed, 420, 0.45 + 0.25 * this.rand(), 1);
+    }
+    for (let i = 0; i < 8; i++) {
+      this.emit('p_puff', x + 16 * (this.rand() - 0.5), y + 6 + 6 * this.rand(),
+        50 * (this.rand() - 0.5), -(6 + 22 * this.rand()), 30, 0.45 + 0.3 * this.rand(), 0.75);
     }
   }
 

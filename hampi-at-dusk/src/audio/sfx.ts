@@ -7,7 +7,8 @@
 import { loadPrefs, savePrefs } from '../progress';
 import { attachMusic, duckMusic, makeNoise, setMusicOn } from './music';
 
-export type SfxName = 'honk' | 'hop' | 'thud' | 'clean' | 'diya' | 'crash' | 'splash' | 'bell' | 'flip';
+export type SfxName =
+  | 'honk' | 'hop' | 'thud' | 'clean' | 'diya' | 'crash' | 'splash' | 'bell' | 'flip' | 'rumble' | 'crumble';
 
 interface Engine {
   body: OscillatorNode;
@@ -214,6 +215,17 @@ export function play(name: SfxName): void {
       tone('triangle', 880, 880, 0.1, 0.2, 0.18);
       tone('triangle', 1319, 1319, 0.12, 0.2, 0.26);
       tone('square', 1760, 1760, 0.3, 0.06, 0.34);
+      break;
+    case 'rumble': // the boulder starts to roll: a low, long growl with a knock at the front of it
+      noise(1.5, 0.5, 'lowpass', 220, 70);
+      tone('sine', 58, 40, 1.4, 0.34);
+      tone('triangle', 92, 55, 0.5, 0.2);
+      noise(0.12, 0.3, 'lowpass', 700, 200);
+      break;
+    case 'crumble': // ... and breaks up on the steps
+      noise(0.5, 0.4, 'lowpass', 1600, 180);
+      tone('sine', 110, 48, 0.3, 0.3);
+      noise(0.25, 0.18, 'bandpass', 2200, 900, 0.1);
       break;
     case 'bell':
       tone('sine', 660, 660, 0.9, 0.22);

@@ -13,8 +13,10 @@ import { SHOTS_DIR, boot, expect, getLevel, getState, startAt, test } from './he
 const SCALE = 4;
 test.use({ viewport: { width: 480 * SCALE, height: 270 * SCALE } });
 
-const ROCKS_CP = 5;
-const RIVER_CP = 6;
+/** Checkpoints (v1.7 numbering): Fallen Pavilion, Hemakuta Rocks, the river. */
+const PAVILION_CP = 4;
+const ROCKS_CP = 8;
+const RIVER_CP = 11;
 
 /** A crop of the screen around the bike, w x h game pixels, at 4 screen pixels per game pixel. */
 async function bikeShot(page: Page, name: string, w = 72, h = 52, lift = 0): Promise<void> {
@@ -53,7 +55,7 @@ for (const bike of BIKE_ORDER) test(`${BIKES[bike].name} sprite: standing, ridin
   await bikeShot(page, `bike-${id}-4x-standing`);
 
   // Riding flat at top speed.
-  await run(page, { throttle: true }, 330);
+  await run(page, { throttle: true }, 300); // (short of the log on the Warm-up Road)
   s = await getState(page);
   expect(s.v).toBe(cfg.topSpeed);
   await bikeShot(page, `bike-${id}-4x`);
@@ -98,7 +100,7 @@ for (const bike of BIKE_ORDER) test(`${BIKES[bike].name} sprite: standing, ridin
   await fullShot(page, `flip-landed-${id}-4x`);
 
   // A crash: straight into the first pillar. The bike tumbles back, then is at the checkpoint again.
-  await startAt(page, 2, id);
+  await startAt(page, PAVILION_CP, id);
   const crashed = await page.evaluate(() => {
     const t = window.__test!;
     t.setInput({ throttle: true });
@@ -112,7 +114,7 @@ for (const bike of BIKE_ORDER) test(`${BIKES[bike].name} sprite: standing, ridin
   await fullShot(page, `crash-${id}-4x`);
   await run(page, {}, 150); // respawn delay + fade
   s = await getState(page);
-  expect([s.crashed, s.checkpoint, s.v, s.boost]).toEqual([false, 2, 0, 1]);
+  expect([s.crashed, s.checkpoint, s.v, s.boost]).toEqual([false, PAVILION_CP, 0, 1]);
   await run(page, {}, 40);
   await bikeShot(page, `bike-${id}-4x-respawn`);
 });

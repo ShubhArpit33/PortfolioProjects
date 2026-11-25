@@ -406,6 +406,29 @@ export function crash(s: BikeState, cause: CrashCause): BikeState {
   return s.crashed !== null ? s : { ...s, crashed: cause };
 }
 
+/**
+ * A stumble (a monkey, the log): the bike keeps going at `factor` of its speed. Never a crash.
+ */
+export function stumble(s: BikeState, factor: number): BikeState {
+  return { ...s, v: s.v * factor, vx: s.vx * factor };
+}
+
+/**
+ * The no-crash zone's rule (v1.7, the warm-up): a landing that step() has just judged a crash becomes a
+ * wobble instead. The bike is stood upright on the surface and keeps `factor` of its forward speed.
+ * Anything else (a state that is not a landing crash) is returned unchanged.
+ */
+export function wobbleLanding(s: BikeState, factor: number, terrain: Terrain = TERRAIN): BikeState {
+  if (s.crashed !== 'landing') return s;
+  const slope = terrain.slopeAngle(s.x);
+  const th = slope * DEG;
+  const v = Math.max(0, s.vx) * factor;
+  return {
+    ...s, crashed: null, grounded: true, angle: slope, v, vx: v * Math.cos(th), vy: -v * Math.sin(th),
+    airTime: 0, coyote: 0, evLanding: 'safe',
+  };
+}
+
 /** Diya pickup bonus applied to the meter. */
 export function addBoost(s: BikeState, amount: number): BikeState {
   return { ...s, boost: Math.min(1, Math.max(0, s.boost + amount)) };

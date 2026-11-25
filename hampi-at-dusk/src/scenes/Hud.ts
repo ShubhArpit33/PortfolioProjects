@@ -1,4 +1,5 @@
-// HUD: a separate UI scene that never scrolls. Timer, diyas, boost bar, crash count, the cp4 hint,
+// HUD: a separate UI scene that never scrolls. Timer, diyas, boost bar, crash count, the checkpoint hint,
+// the tutorial prompt (v1.7),
 // the mute tag, the bike's name, the pause button and the pause menu (RESUME / RESTART / CHANGE BIKE / MAIN MENU).
 import Phaser from 'phaser';
 import { PAL, mix } from '../art/palette';
@@ -13,6 +14,8 @@ const BAR = { x: 412, y: 6, w: 62, h: 9 };
 /** Pause button: top centre, clear of the timer (left) and BOOST / CRASHES (right). */
 const PAUSE_BTN = { x: 240, y: 11, w: 15, h: 11, hitW: 30, hitH: 22 };
 const PANEL = { x: 128, y: 68, w: 224, h: 134 };
+/** Top of the tutorial prompt's text (the checkpoint hint is at y 52). */
+const PROMPT_Y = 72;
 
 export class HudScene extends Phaser.Scene {
   private timer!: Phaser.GameObjects.Text;
@@ -21,6 +24,8 @@ export class HudScene extends Phaser.Scene {
   private flips!: Phaser.GameObjects.Text;
   private best!: Phaser.GameObjects.Text;
   private hint!: Phaser.GameObjects.Text;
+  private prompt!: Phaser.GameObjects.Text;
+  private promptBack!: Phaser.GameObjects.Graphics;
   private mute!: Phaser.GameObjects.Text;
   private bikeName!: Phaser.GameObjects.Text;
   private bar!: Phaser.GameObjects.Graphics;
@@ -46,6 +51,9 @@ export class HudScene extends Phaser.Scene {
     this.best = pixelText(this, 6, 30, '', PAL.graniteLight).setVisible(false);
     this.flips = pixelText(this, 474, 30, '', PAL.uiYellow).setOrigin(1, 0).setVisible(false);
     this.hint = pixelText(this, 240, 52, '', PAL.uiYellow).setOrigin(0.5, 0).setVisible(false);
+    // Tutorial prompt (v1.7): steady, on a dim plate, below the blinking checkpoint hint.
+    this.promptBack = this.add.graphics().setVisible(false);
+    this.prompt = pixelText(this, 240, PROMPT_Y, '', PAL.cream).setOrigin(0.5, 0).setVisible(false);
     this.mute = pixelText(this, 474, 256, '', PAL.cream).setOrigin(1, 0).setVisible(false);
 
     const game = this.scene.get('Game') as GameScene;
@@ -127,6 +135,22 @@ export class HudScene extends Phaser.Scene {
     const showHint = game.hintT > 0 && !game.finished;
     this.hint.setVisible(showHint && Math.floor(game.hintT * 4) % 4 !== 0);
     if (showHint && this.hint.text !== game.hintText) this.hint.setText(game.hintText);
+
+    const prompt = game.paused ? '' : game.promptText;
+    if (prompt !== this.prompt.text) {
+      this.prompt.setText(prompt);
+      const g = this.promptBack;
+      g.clear();
+      if (prompt !== '') {
+        // a plate sized to the text: ink at 60%, corners notched like the pixel frames
+        const w = prompt.length * 8 + 12;
+        const x = 240 - Math.floor(w / 2);
+        g.fillStyle(PAL.ink, 0.6).fillRect(x + 2, PROMPT_Y - 5, w - 4, 17).fillRect(x, PROMPT_Y - 3, w, 13);
+        g.fillStyle(PAL.uiYellow, 1).fillRect(x + 2, PROMPT_Y + 11, w - 4, 1);
+      }
+    }
+    this.prompt.setVisible(prompt !== '');
+    this.promptBack.setVisible(prompt !== '');
 
     const tag = soundLabel();
     if (tag !== this.mute.text) this.mute.setText(tag);

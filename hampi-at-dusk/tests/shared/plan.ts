@@ -7,10 +7,15 @@ import type { LevelData } from '../../src/level/levelData';
 export interface Span { x0: number; x1: number }
 
 export interface Layout {
-  gaps: Span[];       // canal gaps
+  gaps: Span[];       // every gap a hop has to clear, in order: canals, the kicker tank, the risers
+  canals: Span[];
+  kicker: Span;       // the tank under the kicker (found by its flag)
+  steps: Span[];      // the riser slots of the Temple Steps
   river: Span;
   rampStartX: number; // start of the noHop river ramp
-  boxes: Span[];      // cow + solid obstacles (x extent of the hitbox)
+  boxes: Span[];      // cow + obstacles, the log included (x extent of the hitbox)
+  /** the boulder: where it starts rolling, where it appears, its speed and width */
+  boulder: { triggerX: number; spawnX: number; speed: number; w: number };
   cpX: number[];
   finishX: number;
 }
@@ -18,6 +23,9 @@ export interface Layout {
 export function layout(level: LevelData): Layout {
   const T = level.tile;
   const gaps: Span[] = [];
+  const canals: Span[] = [];
+  const steps: Span[] = [];
+  let kicker: Span | null = null;
   let river: Span | null = null;
   let rampStartX = 0;
   let col = 0;
@@ -27,7 +35,12 @@ export function layout(level: LevelData): Layout {
       const span = { x0: col * T, x1: (col + seg.cols) * T };
       if (seg.kind === 'gap') {
         if (seg.river) river = span;
-        else gaps.push(span);
+        else {
+          gaps.push(span);
+          if (seg.kicker) kicker = span;
+          else if (seg.step) steps.push(span);
+          else canals.push(span);
+        }
       } else if (seg.noHop) {
         rampStartX = span.x0;
       }
@@ -35,12 +48,15 @@ export function layout(level: LevelData): Layout {
     }
   }
   if (!river) throw new Error('levelData has no river gap');
+  if (!kicker) throw new Error('levelData has no kicker gap');
   const boxes: Span[] = [
     { x0: level.cow.col * T, x1: level.cow.col * T + level.cow.w },
     ...level.obstacles.map((o) => ({ x0: o.col * T, x1: (o.col + o.wCols) * T })),
   ];
+  const b = level.boulder;
   return {
-    gaps, river, rampStartX, boxes,
+    gaps, canals, kicker, steps, river, rampStartX, boxes,
+    boulder: { triggerX: b.triggerCol * T, spawnX: b.spawnCol * T, speed: b.speed, w: b.hitW },
     cpX: level.checkpoints.map((c) => c.col * T + T / 2),
     finishX: level.finish.col * T,
   };
@@ -58,7 +74,17 @@ export interface HopPlan {
 }
 
 /**
- * One hop per hazard (canal gap, cow, pillar, cart), centred over it. If a hop would come down
+ * Where a bike riding at top speed from the boulder's trigger meets it (the bike's x when the two
+ * centres coincide). The boulder is planned as one more hazard, standing at this point.
+ */
+export function boulderMeetX(lay: Layout, cfg: Config = CONFIG): number {
+  const b = lay.boulder;
+  const d = b.spawnX + b.w / 2 - b.triggerX;
+  return b.triggerX + (d * cfg.topSpeed) / (cfg.topSpeed + b.speed);
+}
+
+/**
+ * One hop per hazard (canal gap, riser, cow, log, pillar, cart, the boulder's meeting point), centred over it. If a hop would come down
  * too late to take off for the next hazard, both are cleared with a single hop centred over the pair.
  *
  * A bike whose hops are long enough to chain into each other (the Ton-Up: 214 px) has no centred plan.
@@ -69,9 +95,11 @@ export interface HopPlan {
 export function planHopsFor(lay: Layout, level: LevelData, cfg: Config = CONFIG): HopPlan {
   const HALF_BIKE = cfg.bikeHitW / 2;
   const HOP_LEN = hopLength(cfg);
+  const meet = boulderMeetX(lay, cfg);
   const hazards: Span[] = [
     ...lay.gaps,
     ...lay.boxes.map((b) => ({ x0: b.x0 - HALF_BIKE, x1: b.x1 + HALF_BIKE })),
+    { x0: meet - lay.boulder.w / 2 - HALF_BIKE, x1: meet + lay.boulder.w / 2 + HALF_BIKE },
   ].sort((a, b) => a.x0 - b.x0);
 
   let hops: number[] = [];
@@ -120,7 +148,7 @@ export function planHopsFor(lay: Layout, level: LevelData, cfg: Config = CONFIG)
   }
 
   // Diyas floating 2+ tiles above solid ground that no hazard hop passes through need their own
-  // hop (x276 and x437, on up-ramps). Diyas just past a cliff are collected by rolling off it.
+  // hop (on up-ramps: the Boulder Field's, the bonus ramp's, the second roller's). Diyas just past a cliff are collected by rolling off it.
   const T = level.tile;
   const heights = columnHeights(level);
   let lastDiyaHop = -Infinity;

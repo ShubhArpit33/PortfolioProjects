@@ -33,17 +33,20 @@ const FLOCKS: Flock[] = [
   { y: 86, speed: 9, lane: 1100, offset: 640, shape: LOOSE },
   { y: 142, speed: -11, lane: 1300, offset: 900, shape: LOOSE.slice(0, 3) },
 ];
-/** Birds thin out as dusk deepens toward the end of the stage; bats take over. */
-const BIRDS_FADE = [6200, 7400] as const;
-const BATS_FADE = [5300, 6500] as const;
+/**
+ * Birds thin out as dusk deepens toward the end of the stage; bats take over. (World x, v1.7 layout: the
+ * change happens along the Mandapa Run and the Hemakuta Rocks, as it did before the stage grew.)
+ */
+const BIRDS_FADE = [9464, 10664] as const;
+const BATS_FADE = [8564, 9764] as const;
 const BAT_COUNT = 6;
 
 // --- Fireflies: one candidate per cell of a slow layer just behind the road. -------------------------
 const FLY_SCROLL = 0.8;
 const FLY_CELL = 36;
 const FLY_POOL = Math.ceil(VIEW_W / FLY_CELL) + 2;
-/** World x ranges where fireflies gather (the canals and the river), and how likely a cell holds one. */
-const FLY_ZONES: ReadonlyArray<readonly [number, number, number]> = [[900, 2300, 0.9], [7300, 7700, 0.75], [8170, 9220, 0.75]];
+/** World x ranges where fireflies gather (the canals, the kicker's tank and the river), and how likely a cell holds one. */
+const FLY_ZONES: ReadonlyArray<readonly [number, number, number]> = [[2820, 4220, 0.9], [10564, 10964, 0.75], [13290, 14340, 0.75]];
 const FLY_BASE = 0.22;
 
 const WISP_COUNT = 7;

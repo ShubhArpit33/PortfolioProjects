@@ -1,17 +1,20 @@
 // The bot run (GAME_SPEC.md section 9, criteria 2, 3 and 9), then the replay loop on the same page:
 // best time + medal + ghost saved at the line, R to ride again, the ghost of the first run, G to hide it.
 // Starts from the title with a real Enter key press, then plays with __test.setInput / __test.step only.
+// v1.7: the 900-column stage. The first run also shows the tutorial prompts; finishing it switches them off.
 
-import { BIKES, BIKE_ORDER, DEFAULT_BIKE } from '../../src/bike/bikes';
-import { GHOST_SAMPLE_STEPS, LEGACY_BEST_KEY, bestKey } from '../../src/progress';
+import { BIKES, BIKE_ORDER, BOT_RUN_MS, DEFAULT_BIKE } from '../../src/bike/bikes';
+import { TERRAIN } from '../../src/level/terrain';
+import { GHOST_SAMPLE_STEPS, LEGACY_BEST_KEY, PREFS_KEY, bestKey } from '../../src/progress';
+import { boulderMeetX } from '../shared/plan';
 import { advance, planFor, resetBot } from './bot';
 import { boot, expect, getLevel, getState, rideFromTitle, shot as saveShot, test } from './helpers';
 
 /** The bot's measured clean run per bike (ms): a change in feel shows up here first. */
-const EXPECTED_MS = { tonup: 32_058, daybreak: 38_125, sundowner: 43_992 } as const;
+const EXPECTED_MS = BOT_RUN_MS;
 
-for (const bike of BIKE_ORDER) test(`bot on the ${BIKES[bike].name}: full run from the title - 0 crashes, all 30 diyas, gold; then best, ghost and quick restart`, async ({ page }) => {
-  test.setTimeout(180_000);
+for (const bike of BIKE_ORDER) test(`bot on the ${BIKES[bike].name}: full run from the title - 0 crashes, all 56 diyas, gold; then best, ghost and quick restart`, async ({ page }) => {
+  test.setTimeout(300_000);
   const def = BIKES[bike];
   const CONFIG = def.cfg;
   const MEDAL_TIMES_MS = def.medalsMs;
@@ -23,9 +26,13 @@ for (const bike of BIKE_ORDER) test(`bot on the ${BIKES[bike].name}: full run fr
   const { plan, lay, riverCp, kickerGap, planner } = planFor(level, CONFIG);
   console.log(`[bot ${bike}] ${planner} planner`);
   const T = level.tile;
-  const sectionMid = (id: number): number => {
-    const s = level.sections.find((x) => x.id === id)!;
+  const sectionMid = (name: string): number => {
+    const s = level.sections.find((x) => x.name === name)!;
     return ((s.startCol + s.endCol + 1) / 2) * T;
+  };
+  const boxOf = (type: string, nth: number): { x0: number; x1: number } => {
+    const o = level.obstacles.filter((x) => x.type === type)[nth]!;
+    return { x0: o.col * T, x1: (o.col + o.wCols) * T };
   };
 
   console.log(`[bot ${bike}] hops at x = ${plan.hops.map((x) => x.toFixed(0)).join(', ')}`);
@@ -39,29 +46,63 @@ for (const bike of BIKE_ORDER) test(`bot on the ${BIKES[bike].name}: full run fr
   expect((await getState(page)).bike).toBe(bike);
 
   // --- the ride, stopping for screenshots ---
-  let s = await advance(page, plan, sectionMid(1) + 120); // the cow comes into view
-  await shot(page, 'section1');
-  s = await advance(page, plan, (lay.gaps[2]!.x0 + lay.gaps[2]!.x1) / 2); // mid-hop over the widest early canal
-  await shot(page, 'section2');
-  s = await advance(page, plan, plan.honkFrom + 110); // monkeys leaping away from the horn
-  await shot(page, 'section3-monkeys');
-  s = await advance(page, plan, lay.boxes[3]!.x0); // hopping the bullock cart
-  await shot(page, 'section3');
-  s = await advance(page, plan, sectionMid(4) - 60); // boulder field: top of the big ramp, cliff ahead
-  await shot(page, 'section4');
-  s = await advance(page, plan, lay.boxes[6]!.x0 + 24); // mandapa run: over the second pillar on the plinth
-  await shot(page, 'section5-mandapa');
-  s = await advance(page, plan, kickerGap.x0 - 23 * T); // rocks: top of the hop line off the second roller
+  let s = await getState(page);
+  const stop = async (x: number, name: string): Promise<void> => {
+    s = await advance(page, plan, x);
+    await shot(page, name);
+  };
+
+  // Warm-up Road: no full run has been finished yet, so the four tutorial prompts show in turn.
+  expect(s.prompt).toBe('HOLD RIGHT TO RIDE');
+  await stop(10 * T, 'warmup-prompt-ride');
+  expect(s.prompt).toBe('HOLD RIGHT TO RIDE');
+  await stop(boxOf('log', 0).x0 + 8, 'warmup-log-hop'); // in the air over the log
+  expect(s.grounded, 'airborne over the log').toBe(false);
+  expect(s.prompt).toBe('SPACE - HOP THE LOG');
+  await stop(62 * T, 'warmup-boost-strip'); // the diya line along the boost strip (the bot saves its boost for the river)
+  expect(s.prompt).toBe('HOLD SHIFT - BOOST');
+  await stop(89 * T, 'warmup-roller'); // the crest of the roller
+  expect(s.prompt).toBe('IN THE AIR: UP / DOWN TO TILT');
+  expect([s.stumbles, s.wobbles, s.diyas]).toEqual([0, 0, 10]);
+
+  await stop(sectionMid('Bazaar Street') + 120, 'bazaar'); // the cow comes into view
+  expect(s.prompt).toBe('');
+  await stop((lay.canals[2]!.x0 + lay.canals[2]!.x1) / 2, 'canals'); // mid-hop over the widest early canal
+  await stop(lay.cpX[3]! + 56, 'canals-cp3'); // v1.7: the checkpoint inside the canal run, just lit
+  expect(s.checkpoint).toBe(3);
+  await stop(plan.honkFrom + 110, 'pavilion-monkeys'); // monkeys leaping away from the horn
+  await stop(boxOf('cart', 0).x0, 'pavilion-cart'); // hopping the bullock cart
+  await stop(sectionMid('Boulder Field') - 60, 'boulder-field'); // top of the big ramp, cliff ahead
+  await stop(level.bonus.lipCol * T - 24, 'ruins-bonus-ramp'); // v1.7 breather: rolling up the bonus ramp, ruins behind
+  await stop((level.bonus.cliffCol + 24) * T, 'ruins-trail'); // the diya trail out, past the shrine
+  expect(s.checkpoint).toBe(6);
+  await stop(boxOf('pillar', 4).x0 + 24, 'mandapa'); // mandapa run: over the second pillar on the plinth
+  await stop(kickerGap.x0 - 23 * T, 'rocks'); // rocks: top of the hop line off the second roller
   if (bike === DEFAULT_BIKE) expect(s.grounded, 'airborne on the roller hop line').toBe(false);
-  await shot(page, 'section6-rocks');
-  s = await advance(page, plan, (kickerGap.x0 + kickerGap.x1) / 2); // big air off the kicker, over the tank
+  await stop((kickerGap.x0 + kickerGap.x1) / 2, 'kicker'); // big air off the kicker, over the tank
   expect(s.grounded, 'airborne over the tank').toBe(false);
-  await shot(page, 'section6-kicker');
-  s = await advance(page, plan, lay.cpX[riverCp]! + 150); // river checkpoint lit, boost hint, run-up
-  await shot(page, 'section7');
-  s = await advance(page, plan, (lay.river.x0 + lay.river.x1) / 2);
+
+  // Temple Steps (v1.7): a hop up each riser, the boulder with its "!", a hop over it, the stairs down.
+  for (let i = 0; i < 3; i++) {
+    await stop(lay.steps[i]!.x0 + 8, `steps-riser${i + 1}`);
+    expect(s.grounded, `airborne over riser ${i + 1}`).toBe(false);
+  }
+  expect(s.boulder.phase).toBe('hidden');
+  await stop(lay.boulder.triggerX + 16, 'boulder-cue'); // it has just started: still off screen, the "!" at the right edge
+  expect(s.boulder.phase).toBe('roll');
+  expect(s.checkpoint).toBe(10);
+  await stop(lay.boulder.triggerX + 150, 'boulder-on-screen'); // rolling out of the temple doorway
+  await stop(boulderMeetX(lay, CONFIG), 'boulder-hop'); // right over it
+  expect(s.grounded, 'airborne over the boulder').toBe(false);
+  expect(Math.abs(s.boulder.x + level.boulder.hitW / 2 - s.x), 'the boulder is under the bike').toBeLessThan(6);
+  const stairs = TERRAIN.cliffs.filter((c) => c.x > lay.steps[2]!.x1);
+  expect(stairs).toHaveLength(3);
+  await stop(stairs[1]!.x + 8, 'stairs-down'); // rolling down the three drops
+  expect(s.crashes).toBe(0);
+
+  await stop(lay.cpX[riverCp]! + 150, 'river-run-up'); // river checkpoint lit, boost hint, run-up
+  await stop((lay.river.x0 + lay.river.x1) / 2, 'river-midair');
   expect(s.grounded, 'airborne over the middle of the river').toBe(false);
-  await shot(page, 'river-midair');
 
   s = await advance(page, plan, Infinity);
   expect(s.finished).toBe(true);
@@ -82,8 +123,9 @@ for (const bike of BIKE_ORDER) test(`bot on the ${BIKES[bike].name}: full run fr
   expect(s.finished).toBe(true);
   expect(s.crashed).toBe(false);
   expect(s.crashes).toBe(0);
-  expect(level.diyas.length).toBe(30);
+  expect(level.diyas.length).toBe(56);
   expect(s.diyas).toBe(level.diyas.length);
+  expect([s.stumbles, s.wobbles, s.flips]).toEqual([0, 0, 0]);
   expect(s.timeMs).toBeLessThan(120_000);
   expect(s.timeMs, 'the timer stops at the finish line').toBe(final.timeMs);
 
@@ -111,6 +153,8 @@ for (const bike of BIKE_ORDER) test(`bot on the ${BIKES[bike].name}: full run fr
   expect(fin.medal).toBe('gold');
   expect(fin.next).toBeNull();
   expect(fin.prevBest).toEqual({ timeMs: null, diyas: null, flips: null });
+  // One full run finished: the tutorial is done, and remembered.
+  expect(JSON.parse((await page.evaluate((k) => window.localStorage.getItem(k), PREFS_KEY))!).tutorialDone).toBe(true);
   expect([fin.newTime, fin.newDiyas, fin.newFlips, fin.saved]).toEqual([true, true, true, true]);
   const stored = await page.evaluate((k) => JSON.parse(window.localStorage.getItem(k) ?? 'null'), BEST_KEY);
   expect(stored.timeMs).toBe(s.timeMs);
@@ -136,6 +180,8 @@ for (const bike of BIKE_ORDER) test(`bot on the ${BIKES[bike].name}: full run fr
   });
   let r = await getState(page);
   expect([r.crashes, r.diyas, r.flips, r.checkpoint]).toEqual([0, 0, 0, 0]);
+  expect(r.prompt, 'no tutorial prompt on the second run').toBe('');
+  expect(r.boulder.phase, 'the boulder is back in its doorway').toBe('hidden');
 
   // Dawdle for half a second: the ghost pulls ahead.
   await page.evaluate(() => { window.__test!.setInput({}); window.__test!.step(60); });
@@ -190,4 +236,8 @@ for (const bike of BIKE_ORDER) test(`bot on the ${BIKES[bike].name}: full run fr
   await boot(page);
   await page.evaluate(() => window.__test!.step(40));
   await shot(page, 'title-best');
+  // ... and the tutorial stays done on the next visit.
+  await rideFromTitle(page, bike);
+  r = await getState(page);
+  expect([r.timeMs, r.prompt]).toEqual([0, '']);
 });

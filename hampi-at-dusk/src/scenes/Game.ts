@@ -8,13 +8,14 @@ import { PAL } from '../art/palette';
 import { setMusicIntensity, tickMusic } from '../audio/music';
 import * as sfx from '../audio/sfx';
 import {
-  FIXED_DT, aabbOverlap, addBoost, bikeAABB, crash, createBikeState, hitsObstacle, step, touchesDiya,
-  type BikeState, type CrashCause,
+  FIXED_DT, aabbOverlap, addBoost, bikeAABB, crash, createBikeState, hitsObstacle, step, stumble, touchesDiya,
+  wobbleLanding, type BikeState, type CrashCause,
 } from '../bike/BikePhysics';
 import { BikeView, GhostBike } from '../bike/BikeView';
 import { BIKES, isBikeId, type BikeDef, type BikeId } from '../bike/bikes';
 import { currentBike, selectBike } from '../bike/selection';
 import type { Config } from '../config';
+import { Boulder } from '../entities/Boulder';
 import { Checkpoint } from '../entities/Checkpoint';
 import { Cow } from '../entities/Cow';
 import { Diya } from '../entities/Diya';
@@ -22,10 +23,11 @@ import { MonkeyTroop } from '../entities/Monkey';
 import { Obstacle } from '../entities/Obstacle';
 import { URL_DEBUG, onKeyPress, runtime, testInput, type GameInput } from '../input';
 import {
-  BASELINE_Y, CAMERA_MAX_SCROLL_X, CHECKPOINTS, COW, DIYAS, FINISH, OBSTACLES, TILE, WATER_LINE_Y,
+  BASELINE_Y, CAMERA_MAX_SCROLL_X, CHECKPOINTS, COW, DIYAS, FINISH, OBSTACLES, SAFE_ZONE, TILE, WATER_LINE_Y, promptAt,
 } from '../level/levelData';
-import { TERRAIN } from '../level/terrain';
-import { addTerrain } from '../level/terrainView';
+import type { BoulderPhase } from '../level/boulder';
+import { TERRAIN, type Box } from '../level/terrain';
+import { addDecor, addTerrain } from '../level/terrainView';
 import {
   GHOST_MAX_SAMPLES, GHOST_SAMPLE_STEPS, decodeGhost, encodeGhost, ghostPoseAt, loadBest, loadPrefs, medalFor,
   nextMedal, saveBest, savePrefs, submitRun, type Best, type GhostPose,
@@ -60,6 +62,22 @@ export function currentBest(bike: BikeId = currentBike()): Best {
   return sessionBest[bike] ?? loadBest(bike);
 }
 
+/**
+ * The tutorial prompts (v1.7) show until one full run has been finished. This is the session's copy of
+ * that fact; the prefs hold the lasting one. When storage is missing or throws, the prefs always read
+ * "not done", so the prompts show again on the next visit, and this copy still switches them off for
+ * the rest of the session.
+ */
+let sessionTutorialDone = false;
+
+/** Has a full run been finished (this session, or on an earlier visit)? */
+export function tutorialDone(): boolean {
+  return sessionTutorialDone || loadPrefs().tutorialDone;
+}
+
+/** The warm-up ends here: a bad landing whose take-off was left of this x is a wobble, not a crash. */
+const SAFE_X1 = SAFE_ZONE.toCol * TILE;
+
 /** Popup text for n full flips in one air. */
 export function flipLabel(n: number): string {
   if (n <= 1) return '+FLIP';
@@ -82,6 +100,13 @@ export interface GameSnapshot {
   camX: number;
   /** where the ghost is drawn this frame (null when hidden or there is none) */
   ghost: { x: number; y: number; angle: number } | null;
+  /** the rolling boulder on the temple terrace: its phase and the left edge of its hitbox */
+  boulder: { phase: BoulderPhase; x: number };
+  /** the tutorial prompt on screen ('' = none) */
+  prompt: string;
+  /** stumbles (a monkey, the log) and warm-up wobbles so far in this run */
+  stumbles: number;
+  wobbles: number;
 }
 
 export class GameScene extends Phaser.Scene {
@@ -98,9 +123,18 @@ export class GameScene extends Phaser.Scene {
   flips = 0;
   finished = false;
   paused = false;
-  /** HUD hint (cp4): text and seconds left */
+  /** HUD hint (a checkpoint's): text and seconds left */
   hintText = '';
   hintT = 0;
+  /** tutorial prompts are shown on this run (no full run has been finished yet) */
+  tutorial = false;
+  /** stumbles (a monkey, the log) and warm-up wobbles in this run */
+  stumbles = 0;
+  wobbles = 0;
+  /** x of the last grounded step: where the current air was taken off from */
+  private lastGroundX = 0;
+  /** per log: was the bike box on it on the previous step (a stumble is one per contact) */
+  private logTouch: boolean[] = [];
   /** fixed steps counted by the run timer */
   private timerSteps = 0;
   private crashT = 0;
@@ -145,9 +179,13 @@ export class GameScene extends Phaser.Scene {
   private streaks!: BoostStreaks;
   private diyas: Diya[] = [];
   private obstacles: Obstacle[] = [];
+  /** boxes that crash the bike on any overlap (pillars and carts; not the log) */
+  private solid: Box[] = [];
+  private logs: Obstacle[] = [];
   private checkpoints: Checkpoint[] = [];
   private cow!: Cow;
   private troop!: MonkeyTroop;
+  private boulder!: Boulder;
   private coracles: Phaser.GameObjects.Image[] = [];
   private glints: Phaser.GameObjects.Image[] = [];
   private fade!: Phaser.GameObjects.Rectangle;
@@ -173,6 +211,10 @@ export class GameScene extends Phaser.Scene {
     this.paused = false;
     this.hintText = '';
     this.hintT = 0;
+    this.tutorial = !tutorialDone();
+    this.stumbles = 0;
+    this.wobbles = 0;
+    this.logTouch = [];
     this.timerSteps = 0;
     this.crashT = 0;
     this.fadeInT = 0;
@@ -197,6 +239,8 @@ export class GameScene extends Phaser.Scene {
     this.boostFx = 0;
     this.diyas = [];
     this.obstacles = [];
+    this.solid = [];
+    this.logs = [];
     this.checkpoints = [];
     this.coracles = [];
     this.glints = [];
@@ -217,6 +261,7 @@ export class GameScene extends Phaser.Scene {
       }
     }
     for (const g of TERRAIN.gaps) {
+      if (g.step) continue; // a riser's slot is dry stone
       const n = Math.max(2, Math.round((g.x1 - g.x0) / 24));
       for (let i = 0; i < n; i++) {
         const x = g.x0 + 6 + ((i + 0.5) * (g.x1 - g.x0 - 12)) / n;
@@ -233,11 +278,17 @@ export class GameScene extends Phaser.Scene {
       }
     }
 
+    // v1.7: ruins along the breather, the temple doorway on the terrace (decoration, behind every entity).
+    addDecor(this, DEPTH.deco - 0.6);
+
     this.add.image(FINISH.col * TILE, BASELINE_Y, 'gateway').setOrigin(0, 1).setDepth(DEPTH.deco);
     this.checkpoints = CHECKPOINTS.map((def) => new Checkpoint(this, def, DEPTH.checkpoint));
     this.obstacles = OBSTACLES.map((def) => new Obstacle(this, def, DEPTH.obstacle));
+    this.solid = this.obstacles.filter((o) => o.solid).map((o) => o.box);
+    this.logs = this.obstacles.filter((o) => !o.solid);
     this.cow = new Cow(this, DEPTH.animal);
     this.troop = new MonkeyTroop(this, DEPTH.animal);
+    this.boulder = new Boulder(this, DEPTH.obstacle, DEPTH.popup);
     this.diyas = DIYAS.map((def, i) => new Diya(this, def, i, DEPTH.diya));
     this.ghost = new GhostBike(this, DEPTH.bike - 1, this.bikeDef.id);
     this.view = new BikeView(this, DEPTH.bike, DEPTH.fx, this.bikeDef.id);
@@ -249,6 +300,7 @@ export class GameScene extends Phaser.Scene {
 
     for (const cp of this.checkpoints) cp.setLit(cp.id <= this.checkpoint);
     this.bike = createBikeState(this.checkpoints[this.checkpoint]!.x, TERRAIN, this.cfg);
+    this.lastGroundX = this.bike.x;
     this.camX = this.cameraTarget();
     const startHint = this.checkpoints[this.checkpoint]!.hint;
     if (startHint) this.showHint(startHint);
@@ -305,6 +357,8 @@ export class GameScene extends Phaser.Scene {
       finished: this.finished, checkpoint: this.checkpoint, timeMs: this.timeMs, bike: this.bikeDef.id,
       flips: this.flips, spin: b.spin, camX: this.camX,
       ghost: this.ghostPose ? { ...this.ghostPose } : null,
+      boulder: { phase: this.boulder.state.phase, x: this.boulder.state.x },
+      prompt: this.promptText, stumbles: this.stumbles, wobbles: this.wobbles,
     };
   }
 
@@ -345,6 +399,11 @@ export class GameScene extends Phaser.Scene {
     this.scene.stop('Finish');
     this.scene.stop('Hud');
     this.scene.start('Select');
+  }
+
+  /** The tutorial prompt for where the bike is ('' = none). Only until one full run has been finished. */
+  get promptText(): string {
+    return this.tutorial && !this.finished && this.phase === 'ride' ? promptAt(this.bike.x) : '';
   }
 
   /** Best time so far (ms), or null. Practice runs show it too. */
@@ -470,6 +529,16 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
+    // The warm-up is a no-crash zone: a bad landing taken off inside it is a wobble (upright, slowed).
+    if (prev.grounded) this.lastGroundX = prev.x;
+    let wobbled = false;
+    if (b.crashed === 'landing' && this.lastGroundX < SAFE_X1) {
+      b = wobbleLanding(b, cfg.monkeyStumbleFactor, TERRAIN);
+      wobbled = true;
+      this.wobbles++;
+      this.view.stumble();
+    }
+
     if (b.evHop) sfx.play('hop');
     if (b.evLanding === 'clean' || b.evLanding === 'safe') {
       const clean = b.evLanding === 'clean';
@@ -486,6 +555,8 @@ export class GameScene extends Phaser.Scene {
         this.popups.show(flipLabel(n), b.x, b.y - 36, undefined, 1.3, 'land');
       } else if (clean) {
         this.popups.show('CLEAN!', b.x, b.y - 36, undefined, undefined, 'land');
+      } else if (wobbled) {
+        this.popups.show('WOBBLE!', b.x, b.y - 36, PAL.cream, 1.1, 'land');
       }
     }
 
@@ -505,7 +576,29 @@ export class GameScene extends Phaser.Scene {
   private collide(prev: BikeState, bike: BikeState): BikeState {
     let b = bike;
     const cfg = this.cfg;
-    if (hitsObstacle(b, this.obstacles.map((o) => o.box), cfg)) return crash(b, 'obstacle');
+    if (hitsObstacle(b, this.solid, cfg)) return crash(b, 'obstacle');
+
+    // The boulder: any touch is a crash.
+    const rock = this.boulder.box;
+    if (rock && aabbOverlap(bikeAABB(b, cfg), rock)) return crash(b, 'obstacle');
+
+    // A riser's slot has a stone floor: a bike that drops into it has hit the step. (It would hit the
+    // riser's face or the kill plane a moment later anyway; this only keeps it from sinking into the stone.)
+    const slot = TERRAIN.gapAt(b.x);
+    if (slot !== null && slot.step && b.y > slot.nearY + cfg.wallTolerance) return crash(b, 'wall');
+
+    // A log is not solid: riding into it is one stumble per contact.
+    this.logs.forEach((log, i) => {
+      const touching = aabbOverlap(bikeAABB(b, cfg), log.box);
+      if (touching && !this.logTouch[i]) {
+        b = stumble(b, cfg.monkeyStumbleFactor);
+        this.stumbles++;
+        this.view.stumble();
+        sfx.play('thud');
+        this.popup('BUMP!', log.box.x + log.box.w / 2, log.box.y - 14);
+      }
+      this.logTouch[i] = touching;
+    });
 
     if (this.cow.solid && aabbOverlap(bikeAABB(b, cfg), this.cow.box)) {
       if (Math.abs(b.vx) > cfg.cowCrashSpeed) return crash(b, 'cow');
@@ -517,8 +610,8 @@ export class GameScene extends Phaser.Scene {
 
     for (const m of this.troop.monkeys) {
       if (m.collidable && aabbOverlap(bikeAABB(b, cfg), m.box)) {
-        const f = cfg.monkeyStumbleFactor;
-        b = { ...b, v: b.v * f, vx: b.vx * f };
+        b = stumble(b, cfg.monkeyStumbleFactor);
+        this.stumbles++;
         m.leap();
         this.view.stumble();
         sfx.play('thud');
@@ -543,6 +636,10 @@ export class GameScene extends Phaser.Scene {
     const b = this.bike;
     this.cow.step(dt, bikeAABB(b, this.cfg), this.phase === 'crash' ? Infinity : Math.hypot(b.vx, b.vy));
     this.troop.step(dt, this.phase === 'crash' ? -Infinity : b.x);
+    // The boulder starts when the bike reaches its trigger; a rumble and a "!" give the warning.
+    const ev = this.boulder.step(dt, this.phase === 'crash' || this.finished ? -Infinity : b.x, this.fx);
+    if (ev === 'start') sfx.play('rumble');
+    else if (ev === 'break') sfx.play('crumble');
   }
 
   private checkProgress(): void {
@@ -553,7 +650,10 @@ export class GameScene extends Phaser.Scene {
         cp.setLit(true);
         sfx.play('bell');
         this.popup('CHECKPOINT', cp.lampX, cp.y - 58);
+        // A checkpoint's hint replaces the last one's; a checkpoint without one clears it (so "HOP UP
+        // THE STEPS!" is gone by the terrace, where the next thing to read is the boulder's "!").
         if (cp.hint) this.showHint(cp.hint);
+        else this.hintT = 0;
       }
     }
     if (b.x >= FINISH.col * TILE) {
@@ -590,6 +690,11 @@ export class GameScene extends Phaser.Scene {
       sessionBest[this.bikeDef.id] = update.best;
       this.best = update.best;
       data.saved = saveBest(this.bikeDef.id, update.best);
+      // One full run finished: the tutorial prompts are done (remembered when storage allows).
+      if (!sessionTutorialDone) {
+        sessionTutorialDone = true;
+        savePrefs({ ...loadPrefs(), tutorialDone: true });
+      }
     }
     this.finishData = data;
   }
@@ -612,7 +717,10 @@ export class GameScene extends Phaser.Scene {
     this.crashCause = cause;
     this.crashes++;
     const surf = TERRAIN.surfaceY(b.x);
-    this.crashFrom = { x: b.x, y: b.y, vx: b.vx, angle: b.angle, floor: surf === null ? VIEW_H + 40 : Math.max(surf, b.y) };
+    const slot = TERRAIN.gapAt(b.x);
+    // Over water the bike sinks out of view; in a riser's dry slot it comes to rest on the lower step.
+    const floor = surf !== null ? Math.max(surf, b.y) : slot !== null && slot.step ? slot.nearY : VIEW_H + 40;
+    this.crashFrom = { x: b.x, y: b.y, vx: b.vx, angle: b.angle, floor };
     if (cause === 'restart') {
       this.respawnDelay = 0;
       return;
@@ -636,6 +744,9 @@ export class GameScene extends Phaser.Scene {
     // Animals ahead of the checkpoint go back to their starting places.
     if (this.cow.homeX > cp.x) this.cow.reset();
     if (this.troop.triggerX > cp.x) this.troop.reset();
+    if (this.boulder.triggerX > cp.x) this.boulder.reset();
+    this.logTouch = [];
+    this.lastGroundX = this.bike.x;
     this.view.reset();
     this.look = this.cfg.cameraLookAheadRest;
     this.bumpY = 0;
@@ -732,6 +843,7 @@ export class GameScene extends Phaser.Scene {
     for (const cp of this.checkpoints) cp.render(t);
     this.cow.render(t);
     this.troop.render(t);
+    this.boulder.render(t, scroll, b.x);
     this.coracles.forEach((c, i) => {
       c.y = WATER_LINE_Y + 4 + Math.round(Math.sin(t * 1.3 + i * 2.1) * 1.4);
       c.rotation = Math.sin(t * 1.1 + i * 1.7) * 0.05;
@@ -802,7 +914,13 @@ export class GameScene extends Phaser.Scene {
     for (const gap of TERRAIN.gaps) g.lineBetween(gap.x0, 230, gap.x1, 230);
     // hitboxes
     g.lineStyle(1, 0xff3030, 1);
-    for (const o of this.obstacles) g.strokeRect(o.box.x + 0.5, o.box.y + 0.5, o.box.w - 1, o.box.h - 1);
+    for (const o of this.obstacles) {
+      g.lineStyle(1, o.solid ? 0xff3030 : 0xff9a4a, 1);
+      g.strokeRect(o.box.x + 0.5, o.box.y + 0.5, o.box.w - 1, o.box.h - 1);
+    }
+    g.lineStyle(1, 0xff3030, 1);
+    const rock = this.boulder.box;
+    if (rock) g.strokeRect(rock.x + 0.5, rock.y + 0.5, rock.w - 1, rock.h - 1);
     if (this.cow.solid) { const c = this.cow.box; g.strokeRect(c.x + 0.5, c.y + 0.5, c.w - 1, c.h - 1); }
     for (const m of this.troop.monkeys) {
       if (m.collidable) g.strokeRect(m.box.x + 0.5, m.box.y + 0.5, m.box.w - 1, m.box.h - 1);

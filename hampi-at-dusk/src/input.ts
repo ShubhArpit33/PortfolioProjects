@@ -2,6 +2,7 @@
 import type Phaser from 'phaser';
 import type { BikeInput } from './bike/BikePhysics';
 import { isBikeId, type BikeId } from './bike/bikes';
+import { CHECKPOINTS } from './level/levelData';
 
 export interface GameInput extends BikeInput {
   honk?: boolean;
@@ -23,7 +24,7 @@ export const URL_CP = ((): number | null => {
   const raw = params.get('cp');
   if (raw === null) return null;
   const n = Number.parseInt(raw, 10);
-  return Number.isFinite(n) ? Math.min(6, Math.max(0, n)) : null;
+  return Number.isFinite(n) ? Math.min(CHECKPOINTS.length - 1, Math.max(0, n)) : null;
 })();
 
 /** ?bike=tonup|daybreak|sundowner picks the bike for this page load (anything else is ignored). */

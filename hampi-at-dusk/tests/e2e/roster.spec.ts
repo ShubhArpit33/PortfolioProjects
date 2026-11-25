@@ -66,10 +66,15 @@ test('the last pick is remembered; ?bike= overrides it for one page load without
   expect((await getState(page)).bike).toBe('sundowner');
 
   // ?cp=N&bike= goes straight into a practice run on that bike.
-  await page.goto(`${GAME_URL}&cp=6&bike=daybreak`);
+  await page.goto(`${GAME_URL}&cp=11&bike=daybreak`);
   await page.waitForFunction(() => window.__test?.ready() === true && window.__test!.state().x > 0);
   const s = await getState(page);
-  expect([s.bike, s.checkpoint]).toEqual(['daybreak', 6]);
+  expect([s.bike, s.checkpoint]).toEqual(['daybreak', 11]);
+
+  // A checkpoint number past the last one is the last one.
+  await page.goto(`${GAME_URL}&cp=99`);
+  await page.waitForFunction(() => window.__test?.ready() === true && window.__test!.state().x > 0);
+  expect((await getState(page)).checkpoint).toBe(11);
 });
 
 test('each bike feels different in the game itself: top speed, hop length and boost', async ({ page }) => {
@@ -80,7 +85,7 @@ test('each bike feels different in the game itself: top speed, hop length and bo
     measured[bike] = await page.evaluate(() => {
       const t = window.__test!;
       t.setInput({ throttle: true });
-      t.step(120 * 2);
+      t.step(204); // 1.7 s: every bike is at its top speed, and the hop that follows lands short of the log
       const top = t.state().v;
       const x0 = t.state().x;
       t.setInput({ throttle: true, hop: true });
@@ -89,8 +94,9 @@ test('each bike feels different in the game itself: top speed, hop length and bo
       let n = 0;
       while (!t.state().grounded && n++ < 400) t.step(1);
       const hopPx = t.state().x - x0;
+      // (a second of boost: the log on the Warm-up Road costs a stumble on the way, and there is still time to top out)
       t.setInput({ boost: true });
-      t.step(60);
+      t.step(120);
       return { top, hopPx, boost: t.state().v };
     });
   }

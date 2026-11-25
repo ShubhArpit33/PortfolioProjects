@@ -27,7 +27,7 @@ export interface BotMemory {
  * Play until the bike's x reaches untilX (or the run ends, or maxSteps pass). One fixed step per
  * decision. The bot's memory lives in window.__bot so the run can be resumed after a screenshot.
  */
-export function advance(page: Page, plan: Plan, untilX: number, maxSteps = 120 * 60): Promise<GameSnapshot> {
+export function advance(page: Page, plan: Plan, untilX: number, maxSteps = 120 * 120): Promise<GameSnapshot> {
   return page.evaluate(({ plan, untilX, maxSteps, camMax }) => {
     const t = window.__test!;
     const w = window as unknown as { __bot?: BotMemory };
@@ -76,7 +76,7 @@ export function planFor(level: LevelData, cfg: Config = CONFIG): {
   return {
     lay,
     riverCp,
-    kickerGap: lay.gaps[lay.gaps.length - 1]!, // the tank under the kicker is the last non-river gap
+    kickerGap: lay.kicker, // the tank under the kicker, by its flag (the risers come after it)
     planner: hopPlan.planner,
     plan: {
       hops: hopPlan.hops,

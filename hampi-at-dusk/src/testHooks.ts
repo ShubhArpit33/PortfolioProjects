@@ -47,6 +47,7 @@ declare global {
 const IDLE: GameSnapshot = {
   x: 0, y: 0, vx: 0, vy: 0, v: 0, angle: 0, grounded: true, boost: 1, crashed: false,
   crashes: 0, diyas: 0, finished: false, checkpoint: 0, timeMs: 0, bike: 'daybreak', flips: 0, spin: 0, camX: 0, ghost: null,
+  boulder: { phase: 'hidden', x: 0 }, prompt: '', stumbles: 0, wobbles: 0,
 };
 
 export function installTestHooks(game: Phaser.Game): void {

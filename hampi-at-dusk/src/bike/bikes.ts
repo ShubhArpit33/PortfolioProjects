@@ -2,7 +2,7 @@
 //
 // CONFIG itself is the Daybreak (the bike the stage was built around) and is never changed here.
 // All three share the 24 x 16 hitbox and the same wheel contact points; only the feel differs.
-// Every number below was measured against the stage first (DECISIONS.md, v1.6).
+// Every number below was measured against the stage first (DECISIONS.md, v1.6; medals v1.7).
 
 import { CONFIG, type Config } from '../config';
 
@@ -53,10 +53,22 @@ const NAMES: Record<BikeId, [string, string]> = {
   sundowner: ['SUNDOWNER', 'THE BOBBER. LOW, HEAVY AND FORGIVING.'],
 };
 
+/**
+ * The bot's clean run on each bike (ms): no flips, boost only at the river. Measured on the 900-column
+ * stage (v1.7); the e2e bot run asserts these to the millisecond.
+ */
+export const BOT_RUN_MS: Readonly<Record<BikeId, number>> = { tonup: 49_908, daybreak: 59_517, sundowner: 69_150 };
+
+/** Medal targets from a bot time (v1.7): gold x1.05, silver x1.25, bronze x2.2, each rounded up to a whole second. */
+export function medalsFor(botMs: number): MedalTimes {
+  const up = (k: number): number => Math.ceil((botMs * k) / 1000 - 1e-9) * 1000;
+  return { gold: up(1.05), silver: up(1.25), bronze: up(2.2) };
+}
+
 const MEDALS: Record<BikeId, MedalTimes> = {
-  tonup: { gold: 34_000, silver: 40_000, bronze: 50_000 },
-  daybreak: { gold: 40_000, silver: 46_000, bronze: 56_000 },
-  sundowner: { gold: 46_000, silver: 52_000, bronze: 62_000 },
+  tonup: medalsFor(BOT_RUN_MS.tonup),         // 53 / 63 / 110 s
+  daybreak: medalsFor(BOT_RUN_MS.daybreak),   // 63 / 75 / 131 s
+  sundowner: medalsFor(BOT_RUN_MS.sundowner), // 73 / 87 / 153 s
 };
 
 /** A value on a 1..5 bar: lo maps to 1, hi to 5 (rounded, clamped). */

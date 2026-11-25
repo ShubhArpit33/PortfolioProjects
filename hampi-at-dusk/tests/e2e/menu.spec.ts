@@ -48,10 +48,10 @@ async function practiceFinish(page: Page): Promise<void> {
   await page.evaluate(() => {
     const t = window.__test!;
     t.setInput({});
-    t.startAt(6);
+    t.startAt(11);
     t.step(0);
   });
-  await page.waitForFunction(() => window.__test!.state().checkpoint === 6 && window.__test!.state().x > 0);
+  await page.waitForFunction(() => window.__test!.state().checkpoint === 11 && window.__test!.state().x > 0);
   await page.evaluate(() => {
     const t = window.__test!;
     t.setInput({ throttle: true, boost: true });
@@ -281,7 +281,7 @@ test('finish screen: Enter rides again, MAIN MENU by keyboard and mouse; best, m
   await practiceFinish(page);
   await click(page, (await targets(page)).menu[0]!);
   await page.waitForFunction(() => window.__test!.screen() === 'game' && window.__test!.state().timeMs < 50);
-  expect((await getState(page)).checkpoint).toBe(6);
+  expect((await getState(page)).checkpoint).toBe(11);
   await press(page, 'Escape');
   await press(page, 'ArrowUp');
   await press(page, 'Enter');

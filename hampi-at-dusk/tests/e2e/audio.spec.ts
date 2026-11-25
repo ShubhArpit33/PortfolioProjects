@@ -17,10 +17,12 @@ test('music starts only after a real key press; M cycles the sound modes and is 
   expect(a.mode).toBe(0);
 
   // Let the music play for a while in real time (the scheduler runs from the frame loop / steps),
-  // crashing once into the cow on the way so the duck path runs too.
+  // crashing once into the cow on the way so the duck path runs too. (The cow is the first thing that can
+  // crash the bike: the Warm-up Road before her is a no-crash zone, about 11 s of throttle away.)
   let musicPeak = 0;
   let masterPeak = 0;
-  for (let i = 0; i < 16; i++) {
+  for (let i = 0; i < 60; i++) {
+    if (i >= 16 && (await page.evaluate(() => window.__test!.state())).crashes >= 1) break;
     await page.evaluate(() => { const t = window.__test!; t.setInput({ throttle: true }); t.step(30); });
     await page.waitForTimeout(120);
     a = await audio();

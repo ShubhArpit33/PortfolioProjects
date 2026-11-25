@@ -13,9 +13,9 @@ import { STAGE_COLS } from './level/levelData';
 export type Medal = 'gold' | 'silver' | 'bronze';
 
 /**
- * Time targets (ms) of the default bike, set from the measured bot run: 38.13 s for a clean, no-flip run
- * that boosts only at the river. Gold leaves about 2 s of slack on that line (or pays for one slip with
- * boost and flips). Every bike has its own targets, set the same way (bikes.ts).
+ * Time targets (ms) of the default bike, set from the measured bot run (v1.7: 59.52 s for a clean, no-flip
+ * run that boosts only at the river): gold = that x 1.05, silver x 1.25, bronze x 2.2, each rounded up to
+ * a whole second. Every bike has its own targets, set the same way (bikes.ts).
  */
 export const MEDAL_TIMES_MS: MedalTimes = BIKES[DEFAULT_BIKE].medalsMs;
 export const MEDAL_ORDER: readonly Medal[] = ['bronze', 'silver', 'gold'];
@@ -228,9 +228,11 @@ export interface Prefs {
   sound: 0 | 1 | 2;
   /** the bike picked last */
   bike: BikeId;
+  /** one full run has been finished: the tutorial prompts are no longer shown (v1.7) */
+  tutorialDone: boolean;
 }
 
-export const DEFAULT_PREFS: Readonly<Prefs> = { ghost: true, sound: 0, bike: DEFAULT_BIKE };
+export const DEFAULT_PREFS: Readonly<Prefs> = { ghost: true, sound: 0, bike: DEFAULT_BIKE, tutorialDone: false };
 
 export function loadPrefs(store: StoreProvider = browserStore): Prefs {
   const raw = read(PREFS_KEY, store);
@@ -240,6 +242,7 @@ export function loadPrefs(store: StoreProvider = browserStore): Prefs {
     ghost: typeof r.ghost === 'boolean' ? r.ghost : DEFAULT_PREFS.ghost,
     sound: r.sound === 1 || r.sound === 2 ? r.sound : 0,
     bike: isBikeId(r.bike) ? r.bike : DEFAULT_BIKE,
+    tutorialDone: r.tutorialDone === true,
   };
 }
 

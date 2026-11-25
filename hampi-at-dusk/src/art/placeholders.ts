@@ -454,6 +454,141 @@ function drawColonnade(p: Pen): void {
   p.r(C, 146, 0, 46, 7).r(HI, 146, 0, 46, 1).r(C, 140, 3, 6, 4);
 }
 
+/**
+ * The log on the Warm-up Road (v1.7): 20 x 10, a short trunk lying on the road, its cut end to the left.
+ * The hitbox is the middle 16 x 8. Riding into it is only a stumble, so it is small and soft-edged.
+ */
+function drawLog(p: Pen): void {
+  const B = PAL.brown;
+  const BD = mix(PAL.brown, PAL.ink, 0.45);
+  const BL = mix(PAL.brown, PAL.brass, 0.5);
+  const C = mix(PAL.cream, PAL.brass, 0.35);
+  p.r(PAL.ink, 1, 9, 19, 1, 0.35);
+  // trunk
+  p.r(B, 3, 2, 16, 7).r(B, 2, 3, 18, 5);
+  p.r(BL, 4, 2, 14, 1).r(BL, 5, 3, 6, 1, 0.5);
+  p.r(BD, 3, 7, 16, 2).r(BD, 19, 4, 1, 3);
+  // bark
+  p.r(BD, 7, 4, 4, 1).r(BD, 13, 5, 4, 1).r(BD, 9, 6, 3, 1).r(BL, 15, 3, 2, 1);
+  // the cut end, with rings
+  p.r(C, 1, 2, 3, 7).r(C, 0, 3, 1, 5);
+  p.r(PAL.brass, 1, 4, 2, 3).r(C, 1, 5, 1, 1).r(BD, 3, 2, 1, 7, 0.5);
+  // a snapped branch stub and a little moss
+  p.r(B, 13, 0, 2, 2).r(BL, 13, 0, 2, 1);
+  p.r(PAL.mossDark, 6, 1, 5, 1).r(PAL.mossLight, 7, 1, 2, 1);
+}
+
+/**
+ * The rolling boulder (v1.7): 22 x 22, a round granite rock. Its marks (a crack, a chipped facet, a moss
+ * patch) are off-centre so the turning shows. Outlined in ink: it has to read against stone and sky.
+ */
+function drawBoulder(p: Pen): void {
+  const L = PAL.graniteLight;
+  const D = PAL.graniteDark;
+  const H = mix(PAL.graniteLight, PAL.cream, 0.4);
+  const M = mix(PAL.graniteLight, PAL.graniteDark, 0.5);
+  p.disc(PAL.ink, 11, 11, 10);
+  p.disc(L, 11, 11, 9);
+  // a darker half and a lighter cap, both off-centre
+  p.rows(M, 0, 12, [[3, 17], [3, 17], [4, 15], [4, 15], [5, 13], [6, 11], [8, 7]]);
+  p.rows(D, 0, 15, [[9, 9], [8, 10], [8, 9], [9, 6]]);
+  p.rows(H, 0, 3, [[7, 6], [5, 7], [4, 5], [4, 3]]);
+  // a crack across it and a chipped facet
+  p.r(D, 12, 4, 1, 3).r(D, 13, 6, 1, 3).r(D, 14, 8, 2, 1).r(D, 15, 9, 1, 3).r(D, 16, 11, 2, 1);
+  p.r(D, 5, 9, 3, 1).r(D, 4, 10, 2, 2).r(H, 6, 10, 2, 1);
+  // speckles
+  p.r(D, 9, 7, 1, 1).r(D, 7, 13, 1, 1).r(H, 16, 14, 1, 1).r(H, 11, 16, 2, 1).r(D, 18, 9, 1, 1);
+  // moss on one shoulder
+  p.r(PAL.mossDark, 14, 2, 4, 2).r(PAL.mossDark, 17, 4, 2, 2).r(PAL.mossLight, 15, 2, 2, 1);
+}
+
+/**
+ * The temple doorway on the terrace (v1.7, decoration): 96 x 80, in the colonnade's dark, low-contrast tone.
+ * Two heavy jambs under a stepped lintel, a black opening (the boulder comes out of it), two worn steps.
+ */
+function drawTempleDoor(p: Pen): void {
+  const C = mix(PAL.mid, PAL.graniteDark, 0.55);
+  const HI = mix(C, PAL.graniteLight, 0.25);
+  const SH = mix(PAL.mid, PAL.ink, 0.5);
+  // wall behind, ragged at the top where it has fallen
+  p.r(C, 6, 26, 84, 54);
+  p.rows(C, 0, 20, [[10, 14], [8, 20], [6, 30], [6, 34], [6, 40], [6, 44]]);
+  p.rows(C, 0, 20, [[70, 12], [66, 20], [62, 26], [58, 32], [54, 36], [52, 38]]);
+  for (let y = 32; y < 76; y += 8) p.r(SH, 6, y, 84, 1, 0.5);
+  for (let x = 14; x < 88; x += 16) for (let y = 32; y < 72; y += 16) p.r(SH, x, y, 1, 8, 0.4);
+  // stepped lintel and cornice
+  p.r(C, 18, 12, 60, 10).r(HI, 18, 12, 60, 1);
+  p.r(C, 14, 8, 68, 4).r(HI, 14, 8, 68, 1);
+  p.r(C, 24, 3, 48, 5).r(HI, 24, 3, 48, 1);
+  p.r(C, 38, 0, 20, 3).r(HI, 38, 0, 20, 1);
+  for (let x = 22; x < 76; x += 9) p.r(SH, x, 15, 3, 4, 0.6);
+  // jambs
+  for (const x of [20, 62]) {
+    p.r(C, x, 22, 14, 52);
+    p.r(HI, x, 22, 2, 52);
+    p.r(SH, x + 11, 22, 3, 52, 0.6);
+    p.r(C, x - 2, 22, 18, 4).r(HI, x - 2, 22, 18, 1);
+    p.r(C, x - 2, 68, 18, 6).r(HI, x - 2, 68, 18, 1);
+    p.r(SH, x + 4, 36, 5, 9, 0.7);
+  }
+  // the opening
+  p.r(SH, 34, 26, 28, 48);
+  p.r(PAL.ink, 36, 28, 24, 46, 0.55);
+  // steps
+  p.r(C, 26, 74, 44, 3).r(HI, 26, 74, 44, 1);
+  p.r(C, 20, 77, 56, 3).r(HI, 20, 77, 56, 1);
+}
+
+/**
+ * Ruins beside the Ruins Road (v1.7, decoration only, in the colonnade's tone). A: 160 x 64, a broken hall:
+ * columns of different heights, one length of lintel still up, blocks on the ground.
+ */
+function drawRuinsA(p: Pen): void {
+  const C = mix(PAL.mid, PAL.graniteDark, 0.55);
+  const HI = mix(C, PAL.graniteLight, 0.22);
+  const SH = mix(PAL.mid, PAL.ink, 0.5);
+  const column = (x: number, top: number, capital: boolean): void => {
+    p.r(C, x, top, 8, 64 - top).r(HI, x, top, 2, 64 - top);
+    p.r(C, x - 2, 58, 12, 6).r(HI, x - 2, 58, 12, 1);
+    if (capital) p.r(C, x - 2, top, 12, 3).r(C, x - 4, top - 3, 16, 3).r(HI, x - 4, top - 3, 16, 1);
+    else p.r(C, x + 1, top - 2, 4, 2).r(C, x + 5, top - 1, 2, 1);
+  };
+  column(8, 12, true);
+  column(46, 12, true);
+  column(84, 34, false);
+  column(134, 22, false);
+  // the lintel between the first two; it has broken off past the second
+  p.r(C, 0, 2, 66, 7).r(HI, 0, 2, 66, 1).r(C, 66, 4, 8, 5).r(C, 74, 6, 4, 3);
+  // fallen blocks
+  p.r(C, 100, 54, 22, 10).r(HI, 100, 54, 22, 1).r(SH, 100, 62, 22, 2, 0.5);
+  p.r(C, 106, 46, 12, 8).r(HI, 106, 46, 12, 1);
+  p.r(C, 148, 57, 12, 7).r(HI, 148, 57, 12, 1);
+  p.r(C, 22, 58, 16, 6).r(HI, 22, 58, 16, 1);
+}
+
+/** Ruins B: 128 x 56, a small roofed shrine with a lamp niche, and a stack of boulders beside it. */
+function drawRuinsB(p: Pen): void {
+  const C = mix(PAL.mid, PAL.graniteDark, 0.55);
+  const HI = mix(C, PAL.graniteLight, 0.22);
+  const SH = mix(PAL.mid, PAL.ink, 0.5);
+  // plinth, four short pillars, a stepped roof
+  p.r(C, 4, 50, 64, 6).r(HI, 4, 50, 64, 1);
+  for (const x of [8, 24, 44, 60]) p.r(C, x, 24, 5, 26).r(HI, x, 24, 1, 26);
+  p.r(SH, 13, 26, 11, 24, 0.55).r(SH, 29, 26, 15, 24, 0.7).r(SH, 49, 26, 11, 24, 0.55);
+  p.r(C, 2, 18, 68, 6).r(HI, 2, 18, 68, 1);
+  p.r(C, 8, 12, 56, 6).r(HI, 8, 12, 56, 1);
+  p.r(C, 16, 6, 40, 6).r(HI, 16, 6, 40, 1);
+  p.r(C, 26, 1, 20, 5).r(HI, 26, 1, 20, 1);
+  p.r(C, 33, 0, 6, 1);
+  // a lamp left burning in the middle bay
+  p.r(PAL.brass, 35, 44, 3, 1, 0.9).r(PAL.gold, 36, 42, 1, 2).r(PAL.sun, 34, 41, 5, 4, 0.18);
+  // boulders
+  p.disc(C, 96, 44, 12).disc(HI, 91, 37, 3, 0.5);
+  p.disc(C, 114, 49, 8);
+  p.disc(C, 104, 27, 7).disc(HI, 101, 23, 2, 0.5);
+  p.r(C, 82, 52, 46, 4);
+}
+
 function drawCart(p: Pen): void {
   const B = PAL.brown;
   const BD = mix(PAL.brown, PAL.ink, 0.45);
@@ -728,12 +863,19 @@ export const MANIFEST: Record<string, Def> = {
   diya: { w: 8, h: 8, draw: drawDiya },
   gateway: { w: 96, h: 96, draw: drawGateway },
   coracle: { w: 24, h: 10, draw: drawCoracle },
+  log: { w: 20, h: 10, draw: drawLog },
+  boulder: { w: 22, h: 22, draw: drawBoulder },
 };
 
 /** Extra code-only textures (effects and UI icons); not part of the PNG manifest. */
 const EXTRAS: Record<string, Def> = {
   chariot: { w: 60, h: 48, draw: drawChariot },
   colonnade: { w: 192, h: 72, draw: drawColonnade },
+  temple_door: { w: 96, h: 80, draw: drawTempleDoor },
+  ruins_a: { w: 160, h: 64, draw: drawRuinsA },
+  ruins_b: { w: 128, h: 56, draw: drawRuinsB },
+  boulder_shadow: { w: 20, h: 3, draw: (p) => p.r(PAL.ink, 3, 0, 14, 1, 0.3).r(PAL.ink, 0, 1, 20, 1, 0.35).r(PAL.ink, 3, 2, 14, 1, 0.3) },
+  p_rock: { w: 3, h: 3, draw: (p) => p.r(PAL.graniteLight, 0, 0, 3, 3).r(PAL.graniteDark, 1, 1, 2, 2).r(mix(PAL.graniteLight, PAL.cream, 0.4), 0, 0, 1, 1) },
   glow: { w: 32, h: 32, draw: drawGlow },
   star_on: { w: 13, h: 12, draw: (p) => drawStar(p, PAL.uiYellow, PAL.cream) },
   star_off: { w: 13, h: 12, draw: (p) => drawStar(p, mix(PAL.ink, PAL.uiYellow, 0.28), null) },

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   BASE_BPM, CHORDS, MELODY_MAX, MELODY_MIN, SCALE, SONG_BARS, STEPS_PER_BAR, barScore, degreeHz, songPosition, songSeconds,
 } from '../../src/audio/music';
-import { BIKES, BIKE_ORDER } from '../../src/bike/bikes';
+import { BIKES, BIKE_ORDER, BOT_RUN_MS } from '../../src/bike/bikes';
 import { STAGE_COLS } from '../../src/level/levelData';
 import {
   DEFAULT_PREFS, EMPTY_BEST, GHOST_HZ, LEGACY_BEST_KEY, MEDAL_TIMES_MS, PREFS_KEY, bestKey, decodeGhost, encodeGhost, ghostPoseAt,
@@ -29,45 +29,48 @@ const throwingMethods: StoreProvider = () => ({
 const BEST_KEY = bestKey('daybreak');
 
 describe('medals', () => {
-  it('thresholds are inclusive: gold <= 40 s, silver <= 46 s, bronze <= 56 s', () => {
-    expect(MEDAL_TIMES_MS).toEqual({ gold: 40_000, silver: 46_000, bronze: 56_000 });
-    expect(medalFor(38_125)).toBe('gold'); // the bot's clean run
-    expect(medalFor(40_000)).toBe('gold');
-    expect(medalFor(40_001)).toBe('silver');
-    expect(medalFor(46_000)).toBe('silver');
-    expect(medalFor(46_001)).toBe('bronze');
-    expect(medalFor(56_000)).toBe('bronze');
-    expect(medalFor(56_001)).toBeNull();
+  it('thresholds are inclusive: on the Daybreak gold <= 63 s, silver <= 75 s, bronze <= 131 s (v1.7)', () => {
+    expect(MEDAL_TIMES_MS).toEqual({ gold: 63_000, silver: 75_000, bronze: 131_000 });
+    expect(medalFor(59_517)).toBe('gold'); // the bot's clean run
+    expect(medalFor(63_000)).toBe('gold');
+    expect(medalFor(63_001)).toBe('silver');
+    expect(medalFor(75_000)).toBe('silver');
+    expect(medalFor(75_001)).toBe('bronze');
+    expect(medalFor(131_000)).toBe('bronze');
+    expect(medalFor(131_001)).toBeNull();
     expect(medalFor(Number.NaN)).toBeNull();
     expect(medalFor(-1)).toBeNull();
   });
 
   it('the next target is one medal up; none after gold', () => {
-    expect(nextMedal(90_000)).toEqual({ medal: 'bronze', timeMs: 56_000 });
-    expect(nextMedal(50_000)).toEqual({ medal: 'silver', timeMs: 46_000 });
-    expect(nextMedal(41_000)).toEqual({ medal: 'gold', timeMs: 40_000 });
-    expect(nextMedal(39_000)).toBeNull();
+    expect(nextMedal(200_000)).toEqual({ medal: 'bronze', timeMs: 131_000 });
+    expect(nextMedal(90_000)).toEqual({ medal: 'silver', timeMs: 75_000 });
+    expect(nextMedal(64_000)).toEqual({ medal: 'gold', timeMs: 63_000 });
+    expect(nextMedal(62_000)).toBeNull();
   });
 
-  it('every bike has its own targets (v1.6): the same time is a different medal on a different bike', () => {
-    expect(BIKES.tonup.medalsMs).toEqual({ gold: 34_000, silver: 40_000, bronze: 50_000 });
-    expect(BIKES.sundowner.medalsMs).toEqual({ gold: 46_000, silver: 52_000, bronze: 62_000 });
+  it('every bike has its own targets: the same time is a different medal on a different bike', () => {
+    expect(BIKES.tonup.medalsMs).toEqual({ gold: 53_000, silver: 63_000, bronze: 110_000 });
+    expect(BIKES.sundowner.medalsMs).toEqual({ gold: 73_000, silver: 87_000, bronze: 153_000 });
     expect(MEDAL_TIMES_MS).toBe(BIKES.daybreak.medalsMs);
-    expect(BIKE_ORDER.map((b) => medalFor(38_125, BIKES[b].medalsMs))).toEqual(['silver', 'gold', 'gold']);
-    expect(BIKE_ORDER.map((b) => medalFor(45_000, BIKES[b].medalsMs))).toEqual(['bronze', 'silver', 'gold']);
-    expect(BIKE_ORDER.map((b) => medalFor(57_000, BIKES[b].medalsMs))).toEqual([null, null, 'bronze']);
-    // each bike's measured bot run is gold on that bike, with about 2 s in hand
-    const botMs = { tonup: 32_058, daybreak: 38_125, sundowner: 43_992 };
+    expect(BIKE_ORDER.map((b) => medalFor(59_517, BIKES[b].medalsMs))).toEqual(['silver', 'gold', 'gold']);
+    expect(BIKE_ORDER.map((b) => medalFor(70_000, BIKES[b].medalsMs))).toEqual(['bronze', 'silver', 'gold']);
+    expect(BIKE_ORDER.map((b) => medalFor(140_000, BIKES[b].medalsMs))).toEqual([null, null, 'bronze']);
+    // each bike's measured bot run is gold on that bike, with 5% (and the rounding up to a second) in hand;
+    // bronze is generous: more than twice the bot's time
     for (const b of BIKE_ORDER) {
-      expect(medalFor(botMs[b], BIKES[b].medalsMs), b).toBe('gold');
-      expect(BIKES[b].medalsMs.gold - botMs[b], b).toBeGreaterThanOrEqual(1875);
-      expect(BIKES[b].medalsMs.gold - botMs[b], b).toBeLessThanOrEqual(2100);
+      const m = BIKES[b].medalsMs;
+      expect(medalFor(BOT_RUN_MS[b], m), b).toBe('gold');
+      expect(m.gold - BOT_RUN_MS[b], b).toBeGreaterThanOrEqual(BOT_RUN_MS[b] * 0.05);
+      expect(m.gold - BOT_RUN_MS[b], b).toBeLessThan(BOT_RUN_MS[b] * 0.05 + 1000);
+      expect(m.bronze, b).toBeGreaterThan(2 * BOT_RUN_MS[b]);
+      expect(m.gold < m.silver && m.silver < m.bronze, b).toBe(true);
     }
-    expect(medalFor(34_000, BIKES.tonup.medalsMs)).toBe('gold');
-    expect(medalFor(34_001, BIKES.tonup.medalsMs)).toBe('silver');
-    expect(nextMedal(47_000, BIKES.sundowner.medalsMs)).toEqual({ medal: 'gold', timeMs: 46_000 });
-    expect(nextMedal(47_000, BIKES.tonup.medalsMs)).toEqual({ medal: 'silver', timeMs: 40_000 });
-    expect(nextMedal(33_000, BIKES.tonup.medalsMs)).toBeNull();
+    expect(medalFor(53_000, BIKES.tonup.medalsMs)).toBe('gold');
+    expect(medalFor(53_001, BIKES.tonup.medalsMs)).toBe('silver');
+    expect(nextMedal(74_000, BIKES.sundowner.medalsMs)).toEqual({ medal: 'gold', timeMs: 73_000 });
+    expect(nextMedal(74_000, BIKES.tonup.medalsMs)).toEqual({ medal: 'silver', timeMs: 63_000 });
+    expect(nextMedal(50_000, BIKES.tonup.medalsMs)).toBeNull();
   });
 });
 
@@ -96,7 +99,7 @@ describe('best run', () => {
     const { provider, data } = memoryStore();
     expect(loadBest('daybreak', provider)).toEqual(EMPTY_BEST);
     const ghost = encodeGhost([{ x: 40, y: 222, angle: 0 }, { x: 52.5, y: 210, angle: 12 }]);
-    const best: Best = { timeMs: 38_125, diyas: 30, flips: 2, ghost };
+    const best: Best = { timeMs: 59_517, diyas: 56, flips: 2, ghost };
     expect(saveBest('daybreak', best, provider)).toBe(true);
     expect(data.has(BEST_KEY)).toBe(true);
     expect(loadBest('daybreak', provider)).toEqual(best);
@@ -104,7 +107,7 @@ describe('best run', () => {
 
   it('ignores malformed records and records from another stage layout', () => {
     const { provider, data } = memoryStore();
-    for (const raw of ['', 'not json', '42', 'null', '[]', '{"v":1}', '{"v":99,"stage":580,"timeMs":1}']) {
+    for (const raw of ['', 'not json', '42', 'null', '[]', '{"v":1}', '{"v":99,"stage":900,"timeMs":1}']) {
       data.set(BEST_KEY, raw);
       expect(loadBest('daybreak', provider), raw).toEqual(EMPTY_BEST);
     }
@@ -121,7 +124,9 @@ describe('best run', () => {
       expect(saveBest('daybreak', { timeMs: 1, diyas: 1, flips: 1, ghost: '' }, provider)).toBe(false);
       for (const b of BIKE_ORDER) expect(loadBest(b, provider)).toEqual(EMPTY_BEST);
       expect(loadPrefs(provider)).toEqual(DEFAULT_PREFS);
-      expect(savePrefs({ ghost: false, sound: 2, bike: 'tonup' }, provider)).toBe(false);
+      expect(savePrefs({ ghost: false, sound: 2, bike: 'tonup', tutorialDone: true }, provider)).toBe(false);
+      // so with storage throwing the tutorial reads "not done" every time: the prompts show
+      expect(loadPrefs(provider).tutorialDone).toBe(false);
     }
     // and the bests still fold in memory
     const u = submitRun(loadBest('daybreak', throwingAccess), { timeMs: 45_000, diyas: 9, flips: 0 });
@@ -131,14 +136,36 @@ describe('best run', () => {
 
   it('prefs round-trip and fall back to the defaults', () => {
     const { provider, data } = memoryStore();
-    expect(loadPrefs(provider)).toEqual({ ghost: true, sound: 0, bike: 'daybreak' });
-    expect(savePrefs({ ghost: false, sound: 1, bike: 'sundowner' }, provider)).toBe(true);
-    expect(loadPrefs(provider)).toEqual({ ghost: false, sound: 1, bike: 'sundowner' });
-    data.set(PREFS_KEY, '{"ghost":"yes","sound":7,"bike":"chopper"}');
-    expect(loadPrefs(provider)).toEqual({ ghost: true, sound: 0, bike: 'daybreak' });
+    expect(loadPrefs(provider)).toEqual({ ghost: true, sound: 0, bike: 'daybreak', tutorialDone: false });
+    expect(savePrefs({ ghost: false, sound: 1, bike: 'sundowner', tutorialDone: false }, provider)).toBe(true);
+    expect(loadPrefs(provider)).toEqual({ ghost: false, sound: 1, bike: 'sundowner', tutorialDone: false });
+    data.set(PREFS_KEY, '{"ghost":"yes","sound":7,"bike":"chopper","tutorialDone":"yes"}');
+    expect(loadPrefs(provider)).toEqual({ ghost: true, sound: 0, bike: 'daybreak', tutorialDone: false });
     // prefs saved before the roster have no bike: the default
     data.set(PREFS_KEY, '{"ghost":false,"sound":2}');
-    expect(loadPrefs(provider)).toEqual({ ghost: false, sound: 2, bike: 'daybreak' });
+    expect(loadPrefs(provider)).toEqual({ ghost: false, sound: 2, bike: 'daybreak', tutorialDone: false });
+  });
+
+  it('tutorialDone (v1.7): false by default and for prefs from before v1.7; true once saved; kept by other saves', () => {
+    const { provider, data } = memoryStore();
+    expect(DEFAULT_PREFS.tutorialDone).toBe(false);
+    expect(loadPrefs(provider).tutorialDone).toBe(false);
+    // a v1.6 player's prefs: everything kept, the tutorial not done
+    data.set(PREFS_KEY, '{"ghost":false,"sound":1,"bike":"tonup"}');
+    expect(loadPrefs(provider)).toEqual({ ghost: false, sound: 1, bike: 'tonup', tutorialDone: false });
+    // finishing a run: the game saves { ...prefs, tutorialDone: true }
+    expect(savePrefs({ ...loadPrefs(provider), tutorialDone: true }, provider)).toBe(true);
+    expect(loadPrefs(provider)).toEqual({ ghost: false, sound: 1, bike: 'tonup', tutorialDone: true });
+    // the other settings are saved the same way ({ ...prefs, x }), so they carry it along
+    savePrefs({ ...loadPrefs(provider), sound: 2 }, provider);
+    savePrefs({ ...loadPrefs(provider), bike: 'sundowner' }, provider);
+    savePrefs({ ...loadPrefs(provider), ghost: true }, provider);
+    expect(loadPrefs(provider)).toEqual({ ghost: true, sound: 2, bike: 'sundowner', tutorialDone: true });
+    // only a real true counts
+    for (const v of ['1', '"true"', 'null', '0']) {
+      data.set(PREFS_KEY, `{"tutorialDone":${v}}`);
+      expect(loadPrefs(provider).tutorialDone, v).toBe(false);
+    }
   });
 });
 
@@ -238,9 +265,9 @@ describe('ghost', () => {
     });
   });
 
-  it('survives positions above the screen and past the stage end', () => {
-    const [p] = decodeGhost(encodeGhost([{ x: 9264, y: -40.5, angle: -179 }]));
-    expect(p).toEqual({ x: 9264, y: -40.5, angle: -179 });
+  it('survives positions above the screen and at the end of the 900-column stage', () => {
+    const [p] = decodeGhost(encodeGhost([{ x: 14384, y: -40.5, angle: -179 }]));
+    expect(p).toEqual({ x: 14384, y: -40.5, angle: -179 });
   });
 
   it('rejects malformed data', () => {

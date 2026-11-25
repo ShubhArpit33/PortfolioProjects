@@ -1,6 +1,7 @@
 // Heightfield built from the level segments. Pure, no Phaser.
 // surfaceY is continuous piecewise-linear (ramps interpolate; columns do not step),
-// except at a cliff (vertical wall) and at gaps (null).
+// except at a cliff (vertical wall) and at gaps (null). A riser (v1.7) is a 1-column gap whose far bank
+// is one tile higher: the physics treats it exactly like a canal (hop it, or hit the far wall).
 
 import {
   BASELINE_Y, SECTIONS, STAGE_COLS, TILE,
@@ -22,6 +23,8 @@ export interface Gap {
   river: boolean;
   /** the tank under the kicker (section 6): cleared by a hop on the ramp, or by boost */
   kicker: boolean;
+  /** a dry slot at the foot of a riser (the Temple Steps): the same rules as a canal, drawn as stone */
+  step: boolean;
   nearY: number;            // surface y of the take-off lip
   farY: number;             // surface y of the far bank
 }
@@ -70,7 +73,7 @@ export function buildTerrain(sections: Section[] = SECTIONS): Terrain {
       if (seg.kind === 'gap') {
         const farH = seg.farBankH ?? h;
         gaps.push({
-          x0, x1, col0: col, cols: seg.cols, river: seg.river === true, kicker: seg.kicker === true,
+          x0, x1, col0: col, cols: seg.cols, river: seg.river === true, kicker: seg.kicker === true, step: seg.step === true,
           nearY: heightY(h), farY: heightY(farH),
         });
         for (let i = 0; i < seg.cols; i++) colIndex.push(-gaps.length);

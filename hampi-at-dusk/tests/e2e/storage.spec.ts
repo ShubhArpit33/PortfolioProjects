@@ -6,7 +6,7 @@ import { advance, planFor, resetBot } from './bot';
 import { boot, expect, getLevel, getState, rideFromTitle, shot, test } from './helpers';
 
 test('with localStorage throwing: full run, medal, in-memory best and ghost, no console errors', async ({ page }) => {
-  test.setTimeout(120_000);
+  test.setTimeout(240_000);
   await page.addInitScript(() => {
     Object.defineProperty(window, 'localStorage', {
       configurable: true,
@@ -25,6 +25,8 @@ test('with localStorage throwing: full run, medal, in-memory best and ghost, no 
   await page.evaluate(() => window.__test!.step(30));
   await rideFromTitle(page, 'sundowner'); // picking a bike tries to save a preference too
   expect((await getState(page)).bike).toBe('sundowner');
+  // With storage throwing the prefs always read "tutorial not done": the prompts show.
+  expect((await getState(page)).prompt).toBe('HOLD RIGHT TO RIDE');
   for (const key of ['m', 'm', 'm', 'g', 'g']) {
     await page.keyboard.press(key);
     await page.evaluate(() => window.__test!.step(1));
@@ -46,6 +48,8 @@ test('with localStorage throwing: full run, medal, in-memory best and ghost, no 
   await page.evaluate(() => window.__test!.step(0));
   await page.waitForFunction(() => window.__test!.state().timeMs === 0 && !window.__test!.state().finished);
   await resetBot(page);
+  // The tutorial is done for the rest of the session, from memory too.
+  expect((await getState(page)).prompt, 'no prompt after a finished run, even though nothing could be saved').toBe('');
   await page.evaluate(() => { window.__test!.setInput({}); window.__test!.step(60); });
   s = await getState(page);
   expect(s.ghost).not.toBeNull();
