@@ -15,6 +15,8 @@ export class Checkpoint {
   lit = false;
   private sprite: Phaser.GameObjects.Sprite;
   private glows: Phaser.GameObjects.Image[];
+  /** the lamp's light pooled on the road at its foot */
+  private pool: Phaser.GameObjects.Image;
 
   constructor(scene: Phaser.Scene, def: CheckpointDef, depth: number) {
     this.id = def.id;
@@ -28,7 +30,8 @@ export class Checkpoint {
       scene.add.image(lampX, this.y - 46, 'glow'),
       scene.add.image(lampX, this.y - 26, 'glow').setScale(1, 1.5),
     ];
-    for (const g of this.glows) g.setDepth(depth).setVisible(false);
+    this.pool = scene.add.image(lampX, this.y, 'light_pool').setOrigin(0.5, 0);
+    for (const g of [...this.glows, this.pool]) g.setDepth(depth).setBlendMode(Phaser.BlendModes.ADD).setVisible(false);
     this.sprite = scene.add.sprite(lampX, this.y, 'deepastambha', 0).setOrigin(0.5, 1).setDepth(depth + 0.1);
   }
 
@@ -36,6 +39,7 @@ export class Checkpoint {
     this.lit = lit;
     this.sprite.setFrame(lit ? 1 : 0);
     for (const g of this.glows) g.setVisible(lit);
+    this.pool.setVisible(lit);
   }
 
   render(t: number): void {
@@ -43,5 +47,6 @@ export class Checkpoint {
     const a = 0.8 + 0.2 * Math.sin(t * 9 + this.id);
     this.glows[0]!.setAlpha(a);
     this.glows[1]!.setAlpha(a * 0.6);
+    this.pool.setAlpha(a);
   }
 }

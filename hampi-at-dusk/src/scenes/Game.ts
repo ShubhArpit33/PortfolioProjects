@@ -4,6 +4,8 @@
 import Phaser from 'phaser';
 import { BoostStreaks, Fx } from '../art/Fx';
 import { DEPTH, Parallax } from '../art/Parallax';
+import { WaterMist } from '../art/look/Atmosphere';
+import { theme } from '../art/look/theme';
 import { PAL } from '../art/palette';
 import { setMusicInRun, setMusicIntensity, tickMusic } from '../audio/music';
 import * as sfx from '../audio/sfx';
@@ -188,6 +190,8 @@ export class GameScene extends Phaser.Scene {
   private boulder!: Boulder;
   private coracles: Phaser.GameObjects.Image[] = [];
   private glints: Phaser.GameObjects.Image[] = [];
+  /** low mist over the water in the road (the stage theme decides whether there is any) */
+  private mist: WaterMist | null = null;
   private fade!: Phaser.GameObjects.Rectangle;
   private keys!: Record<'right' | 'left' | 'up' | 'down' | 'space' | 'shift', Phaser.Input.Keyboard.Key>;
   private debugGfx: Phaser.GameObjects.Graphics | null = null;
@@ -270,6 +274,9 @@ export class GameScene extends Phaser.Scene {
         this.glints.push(this.add.image(Math.round(x), y, 'p_glint').setDepth(DEPTH.deco - 0.5));
       }
     }
+
+    const water = TERRAIN.gaps.filter((g) => !g.step).map((g) => [g.x0, g.x1] as const);
+    this.mist = theme().mist.overWater ? new WaterMist(this, water, WATER_LINE_Y, DEPTH.deco - 0.4) : null;
 
     // Mandapa Run: a standing colonnade behind the plinth (decoration, behind every entity).
     const plinth = TERRAIN.pieces.find((p) => p.y0 === BASELINE_Y - TILE && p.y1 === p.y0 && p.cols >= 60);
@@ -852,6 +859,7 @@ export class GameScene extends Phaser.Scene {
     this.glints.forEach((g, i) => {
       g.setAlpha(0.15 + 0.55 * Math.max(0, Math.sin(t * 2.4 + i * 1.9)));
     });
+    this.mist?.update(scroll, t);
 
     let fade = 0;
     if (this.phase === 'crash') fade = Phaser.Math.Clamp((this.crashT - this.respawnDelay) / FADE_S, 0, 1);

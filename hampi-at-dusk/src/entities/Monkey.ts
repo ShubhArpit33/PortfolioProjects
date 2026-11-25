@@ -1,6 +1,7 @@
 // The monkey troop in the Fallen Pavilion. Triggered by the bike, they run in and sit on the road.
 // A honk in range makes them leap away; contact is a single stumble per monkey, never a crash.
 import Phaser from 'phaser';
+import { followKey, keyUnder } from '../art/look/bake';
 import { BASELINE_Y, MONKEYS, TILE } from '../level/levelData';
 import type { Box } from '../level/terrain';
 
@@ -11,10 +12,12 @@ export class Monkey {
   x: number;               // left edge of the 12x12 hitbox
   private leapT = 0;
   private sprite: Phaser.GameObjects.Sprite;
+  private key: Phaser.GameObjects.Image;
 
   constructor(scene: Phaser.Scene, private spawnX: number, private sitX: number, depth: number, private seed: number) {
     this.x = spawnX;
     this.sprite = scene.add.sprite(0, 0, 'monkey', 0).setOrigin(0.5, 1).setDepth(depth).setVisible(false);
+    this.key = keyUnder(scene, this.sprite);
   }
 
   get collidable(): boolean {
@@ -64,6 +67,7 @@ export class Monkey {
     const s = this.sprite;
     if (this.state === 'hidden' || this.state === 'gone') {
       s.setVisible(false);
+      this.key.setVisible(false);
       return;
     }
     s.setVisible(true).setAlpha(1);
@@ -83,6 +87,7 @@ export class Monkey {
       s.setAlpha(1 - k * k);
     }
     s.setPosition(Math.round(x), Math.round(y));
+    followKey(this.key, s);
   }
 }
 

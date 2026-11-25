@@ -1,6 +1,7 @@
 // The cow on Bazaar Street. Solid below cowCrashSpeed, a crash above it; she is never harmed.
 // Wait politely nearby and she ambles off. A honk only earns a "..." bubble.
 import Phaser from 'phaser';
+import { followKey, keyUnder } from '../art/look/bake';
 import { BASELINE_Y, COW, TILE } from '../level/levelData';
 import type { Box } from '../level/terrain';
 
@@ -14,10 +15,12 @@ export class Cow {
   private walkT = 0;
   private bubbleT = 0;
   private sprite: Phaser.GameObjects.Image;
+  private key: Phaser.GameObjects.Image;
   private bubble: Phaser.GameObjects.Image;
 
   constructor(scene: Phaser.Scene, depth: number) {
     this.sprite = scene.add.image(this.x, BASELINE_Y, 'cow').setOrigin(0, 1).setDepth(depth);
+    this.key = keyUnder(scene, this.sprite);
     this.bubble = scene.add.image(this.x + 2, BASELINE_Y - COW.h - 3, 'bubble').setOrigin(0.5, 1).setDepth(depth + 0.5).setVisible(false);
   }
 
@@ -75,6 +78,7 @@ export class Cow {
       this.sprite.setAlpha(1).setFlipX(false);
       this.sprite.y = BASELINE_Y;
     }
+    followKey(this.key, this.sprite);
     this.bubble.setVisible(visible && this.bubbleT > 0);
     this.bubble.x = Math.round(this.x) + (this.state === 'walk' ? COW.w - 2 : 2);
   }
