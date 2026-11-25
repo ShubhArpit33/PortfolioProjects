@@ -790,6 +790,6 @@ Notes on the table:
 - Feedback is batched into as few Fable rounds as possible; small changes run targeted tests, with a full `npm test` before each push.
 
 ## v1.6.4 (Opus, small fixes from the play-test)
-- Ton-Up tagline is now "THE CAFE RACER. FAST AND SHARP. LAND IT STRAIGHT." (49 chars; checked at 4x that it fits the select screen, so the tagline length test allows 50).
+- Ton-Up tagline is now "THE CAFE RACER. FAST AND SHARP." (user trimmed "LAND IT STRAIGHT"; the length test allows up to 50 chars, which fit the select screen at 4x).
 - Sundowner hands: the glove and grip were near-black and vanished against the dark bars, so the arm seemed to stop short of the handlebar. The glove is now brown leather and the grip a visible dark grey that joins the riser.
 - Music plays on the menus only (title, bike select, finish). Game.create() calls setMusicInRun(true) and the menu scenes setMusicInRun(false); the bus fades out/in, the song resumes where it left off, M still works, and a crash duck cannot bring the music back during a run. The audio e2e now checks silence in a run (peak 0.000) and music back on the title (peak ~0.045).
