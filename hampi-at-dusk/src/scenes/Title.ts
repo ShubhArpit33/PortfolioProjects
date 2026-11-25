@@ -37,7 +37,14 @@ export class TitleScene extends Phaser.Scene {
     this.bike = new BikeView(this, DEPTH.bike, DEPTH.fx, def.id);
 
     const ui = DEPTH.fade;
-    pixelText(this, 240, 58, 'OPEN ROADS: INDIA', PAL.uiYellow, 24).setOrigin(0.5, 0).setDepth(ui);
+    // The font is monospaced, so a ':' sits in a full-width cell; drawn as two pieces with a small gap the
+    // space after the colon reads as one space instead of two.
+    const head = pixelText(this, 0, 58, 'OPEN ROADS:', PAL.uiYellow, 24).setDepth(ui);
+    const tail = pixelText(this, 0, 58, 'INDIA', PAL.uiYellow, 24).setDepth(ui);
+    const gap = 12;
+    const left = Math.round(240 - (head.width + gap + tail.width) / 2);
+    head.setX(left);
+    tail.setX(left + head.width + gap);
     pixelText(this, 240, 92, 'STAGE 1: HAMPI AT DUSK', PAL.cream).setOrigin(0.5, 0).setDepth(ui);
     this.press = pixelText(this, 240, 128, 'PRESS ENTER', PAL.uiYellow).setOrigin(0.5, 0).setDepth(ui);
 
