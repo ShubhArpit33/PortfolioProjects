@@ -3,7 +3,7 @@ import Phaser from 'phaser';
 import { DEPTH, Parallax } from '../art/Parallax';
 import { PAL } from '../art/palette';
 import { soundLabel } from '../audio/sfx';
-import { setMusicIntensity, tickMusic } from '../audio/music';
+import { setMusicInRun, setMusicIntensity, tickMusic } from '../audio/music';
 import { BikeView } from '../bike/BikeView';
 import { currentBikeDef } from '../bike/selection';
 import { onKeyPress } from '../input';
@@ -27,6 +27,7 @@ export class TitleScene extends Phaser.Scene {
   }
 
   create(): void {
+    setMusicInRun(false); // v1.6.4: menus have the music
     this.t = 0;
     this.parallax = new Parallax(this);
     // The first terrain chunk is all flat road, so it tiles as a ground strip.

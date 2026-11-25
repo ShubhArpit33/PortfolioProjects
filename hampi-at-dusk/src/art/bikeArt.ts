@@ -267,6 +267,7 @@ const SUNDOWNER: Legend = {
   G: 0x7fa6d8, g: CHROME,            // goggles pushed up on the brow: glass, chrome frame
   F: 0xd9a37a, f: 0xa9744f,          // face
   B: 0x1a1418,
+  O: 0x6b4428, o: 0x8a5a36,          // brown leather glove (v1.6.4: a black glove vanished against the dark bars)
 };
 
 const SUNDOWNER_BODY: readonly Seg[] = [
@@ -303,7 +304,7 @@ const SUNDOWNER_BODY: readonly Seg[] = [
   // round headlamp in a black cowl, chrome bezel
   [10, 34, 'eee'], [11, 33, 'nNNNcY'], [12, 33, 'nNNNcYW'], [13, 33, 'NNNNcYY'], [14, 34, 'NNNcY'],
   // tall mini-ape bar: riser up from the yoke, pulled back to the grip; a round mirror standing above it
-  [13, 32, 'n'], [12, 32, 'e'], [11, 32, 'e'], [10, 32, 'e'], [9, 31, 'e'], [8, 31, 'e'], [7, 29, 'KKe'],
+  [13, 32, 'n'], [12, 32, 'e'], [11, 32, 'e'], [10, 32, 'e'], [9, 31, 'e'], [8, 31, 'e'], [7, 29, 'nne'],
   [6, 31, 'e'], [5, 31, 'e'], [4, 31, 'ee'], [3, 30, 'eNNe'], [2, 31, 'ee'],
 ];
 
@@ -323,7 +324,7 @@ const SUNDOWNER_RIDER: readonly Seg[] = [
   [7, 15, 'jjjjj'], [8, 14, 'qJJJJJJ'], [9, 14, 'qJJJJJJ'], [10, 14, 'qJJJJJJ'], [11, 14, 'qJJJJJJ'], [12, 15, 'qJJJJJ'],
   [13, 15, 'qJJJJJ'], [14, 15, 'qq'], [15, 16, 'q'],
   // arm raised to the high grip, glove
-  [9, 20, 'JJ'], [8, 20, 'jjjj'], [9, 22, 'qqq'], [7, 23, 'jjjjj'], [8, 24, 'qqqq'], [7, 28, 'BB'], [8, 28, 'B'],
+  [9, 20, 'JJ'], [8, 20, 'jjjj'], [9, 22, 'qqq'], [7, 23, 'jjjjj'], [8, 24, 'qqqq'], [7, 28, 'oO'], [8, 28, 'O'],
   // open-face retro helmet (v1.6.3): a cream shell over the crown and down behind the ear, goggles pushed up on
   // the brow with their black strap round the shell, the face open below it, a chin strap. Same seven columns
   // and six rows as the head it replaces.

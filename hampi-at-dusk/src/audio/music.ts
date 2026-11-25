@@ -653,6 +653,8 @@ interface Live { ctx: BaseAudioContext; bus: GainNode; music: Music }
 
 let v: Live | null = null;
 let on = true;
+/** v1.6.4: the music plays on the menus only (title, bike select, finish); a run is silent apart from SFX. */
+let inRun = false;
 let started = false;
 let intensity = 0;       // smoothed 0..1
 let intensityTarget = 0;
@@ -660,7 +662,7 @@ let lastTick = 0;
 
 /** Called by sfx.ts once the AudioContext exists. */
 export function attachMusic(ctx: BaseAudioContext, bus: GainNode, noise: AudioBuffer): void {
-  bus.gain.value = on ? MUSIC_LEVEL : 0;
+  bus.gain.value = audible() ? MUSIC_LEVEL : 0;
   v = { ctx, bus, music: createMusic(ctx, bus, noise) };
   started = false;
   lastTick = ctx.currentTime;
@@ -670,12 +672,28 @@ export function isMusicOn(): boolean {
   return on;
 }
 
-export function setMusicOn(value: boolean): void {
-  on = value;
+/** The player's choice (M) and the menu-only rule together. */
+function audible(): boolean {
+  return on && !inRun;
+}
+
+function applyGain(timeConstant: number): void {
   if (!v) return;
   const t = v.ctx.currentTime;
   v.bus.gain.cancelScheduledValues(t);
-  v.bus.gain.setTargetAtTime(on ? MUSIC_LEVEL : 0, t, 0.05);
+  v.bus.gain.setTargetAtTime(audible() ? MUSIC_LEVEL : 0, t, timeConstant);
+}
+
+export function setMusicOn(value: boolean): void {
+  on = value;
+  applyGain(0.05);
+}
+
+/** Called by the scenes: true while a run is on screen (music fades out), false on the menus (it fades back in). */
+export function setMusicInRun(value: boolean): void {
+  if (inRun === value) return;
+  inRun = value;
+  applyGain(value ? 0.25 : 0.4);
 }
 
 /** 0 = calm, 1 = lifted (boosting; the river run-up sits in between). Smoothed inside tickMusic(). */
@@ -685,7 +703,7 @@ export function setMusicIntensity(target: number): void {
 
 /** Dip the music briefly (a crash). */
 export function duckMusic(seconds = 0.9): void {
-  if (!v || !on) return;
+  if (!v || !audible()) return;
   const t = v.ctx.currentTime;
   v.bus.gain.cancelScheduledValues(t);
   v.bus.gain.setTargetAtTime(DUCK_LEVEL, t, 0.03);
@@ -701,7 +719,7 @@ export function tickMusic(): void {
   const dt = Math.min(0.25, Math.max(0, now - lastTick));
   lastTick = now;
   intensity += (intensityTarget - intensity) * Math.min(1, dt * 2.5);
-  if (!on) {
+  if (!audible()) {
     started = false; // schedule nothing; the song picks up where it left off when music comes back
     return;
   }

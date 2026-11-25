@@ -622,7 +622,7 @@ describe('roster (v1.6)', () => {
       expect(b.id).toBe(id);
       expect(b.cfg).toEqual({ ...CONFIG, ...b.overrides });
       expect(b.name).toMatch(/^[A-Z-]+$/);
-      expect(b.tagline.length).toBeLessThanOrEqual(42);
+      expect(b.tagline.length).toBeLessThanOrEqual(50); // 50 chars still fit the select screen (checked at 4x, v1.6.4)
       expect(b.tagline).toMatch(/^[A-Z .,'-]+$/);
     }
     expect(isBikeId('tonup')).toBe(true);

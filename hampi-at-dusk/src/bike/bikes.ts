@@ -48,7 +48,7 @@ const OVERRIDES: Record<BikeId, Partial<Config>> = {
 };
 
 const NAMES: Record<BikeId, [string, string]> = {
-  tonup: ['TON-UP', 'FAST AND SHARP. LAND IT STRAIGHT.'],
+  tonup: ['TON-UP', 'THE CAFE RACER. FAST AND SHARP. LAND IT STRAIGHT.'],
   daybreak: ['DAYBREAK', 'THE ALL-ROUNDER. A CLASSIC ROADSTER.'],
   sundowner: ['SUNDOWNER', 'THE BOBBER. LOW, HEAVY AND FORGIVING.'],
 };

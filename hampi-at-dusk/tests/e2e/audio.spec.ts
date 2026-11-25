@@ -16,24 +16,40 @@ test('music starts only after a real key press; M cycles the sound modes and is 
   expect(a.created).toBe(true);
   expect(a.mode).toBe(0);
 
-  // Let the music play for a while in real time (the scheduler runs from the frame loop / steps),
-  // crashing once into the cow on the way so the duck path runs too. (The cow is the first thing that can
-  // crash the bike: the Warm-up Road before her is a no-crash zone, about 11 s of throttle away.)
-  let musicPeak = 0;
+  // v1.6.4: the music plays on the menus only. During a run the music bus fades to silence while the engine and
+  // effects play on; crash once into the cow so the duck path runs too (it must not bring the music back).
+  // (The cow is the first thing that can crash the bike: the Warm-up Road before her is a no-crash zone.)
+  let runMusicPeak = 0;
   let masterPeak = 0;
   for (let i = 0; i < 60; i++) {
     if (i >= 16 && (await page.evaluate(() => window.__test!.state())).crashes >= 1) break;
     await page.evaluate(() => { const t = window.__test!; t.setInput({ throttle: true }); t.step(30); });
     await page.waitForTimeout(120);
     a = await audio();
-    musicPeak = Math.max(musicPeak, a.musicPeak);
+    if (i >= 12) runMusicPeak = Math.max(runMusicPeak, a.musicPeak); // after the fade-out
     masterPeak = Math.max(masterPeak, a.masterPeak);
   }
   expect((await page.evaluate(() => window.__test!.state())).crashes).toBeGreaterThanOrEqual(1);
-  console.log(`[audio] context ${a.state}; music bus peak ${musicPeak.toFixed(3)}, master peak ${masterPeak.toFixed(3)}`);
+
+  // Back to the title through the pause menu (RESUME, RESTART, CHANGE BIKE, MAIN MENU): the music returns there.
+  for (const key of ['Escape', 'ArrowDown', 'ArrowDown', 'ArrowDown', 'Enter']) {
+    await page.keyboard.press(key);
+    await page.evaluate(() => window.__test!.step(2));
+  }
+  await page.waitForFunction(() => window.__test!.screen() === 'title');
+  let menuMusicPeak = 0;
+  for (let i = 0; i < 20; i++) {
+    await page.evaluate(() => window.__test!.step(30));
+    await page.waitForTimeout(120);
+    a = await audio();
+    menuMusicPeak = Math.max(menuMusicPeak, a.musicPeak);
+    masterPeak = Math.max(masterPeak, a.masterPeak);
+  }
+  console.log(`[audio] context ${a.state}; music peak in the run ${runMusicPeak.toFixed(3)}, on the title ${menuMusicPeak.toFixed(3)}, master peak ${masterPeak.toFixed(3)}`);
   if (a.state === 'running') {
-    expect(musicPeak, 'music is audible on its bus').toBeGreaterThan(0.005);
-    expect(musicPeak, 'music sits low in the mix').toBeLessThan(0.5);
+    expect(runMusicPeak, 'no music during a run').toBeLessThan(0.005);
+    expect(menuMusicPeak, 'music is audible on the menus').toBeGreaterThan(0.005);
+    expect(menuMusicPeak, 'music sits low in the mix').toBeLessThan(0.5);
     expect(masterPeak, 'no clipping').toBeLessThan(1);
   }
 

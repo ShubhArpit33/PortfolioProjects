@@ -5,7 +5,7 @@ import Phaser from 'phaser';
 import { DEPTH, Parallax } from '../art/Parallax';
 import { PAL, css, mix } from '../art/palette';
 import { soundLabel } from '../audio/sfx';
-import { setMusicIntensity, tickMusic } from '../audio/music';
+import { setMusicInRun, setMusicIntensity, tickMusic } from '../audio/music';
 import { BikePreview } from '../bike/BikeView';
 import { BIKES, BIKE_ORDER, type BikeId, type BikeStats } from '../bike/bikes';
 import { currentBike, selectBike } from '../bike/selection';
@@ -45,6 +45,7 @@ export class SelectScene extends Phaser.Scene {
   }
 
   create(): void {
+    setMusicInRun(false); // v1.6.4: menus have the music
     this.t = 0;
     this.previews = [];
     this.names = [];

@@ -169,7 +169,7 @@ describe('bike sprites: each is its own bike', () => {
     // tall bars: the grip is above the tank top (row 10) and the mirror stands above that
     expect(count(sundowner, 29, 7, 31, 7, () => true), 'grip, three rows above the tank').toBe(3);
     expect(count(sundowner, 30, 2, 33, 4, () => true), 'round mirror').toBeGreaterThanOrEqual(8);
-    expect(count(sundowner, 28, 7, 29, 8, (p) => p.c === 0x1a1418), 'the glove is up at the grip').toBeGreaterThanOrEqual(3);
+    expect(count(sundowner, 28, 7, 29, 8, (p) => p.c === 0x6b4428 || p.c === 0x8a5a36), 'the brown glove is up at the grip').toBeGreaterThanOrEqual(3);
     // round headlamp in a black cowl
     expect(count(sundowner, 33, 10, 36, 14, isBlack), 'cowl').toBeGreaterThanOrEqual(14);
     expect(count(sundowner, 38, 11, 39, 14, isLamp), 'lamp').toBeGreaterThanOrEqual(5);

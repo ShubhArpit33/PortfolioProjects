@@ -3,7 +3,7 @@
 // Medal targets and bests are the ridden bike's own.
 import Phaser from 'phaser';
 import { PAL } from '../art/palette';
-import { tickMusic } from '../audio/music';
+import { setMusicInRun, tickMusic } from '../audio/music';
 import { onKeyPress } from '../input';
 import { DIYAS } from '../level/levelData';
 import { BIKES, type BikeId } from '../bike/bikes';
@@ -44,6 +44,7 @@ export class FinishScene extends Phaser.Scene {
   }
 
   create(data: FinishData): void {
+    setMusicInRun(false); // v1.6.4: menus have the music
     this.t = 0;
     this.blink = [];
     const total = DIYAS.length;

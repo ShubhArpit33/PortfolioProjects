@@ -5,7 +5,7 @@ import Phaser from 'phaser';
 import { BoostStreaks, Fx } from '../art/Fx';
 import { DEPTH, Parallax } from '../art/Parallax';
 import { PAL } from '../art/palette';
-import { setMusicIntensity, tickMusic } from '../audio/music';
+import { setMusicInRun, setMusicIntensity, tickMusic } from '../audio/music';
 import * as sfx from '../audio/sfx';
 import {
   FIXED_DT, aabbOverlap, addBoost, bikeAABB, crash, createBikeState, hitsObstacle, step, stumble, touchesDiya,
@@ -249,6 +249,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   create(): void {
+    setMusicInRun(true); // v1.6.4: a run has no music, only the engine and effects
     this.parallax = new Parallax(this);
     addTerrain(this, DEPTH.terrain);
 
