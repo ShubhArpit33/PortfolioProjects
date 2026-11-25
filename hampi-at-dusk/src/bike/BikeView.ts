@@ -70,7 +70,7 @@ export class BikePreview {
     const beat = Math.floor(this.t * (selected ? 9 : 4));
     this.rig.body.y = -WHEEL_R + (beat % 2 === 0 ? 0 : 1);
     this.rig.body.rotation = -3 * this.rev * DEG;
-    this.rig.leg.setVisible(!selected);
+    this.rig.setFootDown(!selected);
     this.rig.container.setAlpha(selected ? 1 : 0.7);
   }
 }
@@ -157,7 +157,7 @@ export class BikeView {
     this.rig.setWheelSpin(this.spin);
 
     // Foot down; it shuffles back and forth with the distance covered while backing up.
-    this.leg.setVisible(drive.footDown || drive.reversing);
+    this.rig.setFootDown(drive.footDown || drive.reversing);
     if (drive.reversing) this.paddle += Math.abs(drive.v) * dt * 0.5;
     else this.paddle = 0;
     this.leg.x = this.sprite.legX + (drive.reversing ? Math.round(Math.sin(this.paddle) * 2) : 0);
@@ -201,7 +201,7 @@ export class BikeView {
     this.container.rotation = -angleDeg * DEG;
     this.body.rotation = 0;
     this.body.y = -WHEEL_R;
-    this.leg.setVisible(false);
+    this.rig.setFootDown(false);
     this.flame.setVisible(false);
   }
 

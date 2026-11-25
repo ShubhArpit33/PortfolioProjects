@@ -40,7 +40,7 @@ and **Change bike** in the pause menu and on the finish screen brings you back h
 |---|---|---|
 | **Ton-Up** (green cafe racer) | Fastest, quick flips, long low hops, a short hard boost. Landings must be within 25° of the slope. | 34 / 40 / 50 s |
 | **Daybreak** (red retro roadster) | The all-rounder the stage was built around. | 40 / 46 / 56 s |
-| **Sundowner** (blue cruiser) | Slowest, strong off the line, a long gentle boost, lazy flips. Forgives landings up to 45° off. | 46 / 52 / 62 s |
+| **Sundowner** (purple and black bobber, whitewall tyres) | Slowest, strong off the line, a long gentle boost, lazy flips. Forgives landings up to 45° off. | 46 / 52 / 62 s |
 
 Each bike has its own best time, medal and ghost. The bikes are original pixel-art tributes to three kinds of motorcycle;
 there are no logos or model names in the game.

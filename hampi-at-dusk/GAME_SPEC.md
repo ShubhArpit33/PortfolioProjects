@@ -124,7 +124,7 @@ monkeys, diyas, the horn, the camera and the engine pitch.
 
 | | **Ton-Up** (`tonup`) | **Daybreak** (`daybreak`, default) | **Sundowner** (`sundowner`) |
 |---|---|---|---|
-| Character | cafe racer: fast, sharp, strict | the all-rounder | cruiser: slow, easy, forgiving |
+| Character | cafe racer: fast, sharp, strict | the all-rounder | bobber: slow, easy, forgiving |
 | `topSpeed` / `accel` | 288 / 180 | 240 / 160 | 204 / 220 |
 | `boostSpeed` / `boostAccel` | 420 / 800 | 360 / 500 | 350 / 380 |
 | `boostDrainPerSec` / `boostRegenPerSec` | 0.72 / 0.096 | 0.6 / 0.08 | 0.36 / 0.048 |
@@ -304,7 +304,7 @@ use it; otherwise use the code-drawn version. This way the build never depends o
 Alpha blends and tints of palette colours are allowed.
 
 **Exception (v1.6): the three bike sprites** may use their own colours (competition green and gold on the Ton-Up, a brighter
-red on the Daybreak, celestial blue and cream on the Sundowner, the riders' clothes). Nothing else leaves the palette, and
+red on the Daybreak, deep violet and black with whitewalls on the Sundowner, the riders' clothes). Nothing else leaves the palette, and
 the background is exactly as it was.
 
 ### 6.2 Parallax layers (back to front)
@@ -345,11 +345,19 @@ Animated details are a pure function of game time and camera scroll (no tweens, 
     headlamp with twin clocks above it; a wide upright bar and a round mirror on a stalk; twin rear shocks; wire-spoke
     wheels with chrome rims. No fairing or screen. The rider sits bolt upright: brown jacket, cream helmet with a gold
     band (the v1.0 rider).
-  - `bike_sundowner`: a long, low cruiser in celestial blue with a cream tank panel and a lot of chrome. A big teardrop
-    tank; a large round chrome headlamp; wide pulled-back bars; forward foot controls set just ahead of the engine (knee
-    bent, not a straight leg; v1.6.1); a stepped two-tier seat; a chunky
-    raked fork; a fat rear tyre under a deep mudguard and a slimmer front; twin long pipes running back past the rear axle.
-    The rider leans back with feet forward: tan jacket, open-face helmet, dark glasses.
+  - `bike_sundowner` (redrawn in v1.6.2): a bobber in purple and black. A deep metallic violet teardrop tank with a soft
+    highlight is the only colour; everything else is blacked out. A single sprung solo saddle floating over the frame on
+    two springs, no pillion; a short bobbed rear mudguard hugging the tyre, with a small round tail lamp and a side plate
+    stub with an amber indicator on its end; tall mini-ape bars with a round mirror standing above them; a round headlamp
+    in a black cowl; black fork gaiters over a length of chrome tube; **whitewall tyres** (a cream sidewall stripe inside
+    the tread) on black wire wheels, a brake disc on the front; a tall long-stroke finned single, black with a few bright
+    fin edges; a black battery box under the saddle; twin shocks; one black slash-cut pipe run low to behind the rear
+    axle. Mid-set pegs (the boot under the knee, behind the cylinder). The rider sits upright with a slight lean back,
+    arms raised to the grips: tan jacket, open-face helmet, dark glasses.
+- **One near leg in every pose (v1.6.2).** Each body has two textures: `bike_<id>` (riding: the near leg on its peg) and
+  `bike_<id>_stand` (foot down: that leg is off the peg, and only a thigh is left, reaching the planted leg). The planted
+  leg `leg_<id>` is only ever shown with the `_stand` body (`BikeRig.setFootDown`), at a standstill, while backing up and
+  on the select screen's unselected cards. The far leg is behind the bike and is not drawn.
 - Per bike as well: the planted leg (`leg_<id>`), the exhaust tip (where the boost flame and the smoke puffs come from),
   and the wheel textures (`wheel_tonup`, `wheel_daybreak`, `wheel_sundowner_rear` / `_front`).
 - Code-driven motion: rider bobs by 1 px at speed, body leans back under throttle and forward under braking,
@@ -370,6 +378,7 @@ Animated details are a pure function of game time and camera scroll (no tweens, 
 | `bg_mid.png` | 960×270 | transparent, tiles horizontally |
 | `fg_near.png` | 960×270 | transparent, tiles horizontally, sparse |
 | `bike_tonup.png` / `bike_daybreak.png` / `bike_sundowner.png` | 48×32 | transparent; body and rider, layout as in 6.3 |
+| `bike_tonup_stand.png` / `bike_daybreak_stand.png` / `bike_sundowner_stand.png` | 48×32 | transparent; the same body without the leg on the peg (foot down) |
 | `wheel_tonup.png` / `wheel_daybreak.png` / `wheel_sundowner_rear.png` / `wheel_sundowner_front.png` | 12×12 | transparent |
 | `leg_tonup.png` / `leg_daybreak.png` / `leg_sundowner.png` | 4×17 / 4×17 / 4×15 | transparent; boot on the bottom row |
 | `tile_granite.png` | 16×16 | tiles in both directions, used as a texture fill |

@@ -540,6 +540,41 @@ Notes on the table:
   the simulator stopped 2 px short. Same physics.
 - The Sundowner's 2.6 px kicker margin is a hop taken at the very foot of the ramp; 257 ms of the 311 ms window lands a
   full tile clear. The test asserts both (every on-ramp hop clears; ≥ 200 ms lands ≥ 16 px clear).
+### v1.6.2: second art pass (sprites only; no physics, stats, medals or level change)
+26. **Bug: two near legs at a standstill.** The planted leg (`leg_<id>`, shown when stopped and while backing up) was
+    drawn over a body texture that still had the rider's near leg on its peg, so the rider had both: most obvious on the
+    Sundowner, whose boot sat well ahead of the planted leg, but true of all three. The leg on the peg was baked into
+    the one body texture, so nothing could hide it.
+27. **Fix: two bodies per bike.** The art is now layered bike / leg / rider, and every bike has `bike_<id>` (riding) and
+    `bike_<id>_stand` (foot down: no shin, no boot on the peg, only a thigh from the hip to the top of the planted leg).
+    `BikeRig.setFootDown(on)` is the only place the planted leg is shown or hidden, and it swaps the body texture in the
+    same call, so the two can not disagree; `BikeView.ride` (standing, reverse, and back to riding), the crash pose and
+    the select-screen preview all go through it. The far leg is not drawn in any pose (it is behind the bike). A
+    separate peg-leg sprite was the alternative; a second body texture needs no extra object to keep leaning and
+    bobbing with the body.
+28. **Sundowner redrawn as a bobber** (asked for: a tribute to the purple-and-black factory bobber with whitewalls). Deep
+    violet teardrop tank with a soft highlight and nothing on it; everything else black with a grey edge light so it
+    holds against the dusk: sprung solo saddle (no pillion, nothing behind it), bobbed rear mudguard with a small round
+    tail lamp and a plate stub with an amber indicator, mini-ape bars with a round mirror, round headlamp in a black
+    cowl, gaitered fork, whitewall tyres on black wire wheels (disc on the front), tall finned single, battery box, twin
+    shocks, one black slash-cut pipe at axle height. Mid-set pegs replace the feet-forward pose; the rider keeps the tan
+    jacket (it separates him from the purple and the black better than a dark one), sitting upright with a slight lean
+    back and his arms raised to the grips. No lettering, badge or logo. This reverses decision 17 (blue, not a dark
+    colour): the whitewalls and the bright violet tank carry the bike on a dark background instead.
+29. **Told apart:** from the Daybreak by colour (violet and black against red and chrome), whitewalls, black bobbed
+    guards against deep chrome ones, a solo saddle against a long flat seat, the high bars and raised arms, a thin black
+    pipe against a fat chrome silencer; from the Ton-Up by all of that and no fairing.
+30. **Sprite data:** Sundowner `exhaustX` / `exhaustY` -23 / -6 to -22 / -5 (the slash-cut tip), `legX` -2 to -4 (the
+    planted leg drops from the hip on the saddle). Tagline: "THE BOBBER. LOW, HEAVY AND FORGIVING." Name, stats and
+    medal times unchanged.
+31. **Tests:** the Sundowner pixel test was rewritten (tank the only purple and unmarked, solo saddle on two springs,
+    black bobbed guards, tail lamp, grip above the tank, mirror, cowl and lamp, fins and gaps, black slash-cut pipe and
+    the exhaust tip on it, whitewall ring on both wheels and on no other bike, front disc, mid-set boot). New suite, one
+    test per bike: the foot-down body has no boot or shin on the peg, its thigh meets the planted leg, and nothing but
+    the leg differs from the riding body. Vitest 176 to 179 (bike art 6 to 9); Playwright 28. All previews in
+    `test-results/shots` re-rendered and checked by eye for all three bikes (standing, riding, reverse, boost, hop, flip,
+    landing, crash, respawn, finish, select).
+
 - Nothing changed during the build: the tuning table, the medal targets and every measured number match the proposal.
 
 ### Tests (v1.6)

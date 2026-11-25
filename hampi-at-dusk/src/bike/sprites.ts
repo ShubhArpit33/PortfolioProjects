@@ -12,6 +12,8 @@ export const WHEEL_DX = 13;
 export interface BikeSprite {
   /** body + rider texture, and the pixel in it that sits on the body pivot (0, -WHEEL_R above the contact midpoint) */
   body: string;
+  /** the same body with the near leg off its peg (v1.6.2): shown with the planted leg, never the riding body */
+  standBody: string;
   w: number;
   h: number;
   pivotX: number;
@@ -31,18 +33,18 @@ const BODY = { w: 48, h: 32, pivotX: 24, pivotY: 26 } as const;
 export const BIKE_SPRITES: Readonly<Record<BikeId, BikeSprite>> = {
   // megaphone silencer, upswept: the tip is above and behind the rear axle
   tonup: {
-    ...BODY, body: 'bike_tonup', rearWheel: 'wheel_tonup', frontWheel: 'wheel_tonup',
+    ...BODY, body: 'bike_tonup', standBody: 'bike_tonup_stand', rearWheel: 'wheel_tonup', frontWheel: 'wheel_tonup',
     leg: 'leg_tonup', legX: -3, exhaustX: -21, exhaustY: -10,
   },
   // one long low silencer, ending behind the rear axle
   daybreak: {
-    ...BODY, body: 'bike_daybreak', rearWheel: 'wheel_daybreak', frontWheel: 'wheel_daybreak',
+    ...BODY, body: 'bike_daybreak', standBody: 'bike_daybreak_stand', rearWheel: 'wheel_daybreak', frontWheel: 'wheel_daybreak',
     leg: 'leg_daybreak', legX: -1, exhaustX: -22, exhaustY: -6,
   },
-  // long low pipes running back past the rear axle; fat rear tyre, slimmer front
+  // the bobber: one black slash-cut pipe run low, its tip behind the rear axle; whitewalls, a disc on the front
   sundowner: {
-    ...BODY, body: 'bike_sundowner', rearWheel: 'wheel_sundowner_rear', frontWheel: 'wheel_sundowner_front',
-    leg: 'leg_sundowner', legX: -2, exhaustX: -23, exhaustY: -6,
+    ...BODY, body: 'bike_sundowner', standBody: 'bike_sundowner_stand', rearWheel: 'wheel_sundowner_rear', frontWheel: 'wheel_sundowner_front',
+    leg: 'leg_sundowner', legX: -4, exhaustX: -22, exhaustY: -5,
   },
 };
 
@@ -68,6 +70,16 @@ export class BikeRig {
     this.flame = scene.add.sprite(sp.exhaustX, sp.exhaustY, 'flame', 0).setOrigin(1, 0.5).setVisible(false);
     // the flame sits over the wheels (a low silencer ends beside the rear tyre) and under the body
     this.container = scene.add.container(0, 0, [this.rear, this.front, this.flame, this.body, this.leg]);
+  }
+
+  /**
+   * Foot down (at a standstill, backing up) or back on the peg. The planted leg IS the rider's near leg, so the
+   * body swaps to the version without the peg leg whenever the planted leg shows: one near leg, always.
+   */
+  setFootDown(on: boolean): void {
+    if (this.leg.visible === on) return;
+    this.leg.setVisible(on);
+    this.body.setTexture(on ? this.sprite.standBody : this.sprite.body);
   }
 
   setWheelSpin(rad: number): void {
