@@ -1,4 +1,4 @@
-# OPEN ROADS: INDIA — Game Spec (v1.7, one stage, three bikes)
+# OPEN ROADS: INDIA — Game Spec (v1.8, one stage, three bikes)
 
 The game was renamed from "Hampi at Dusk" (v1.6.5); Hampi at Dusk is now the name of Stage 1.
 
@@ -26,6 +26,9 @@ simplest option and write it down in `DECISIONS.md`.
 > boulder, stairs down). 12 checkpoints, 56 diyas, tutorial prompts until one full run is finished (sections 5, 5.3).
 > Medals are recomputed from the new bot runs and are more generous at the bronze end; records are version 2 and the
 > old ones are archived (section 8.1). `CONFIG`, the three bikes' tuning and the background are unchanged.
+>
+> v1.8 (HD look, round 1): art only. The background, the road's texture, the glows and the mist come from a shared
+> look system with one theme per stage (sections 6.1, 6.2, 6.5). Physics, level, timings and medals are unchanged.
 
 ---
 
@@ -368,25 +371,30 @@ use it; otherwise use the code-drawn version. This way the build never depends o
 
 Alpha blends and tints of palette colours are allowed.
 
+**v1.8:** this palette still holds for the road, every sprite and the UI. The background, the light and the mist take
+their colours from the stage theme instead (`src/art/themes/hampi.ts`, section 6.5): a deeper purple-to-gold sky,
+mauve haze, warm rim light, and teal, which is used only for the river, the water in the road and the mist over them.
+
 **Exception (v1.6): the three bike sprites** may use their own colours (competition green and gold on the Ton-Up, a brighter
 red on the Daybreak, deep violet and black with whitewalls on the Sundowner, the riders' clothes). Nothing else leaves the palette, and
 the background is exactly as it was.
 
 ### 6.2 Parallax layers (back to front)
 
-| Layer | Scroll factor | Code-drawn placeholder |
+| Layer | Scroll factor | Code-drawn (v1.8: painted by the stage theme, section 6.5) |
 |---|---|---|
-| Sky | 0.05 | Dithered gradient bands, large low sun, pixel stars, 2–3 kites |
-| Far skyline | 0.2 | Stepped temple-tower (gopuram) silhouettes, pavilion outlines, a ridge of boulder hills |
-| Middle ground | 0.45 | Coconut palms, banana plants, round boulder piles, river glints |
-| Terrain + entities | 1.0 | Granite polygon from the heightfield, 2 px moss line on top, random stone speckles, glowing water in gaps. Baked into textures in chunks of at most 1024 px wide (15 chunks of 960 px in v1.7); never one stage-wide texture; not redrawn per frame. v1.7: a riser's slot is drawn as stone in the shadow of the step above it (no water); the Temple Steps, from two columns before the first riser to two past the last drop, are dressed stone (8 px courses with staggered joints, a pale worn lip instead of moss); the boost strip has chevrons painted on the road. |
+| Sky | 0.05 | Dithered bands from deep purple to gold, pixel stars, thin cloud banks lit from below, a low sun with a subtle bloom, 3 kites |
+| Far hills (v1.8) | 0.1 | Boulder hills faded toward the air colour, rim-lit, their feet lost in a low golden haze |
+| Far skyline | 0.2 | The temple town on the far bank: stepped temple towers (gopurams) with a few lit openings, pavilions, boulder hills, trees and small palms, rim-lit, hazy at the base. Below the far shore (y 202) the layer is the river: dusk water with a teal cast, pale glints, mist |
+| Middle ground | 0.45 | The near bank, darkest: ruined pillared halls and arches with lamps, coconut palms, banana clumps, broken pillars, rim-lit, river mist at their feet. No boulders here: nothing on the near bank may look like something to ride into |
+| Terrain + entities | 1.0 | The dirt road from the heightfield: the 16 px ground tile, a lit lip, a soft darker band under it, shade that deepens with depth, a 2 px grass line on top, and (v1.8) ruts, pebbles and thin grass tufts at most 4 px tall, all placed by a hash of world x so chunks join. Water in gaps: dusk water with a teal cast under a bright line. Baked into textures in chunks of at most 1024 px wide (15 chunks of 960 px); never one stage-wide texture; not redrawn per frame. v1.7: a riser's slot is drawn as stone in the shadow of the step above it (no water); the Temple Steps, from two columns before the first riser to two past the last drop, are dressed stone (8 px courses with staggered joints, a pale worn lip instead of grass); the boost strip has chevrons painted on the road. |
 | Near foliage | 1.1 (in front of the bike) | Occasional grass tufts and hanging vines, sparse — never blocking the view of obstacles |
 
 The stone chariot silhouette appears on the far skyline near the finish.
 
-**Ambience (v1.2).** Extra background detail, all behind the terrain layer, all in the 6.1 palette, low contrast:
-stacked-boulder hills on the far skyline and behind the middle ground; a hazier back row in the middle ground with ruined
-pillared halls (mandapas), arches, boulder stacks and more banana plants; small lamps in those ruins with a flickering glow;
+**Ambience (v1.2).** Extra background detail, all behind the terrain layer, low contrast:
+stacked-boulder hills on the far layers (v1.8: no longer behind the middle ground); a hazier back row in the middle ground
+with ruined pillared halls (mandapas), arches, trees and banana plants; small lamps in those ruins with a flickering glow;
 bird flocks crossing the sky near the sun, giving way to bats from the Mandapa Run on; fireflies just behind the road, densest by
 the canals and the river; a smoke wisp from a small skyline shrine; coracles bobbing on the river.
 Animated details are a pure function of game time and camera scroll (no tweens, no wall clock, no `Math.random`).
@@ -444,6 +452,7 @@ Animated details are a pure function of game time and camera scroll (no tweens, 
 | File | Size (px) | Notes |
 |---|---|---|
 | `bg_sky.png` | 960×270 | tiles horizontally |
+| `bg_far.png` (v1.8) | 960×270 | transparent, tiles horizontally |
 | `bg_skyline.png` | 960×270 | transparent, tiles horizontally |
 | `bg_mid.png` | 960×270 | transparent, tiles horizontally |
 | `fg_near.png` | 960×270 | transparent, tiles horizontally, sparse |
@@ -460,6 +469,30 @@ Animated details are a pure function of game time and camera scroll (no tweens, 
 | `diya.png` | 8×8 | |
 | `gateway.png` | 96×96 | transparent |
 | `coracle.png` | 24×10 | transparent |
+
+### 6.5 The look system (v1.8)
+
+Everything that makes the picture read as lit and deep is one shared system, `src/art/look/`, fed by one **stage theme**
+per stage (`src/art/themes/`; Hampi is the only one so far, Ladakh and Goa plug in the same way). All of it is drawn in
+code into pixel buffers and baked to textures once at boot; nothing is a full-screen effect per frame, and there is one
+pixel size throughout.
+
+- **Passes** (`pix.ts`): banded dithered sky, haze between layers, mist wisps, rim light on silhouette edges, stepped
+  additive bloom, dark keylines. **Silhouette kit** (`silhouettes.ts`): rocks and boulder hills, gopuram, pillared hall,
+  arch, coconut palm, banana clump, tree, vine, grass tuft. **Ground kit** (`ground.ts`): a column of road, a column of
+  water, and the road's texture.
+- **A theme** (`theme.ts`: `StageTheme`) gives: `glow` and `haze` levels (0.5 = subtle), the lamp-light colour, the
+  sun and its reflection, the parallax `layers` (key, scroll factor, depth, painter), the `ground` kit (soil, grass, rim,
+  texture densities, water colours), the `mist` (colours, the drifting band over the background water, whether mist
+  lies over water in the road), where the ambience's lamps and smoke attach, and a `landmark` for the far skyline.
+- **Hampi's choices:** glow and haze at the subtle level; teal only in the river, the water in the road and their
+  mist; the road is the dirt road it always was (texture added, no masonry, no pale cap); no boulder or mound on the
+  near bank; light from the right, where the sun stands at the start.
+- **In the scene:** diyas and lit checkpoint lamps have a small additive halo; a lit lamp pools light on the road at its
+  foot; the diya, the fallen pillars, the cart, the log, the cow and the monkeys have a one-pixel dark keyline under
+  them (the diya also a white sparkle) so they read against bright water and sky as well as against dark ruins; a band
+  of mist drifts over the background river, the sun has a broken reflection on it, and wisps of mist drift over the
+  canals, the tank and the river in the road. All a pure function of game time and camera scroll.
 
 ---
 
@@ -636,14 +669,17 @@ src/
   bike/    BikePhysics.ts (pure, no Phaser — unit-testable)  BikeView.ts
            bikes.ts (the roster: overrides, medals, stat bars; pure)  selection.ts  sprites.ts
   entities/ Diya.ts  Obstacle.ts  Monkey.ts  Cow.ts  Checkpoint.ts  Boulder.ts
-  art/     assets.ts  placeholders.ts  palette.ts  Parallax.ts  Ambience.ts  Fx.ts  pen.ts  bikeArt.ts (the three bikes)
+  art/     assets.ts  placeholders.ts  palette.ts  Parallax.ts  Ambience.ts  Fx.ts  pen.ts  depth.ts  bikeArt.ts (the three bikes)
+           look/   pix.ts  silhouettes.ts  ground.ts  theme.ts  bake.ts  Atmosphere.ts   (the shared look system, v1.8)
+           themes/ hampi.ts                                                               (one theme per stage)
   audio/   sfx.ts  music.ts
   progress.ts        (medals, best run, ghost, storage; pure, no Phaser)
 tests/
-  unit/  physics.test.ts  progress.test.ts  bikeArt.test.ts
+  unit/  physics.test.ts  progress.test.ts  bikeArt.test.ts  look.test.ts
   shared/ plan.ts (the bot's hop planner, per bike; pure)  sim.ts (a headless port of the Game scene's ride loop)
   e2e/   run.spec.ts  river.spec.ts  reverse.spec.ts  flip.spec.ts  storage.spec.ts  audio.spec.ts  menu.spec.ts
          roster.spec.ts  select.spec.ts  sprites.spec.ts  tutorial.spec.ts  boulder.spec.ts
          bot.ts  helpers.ts  flipHelper.ts  consoleAllowlist.ts
+  look/  shots.spec.ts (not part of `npm test`: fixed moments saved as PNGs; see playwright.look.config.ts)
 DECISIONS.md
 ```

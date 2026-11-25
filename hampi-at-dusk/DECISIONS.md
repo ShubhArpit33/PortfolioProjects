@@ -798,3 +798,85 @@ Notes on the table:
 - The user renamed the game for the planned multi-region road trip (Ladakh, Goa). Hampi at Dusk is now Stage 1.
 - Changed: title screen logo ("OPEN ROADS: INDIA", subtitle "STAGE 1: HAMPI AT DUSK"), page title, README heading, GAME_SPEC heading and title-screen line.
 - Deliberately unchanged: the folder and branch name `hampi-at-dusk`, the package name, and the saved-record keys (`hampi-at-dusk.*`), so existing best times, ghosts and settings carry over. These can be renamed later with a migration.
+
+## v1.8 — HD look, round 1 (Hampi)
+
+Asked for: bring Stage 1 up to the look of the "Hampi HD" concept frame, as a reusable look system that Ladakh and Goa
+can plug into. Art only: no physics, level geometry, hitbox, entity position, timing, `CONFIG`, `bikes.ts` or medal
+change. The bot's three runs are still 49 908, 59 517 and 69 150 ms.
+
+### The user's choices (from the concept sheet)
+1. **Glow: subtle**, not medium. The theme's `glow` and `haze` are both 0.5 (the "subtle" panel of the comparison).
+   The sun's bloom is a step smaller again than that panel (outer ring radius 62, strength 0.65 × glow).
+2. **Teal: river mist only.** Teal is in the background river, the water in the road, and the mist over both. The sky
+   runs purple to gold, the haze between the layers is warm (gold over mauve), and nothing else is teal. A unit test
+   holds this: no teal pixel in the sky, on the far hills, in the temple town, on the ruins or in the near foliage.
+3. **The road stays the dirt road:** the same 16 px ground tile, lit lip and 2 px grass line as before, in the same
+   colours. Added: ruts, pebbles, thin grass tufts (at most 4 px tall), a soft darker band under the lip, dithered
+   instead of hard steps where it darkens with depth, and a faint warm rim on the grass line. No masonry, no pale cap.
+4. **No mound.** The concept's lit grey dome by the road is not in the game, and the middle layer's round boulder
+   piles and boulder stacks (there since v1.2) are gone too: Hampi's boulders are now only on the two far layers,
+   hazy and clearly distant. On the near bank there are only dark ruins, palms, trees and banana clumps.
+5. **Palms redrawn** as coconut palms: fronds spring up and out from the crown and arch over at the tips, each a
+   midrib with a comb of short leaflets (gaps between them, every other one shorter). No webbed "wing".
+6. **One pixel size.** Everything is drawn at 480 × 270. The old halo texture was drawn in 2 px cells; the new one is not.
+
+### The look system (`src/art/look/`, 839 lines) and the stage theme (`src/art/themes/hampi.ts`, 252 lines)
+- `pix.ts` (241): `Pix`, a plain RGBA buffer that the pixel `Pen` draws on (wraps sideways for tiling layers), and
+  the passes: `skyBands`, `haze`, `wisps`, `rimLight`, `bloom`, `stars`, `strata`, `fade`, `keyline`, `ridge`.
+- `silhouettes.ts` (205): rock, boulders on a ridge, boulder hill, gopuram, mandapa, ruined arch, coconut palm,
+  banana clump, tree, vine, grass tuft. Flat shapes; colours are arguments.
+- `ground.ts` (116): `roadColumn`, `grassLine`, `waterColumn`, `roadDetail`, driven by a `GroundKit`.
+- `theme.ts` (69): the `StageTheme` interface and the active theme.
+- `bake.ts` (139): bakes a theme into textures at boot: layers, landmark, halo, light pool, mist band, mist wisp,
+  sun glitter, and a keyline texture for any sprite; `keyUnder` / `followKey` place one under a sprite.
+- `Atmosphere.ts` (69): the only moving parts: the mist band, the sun's reflection, mist wisps over water in the road.
+- `placeholders.ts` lost its four layer painters and their helpers (958 → 547 lines); the entity sprites stay there.
+
+**The theme interface** (`StageTheme`): `id`; `glow`, `haze` (0 = none, 0.5 = subtle, 1 = medium); `ink`; `lamp`
+(lamp-light colour); `sun` (position and scroll factor in its layer, where and in what colours it reflects);
+`layers[]` (`key`, `scroll`, `depth`, `paint(pix)`), back to front; `ground` (`soil`, `grass`, `rim`, `shade`,
+`under`, densities of `tufts` / `pebbles` / `ruts` per 100 px, `water` colours); `mist` (`colours`, the drifting
+`band` over the background water, `overWater`); `lamps` and `smoke` (where the shared ambience attaches);
+`landmark` (a texture that stands on a layer at the end of the stage). A new stage writes its painters from the kit,
+fills this in, and calls `setTheme`.
+
+### Decisions made while building
+1. **Pixel buffers, not Graphics.** Haze, rim light and bloom are per-pixel passes that need to read what is already
+   drawn, so the layers are painted into typed arrays and put on canvas textures in one call each. It is pure, so the
+   theme is unit-tested in Node. Cost: about 0.2 s more at boot; nothing per frame.
+2. **A fifth parallax layer**, the far hills at scroll 0.1, between the sky and the skyline. Depth comes from four
+   things together: each layer's colours faded toward the air colour by its distance, a dithered haze over the feet of
+   the layer behind, rim light on the layer's own edges, and the parallax itself.
+3. **The river is the bottom of the skyline layer** (below y 202), and the middle layer's ground was lowered from about
+   y 210 to about y 217 so a strip of river shows above the road. The band of mist and the sun's reflection sit on it.
+4. **Light from the right.** The sun stays where it was in the sky layer (x 360: clear of the title text, on screen
+   for the first half of the stage), so rim light is on right-facing and upward edges. After the sun has left the
+   screen the light still comes from ahead of the rider.
+5. **Readability before glow.** Halos are additive and small, so on a bright background they nearly vanish; what makes
+   things read is a one-pixel dark keyline drawn under the diya (with a white sparkle), the fallen pillars, the cart,
+   the log, the cow and the monkeys. The boulder already had its outline. These are separate images under the sprites,
+   so the manifest sizes and the hitboxes are untouched.
+6. **Water in the road** changed colour: dusk water with a teal cast under a pale mint line, with mist wisps, instead
+   of purple under an orange line. It is the one hazard whose colours changed; against the brown road it reads at
+   least as clearly. The animated orange glints and the splash are as they were.
+7. **The Temple Steps are still dressed stone** with a pale worn lip, as in v1.7. That is the level's, not the theme's.
+8. **Decoration on the road** (colonnade, ruins, temple doorway, gateway, checkpoint lamps) is unchanged.
+9. **PNG overrides** work as before; `bg_far.png` is a new optional name. The chariot and the halo are now painted by
+   the theme, so they are no longer in the placeholder list.
+
+### Measured
+- Unit tests 276 (263 + 13 in `tests/unit/look.test.ts`); e2e 34, all as before: no test asserted the old art, so none
+  was changed. Bot runs: Ton-Up 49 908 ms, Daybreak 59 517 ms, Sundowner 69 150 ms (identical).
+- Frame cost with the game stepped by hand in headless Chromium (one frame = two fixed steps and a draw): canvas
+  renderer about 1.45 → 1.85 ms, WebGL (script side only) about 0.5 → 0.75 ms. Budget at 60 fps: 16.7 ms.
+- Boot: about +0.2 s. Bundle: 1 598 → 1 611 kB (gzip 382 → 388 kB).
+- `npx playwright test -c playwright.look.config.ts --trace off` (not part of `npm test`) rides the stage with the bot
+  and saves 30 fixed moments to `test-results/look/` for judging the look by eye; `LOOK_RENDERER=webgl` for WebGL.
+
+### Open questions (v1.8)
+- The decoration that stands on the road (colonnade, ruins, doorway, gateway) and the entity sprites are not relit;
+  they sit a little flatter than the background now.
+- The ambience's firefly zones and the birds-to-bats change are still Hampi constants in `Ambience.ts`, not in the theme.
+- `HOW_TO_BUILD.md` still describes the old look in its prompts for optional PNG art.
+- Round 2 candidates: rim light on sprites, lit windows that flicker, reflections of the far bank in the river.
