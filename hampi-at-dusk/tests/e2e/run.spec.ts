@@ -2,32 +2,41 @@
 // best time + medal + ghost saved at the line, R to ride again, the ghost of the first run, G to hide it.
 // Starts from the title with a real Enter key press, then plays with __test.setInput / __test.step only.
 
-import { CONFIG } from '../../src/config';
-import { BEST_KEY, GHOST_SAMPLE_STEPS, MEDAL_TIMES_MS } from '../../src/progress';
+import { BIKES, BIKE_ORDER, DEFAULT_BIKE } from '../../src/bike/bikes';
+import { GHOST_SAMPLE_STEPS, LEGACY_BEST_KEY, bestKey } from '../../src/progress';
 import { advance, planFor, resetBot } from './bot';
-import { boot, expect, getLevel, getState, shot, test } from './helpers';
+import { boot, expect, getLevel, getState, rideFromTitle, shot as saveShot, test } from './helpers';
 
-test('bot: full run from the title - 0 crashes, all 30 diyas, gold; then best, ghost and quick restart', async ({ page }) => {
+/** The bot's measured clean run per bike (ms): a change in feel shows up here first. */
+const EXPECTED_MS = { tonup: 32_058, daybreak: 38_125, sundowner: 43_992 } as const;
+
+for (const bike of BIKE_ORDER) test(`bot on the ${BIKES[bike].name}: full run from the title - 0 crashes, all 30 diyas, gold; then best, ghost and quick restart`, async ({ page }) => {
   test.setTimeout(180_000);
+  const def = BIKES[bike];
+  const CONFIG = def.cfg;
+  const MEDAL_TIMES_MS = def.medalsMs;
+  const BEST_KEY = bestKey(bike);
+  // The default bike keeps the plain screenshot names; the others get a suffix.
+  const shot = (p: typeof page, name: string): Promise<void> => saveShot(p, bike === DEFAULT_BIKE ? name : `${name}-${bike}`);
   await boot(page);
   const level = await getLevel(page);
-  const { plan, lay, riverCp, kickerGap } = planFor(level);
+  const { plan, lay, riverCp, kickerGap, planner } = planFor(level, CONFIG);
+  console.log(`[bot ${bike}] ${planner} planner`);
   const T = level.tile;
   const sectionMid = (id: number): number => {
     const s = level.sections.find((x) => x.id === id)!;
     return ((s.startCol + s.endCol + 1) / 2) * T;
   };
 
-  console.log(`[bot] hops at x = ${plan.hops.map((x) => x.toFixed(0)).join(', ')}`);
+  console.log(`[bot ${bike}] hops at x = ${plan.hops.map((x) => x.toFixed(0)).join(', ')}`);
 
   // --- title ---
   await page.evaluate(() => window.__test!.step(90));
   await shot(page, 'title');
   expect((await getState(page)).timeMs).toBe(0);
 
-  await page.keyboard.press('Enter');
-  await page.evaluate(() => window.__test!.step(0));
-  await page.waitForFunction(() => window.__test!.state().x > 0);
+  await rideFromTitle(page, bike);
+  expect((await getState(page)).bike).toBe(bike);
 
   // --- the ride, stopping for screenshots ---
   let s = await advance(page, plan, sectionMid(1) + 120); // the cow comes into view
@@ -43,7 +52,7 @@ test('bot: full run from the title - 0 crashes, all 30 diyas, gold; then best, g
   s = await advance(page, plan, lay.boxes[6]!.x0 + 24); // mandapa run: over the second pillar on the plinth
   await shot(page, 'section5-mandapa');
   s = await advance(page, plan, kickerGap.x0 - 23 * T); // rocks: top of the hop line off the second roller
-  expect(s.grounded, 'airborne on the roller hop line').toBe(false);
+  if (bike === DEFAULT_BIKE) expect(s.grounded, 'airborne on the roller hop line').toBe(false);
   await shot(page, 'section6-rocks');
   s = await advance(page, plan, (kickerGap.x0 + kickerGap.x1) / 2); // big air off the kicker, over the tank
   expect(s.grounded, 'airborne over the tank').toBe(false);
@@ -67,7 +76,7 @@ test('bot: full run from the title - 0 crashes, all 30 diyas, gold; then best, g
 
   s = await getState(page);
   console.log(
-    `[bot] finished: timeMs=${s.timeMs} (${(s.timeMs / 1000).toFixed(2)} s), crashes=${s.crashes}, ` +
+    `[bot ${bike}] finished: timeMs=${s.timeMs} (${(s.timeMs / 1000).toFixed(2)} s), crashes=${s.crashes}, ` +
     `diyas=${s.diyas}/${level.diyas.length}, boost left=${s.boost.toFixed(3)}`,
   );
   expect(s.finished).toBe(true);
@@ -82,7 +91,7 @@ test('bot: full run from the title - 0 crashes, all 30 diyas, gold; then best, g
   // in the left part of the screen with the road ahead visible.
   const cam = (await resetBot(page))!;
   console.log(
-    `[bot] camera: step ${cam.camMinStep.toFixed(3)}..${cam.camMaxStep.toFixed(3)} px, ` +
+    `[bot ${bike}] camera: step ${cam.camMinStep.toFixed(3)}..${cam.camMaxStep.toFixed(3)} px, ` +
     `bike screen x ${cam.minScreenX.toFixed(1)}..${cam.maxScreenX.toFixed(1)}`,
   );
   expect(cam.camMinStep).toBeGreaterThanOrEqual(-0.001);
@@ -95,6 +104,8 @@ test('bot: full run from the title - 0 crashes, all 30 diyas, gold; then best, g
   // ---------------------------------------------------------------------------------------------
   const fin = (await page.evaluate(() => window.__test!.finish()))!;
   expect(fin.ranked).toBe(true);
+  expect(fin.bike).toBe(bike);
+  expect(fin.timeMs, 'the measured run for this bike').toBe(EXPECTED_MS[bike]);
   expect(fin.timeMs).toBe(s.timeMs);
   expect(fin.timeMs).toBeLessThanOrEqual(MEDAL_TIMES_MS.gold);
   expect(fin.medal).toBe('gold');
@@ -105,10 +116,16 @@ test('bot: full run from the title - 0 crashes, all 30 diyas, gold; then best, g
   expect(stored.timeMs).toBe(s.timeMs);
   expect(stored.diyas).toBe(level.diyas.length);
   expect(stored.flips).toBe(0);
+  // This bike's record only: nothing under the other bikes' keys or the pre-roster key.
+  const others = await page.evaluate(
+    (keys) => keys.map((k) => window.localStorage.getItem(k)),
+    [LEGACY_BEST_KEY, ...BIKE_ORDER.filter((b) => b !== bike).map(bestKey)],
+  );
+  expect(others).toEqual([null, null, null]);
   // one 7-character sample every 6 steps from time 0, plus the pose on the line
   const runSteps = Math.round((s.timeMs * 120) / 1000);
   expect(stored.ghost.length).toBe((Math.ceil(runSteps / GHOST_SAMPLE_STEPS) + 1) * 7);
-  console.log(`[replay] best saved: ${stored.timeMs} ms, ghost ${stored.ghost.length} chars`);
+  console.log(`[replay ${bike}] best saved: ${stored.timeMs} ms, ghost ${stored.ghost.length} chars`);
 
   // R on the finish screen: a fresh run at once, with the ghost of the first one.
   await page.keyboard.press('r');
@@ -129,7 +146,7 @@ test('bot: full run from the title - 0 crashes, all 30 diyas, gold; then best, g
   expect(r.ghost).not.toBeNull();
   const lead = r.ghost!.x - r.x;
   expect(lead).toBeGreaterThan(40);
-  expect(lead).toBeLessThan(140); // half a second at up to 240 px/s
+  expect(lead).toBeLessThan(CONFIG.topSpeed * 0.5 + 20); // half a second at up to top speed
   await shot(page, 'ghost'); // translucent ghost ahead, hopping the first canal; BEST in the HUD
 
   // G hides it and brings it back.
@@ -153,7 +170,7 @@ test('bot: full run from the title - 0 crashes, all 30 diyas, gold; then best, g
   expect(fin2.medal).toBe('gold');
   const stored2 = await page.evaluate((k) => JSON.parse(window.localStorage.getItem(k) ?? 'null'), BEST_KEY);
   expect(stored2).toEqual(stored);
-  console.log(`[replay] second run ${r.timeMs} ms vs best ${s.timeMs} ms: best kept`);
+  console.log(`[replay ${bike}] second run ${r.timeMs} ms vs best ${s.timeMs} ms: best kept`);
 
   // R in the middle of a run restarts it too.
   await page.keyboard.press('r');

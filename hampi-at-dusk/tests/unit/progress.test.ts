@@ -2,9 +2,10 @@ import { describe, expect, it } from 'vitest';
 import {
   BASE_BPM, CHORDS, MELODY_MAX, MELODY_MIN, SCALE, SONG_BARS, STEPS_PER_BAR, barScore, degreeHz, songPosition, songSeconds,
 } from '../../src/audio/music';
+import { BIKES, BIKE_ORDER } from '../../src/bike/bikes';
 import { STAGE_COLS } from '../../src/level/levelData';
 import {
-  BEST_KEY, DEFAULT_PREFS, EMPTY_BEST, GHOST_HZ, MEDAL_TIMES_MS, PREFS_KEY, decodeGhost, encodeGhost, ghostPoseAt,
+  DEFAULT_PREFS, EMPTY_BEST, GHOST_HZ, LEGACY_BEST_KEY, MEDAL_TIMES_MS, PREFS_KEY, bestKey, decodeGhost, encodeGhost, ghostPoseAt,
   loadBest, loadPrefs, medalFor, nextMedal, saveBest, savePrefs, submitRun,
   type Best, type GhostPose, type KeyValueStore, type StoreProvider,
 } from '../../src/progress';
@@ -25,6 +26,8 @@ const throwingMethods: StoreProvider = () => ({
   setItem: () => { throw new Error('QuotaExceededError'); },
 });
 
+const BEST_KEY = bestKey('daybreak');
+
 describe('medals', () => {
   it('thresholds are inclusive: gold <= 40 s, silver <= 46 s, bronze <= 56 s', () => {
     expect(MEDAL_TIMES_MS).toEqual({ gold: 40_000, silver: 46_000, bronze: 56_000 });
@@ -44,6 +47,27 @@ describe('medals', () => {
     expect(nextMedal(50_000)).toEqual({ medal: 'silver', timeMs: 46_000 });
     expect(nextMedal(41_000)).toEqual({ medal: 'gold', timeMs: 40_000 });
     expect(nextMedal(39_000)).toBeNull();
+  });
+
+  it('every bike has its own targets (v1.6): the same time is a different medal on a different bike', () => {
+    expect(BIKES.tonup.medalsMs).toEqual({ gold: 34_000, silver: 40_000, bronze: 50_000 });
+    expect(BIKES.sundowner.medalsMs).toEqual({ gold: 46_000, silver: 52_000, bronze: 62_000 });
+    expect(MEDAL_TIMES_MS).toBe(BIKES.daybreak.medalsMs);
+    expect(BIKE_ORDER.map((b) => medalFor(38_125, BIKES[b].medalsMs))).toEqual(['silver', 'gold', 'gold']);
+    expect(BIKE_ORDER.map((b) => medalFor(45_000, BIKES[b].medalsMs))).toEqual(['bronze', 'silver', 'gold']);
+    expect(BIKE_ORDER.map((b) => medalFor(57_000, BIKES[b].medalsMs))).toEqual([null, null, 'bronze']);
+    // each bike's measured bot run is gold on that bike, with about 2 s in hand
+    const botMs = { tonup: 32_058, daybreak: 38_125, sundowner: 43_992 };
+    for (const b of BIKE_ORDER) {
+      expect(medalFor(botMs[b], BIKES[b].medalsMs), b).toBe('gold');
+      expect(BIKES[b].medalsMs.gold - botMs[b], b).toBeGreaterThanOrEqual(1875);
+      expect(BIKES[b].medalsMs.gold - botMs[b], b).toBeLessThanOrEqual(2100);
+    }
+    expect(medalFor(34_000, BIKES.tonup.medalsMs)).toBe('gold');
+    expect(medalFor(34_001, BIKES.tonup.medalsMs)).toBe('silver');
+    expect(nextMedal(47_000, BIKES.sundowner.medalsMs)).toEqual({ medal: 'gold', timeMs: 46_000 });
+    expect(nextMedal(47_000, BIKES.tonup.medalsMs)).toEqual({ medal: 'silver', timeMs: 40_000 });
+    expect(nextMedal(33_000, BIKES.tonup.medalsMs)).toBeNull();
   });
 });
 
@@ -70,47 +94,128 @@ describe('best run', () => {
 
   it('round-trips through storage', () => {
     const { provider, data } = memoryStore();
-    expect(loadBest(provider)).toEqual(EMPTY_BEST);
+    expect(loadBest('daybreak', provider)).toEqual(EMPTY_BEST);
     const ghost = encodeGhost([{ x: 40, y: 222, angle: 0 }, { x: 52.5, y: 210, angle: 12 }]);
     const best: Best = { timeMs: 38_125, diyas: 30, flips: 2, ghost };
-    expect(saveBest(best, provider)).toBe(true);
+    expect(saveBest('daybreak', best, provider)).toBe(true);
     expect(data.has(BEST_KEY)).toBe(true);
-    expect(loadBest(provider)).toEqual(best);
+    expect(loadBest('daybreak', provider)).toEqual(best);
   });
 
   it('ignores malformed records and records from another stage layout', () => {
     const { provider, data } = memoryStore();
     for (const raw of ['', 'not json', '42', 'null', '[]', '{"v":1}', '{"v":99,"stage":580,"timeMs":1}']) {
       data.set(BEST_KEY, raw);
-      expect(loadBest(provider), raw).toEqual(EMPTY_BEST);
+      expect(loadBest('daybreak', provider), raw).toEqual(EMPTY_BEST);
     }
     data.set(BEST_KEY, JSON.stringify({ v: 1, stage: STAGE_COLS - 1, timeMs: 30_000, diyas: 5, flips: 0, ghost: '' }));
-    expect(loadBest(provider)).toEqual(EMPTY_BEST);
+    expect(loadBest('daybreak', provider)).toEqual(EMPTY_BEST);
     // bad fields are dropped one by one; a broken ghost is dropped but the time is kept
     data.set(BEST_KEY, JSON.stringify({ v: 1, stage: STAGE_COLS, timeMs: 30_000, diyas: 'many', flips: -3, ghost: 'x!' }));
-    expect(loadBest(provider)).toEqual({ timeMs: 30_000, diyas: null, flips: null, ghost: '' });
+    expect(loadBest('daybreak', provider)).toEqual({ timeMs: 30_000, diyas: null, flips: null, ghost: '' });
   });
 
   it('works when storage throws: loads come back empty, saves report false, nothing escapes', () => {
     for (const provider of [throwingAccess, throwingMethods, () => null, () => undefined]) {
-      expect(loadBest(provider)).toEqual(EMPTY_BEST);
-      expect(saveBest({ timeMs: 1, diyas: 1, flips: 1, ghost: '' }, provider)).toBe(false);
+      expect(loadBest('daybreak', provider)).toEqual(EMPTY_BEST);
+      expect(saveBest('daybreak', { timeMs: 1, diyas: 1, flips: 1, ghost: '' }, provider)).toBe(false);
+      for (const b of BIKE_ORDER) expect(loadBest(b, provider)).toEqual(EMPTY_BEST);
       expect(loadPrefs(provider)).toEqual(DEFAULT_PREFS);
-      expect(savePrefs({ ghost: false, sound: 2 }, provider)).toBe(false);
+      expect(savePrefs({ ghost: false, sound: 2, bike: 'tonup' }, provider)).toBe(false);
     }
     // and the bests still fold in memory
-    const u = submitRun(loadBest(throwingAccess), { timeMs: 45_000, diyas: 9, flips: 0 });
+    const u = submitRun(loadBest('daybreak', throwingAccess), { timeMs: 45_000, diyas: 9, flips: 0 });
     expect(u.newTime).toBe(true);
     expect(u.best.timeMs).toBe(45_000);
   });
 
   it('prefs round-trip and fall back to the defaults', () => {
     const { provider, data } = memoryStore();
-    expect(loadPrefs(provider)).toEqual({ ghost: true, sound: 0 });
-    expect(savePrefs({ ghost: false, sound: 1 }, provider)).toBe(true);
-    expect(loadPrefs(provider)).toEqual({ ghost: false, sound: 1 });
-    data.set(PREFS_KEY, '{"ghost":"yes","sound":7}');
-    expect(loadPrefs(provider)).toEqual({ ghost: true, sound: 0 });
+    expect(loadPrefs(provider)).toEqual({ ghost: true, sound: 0, bike: 'daybreak' });
+    expect(savePrefs({ ghost: false, sound: 1, bike: 'sundowner' }, provider)).toBe(true);
+    expect(loadPrefs(provider)).toEqual({ ghost: false, sound: 1, bike: 'sundowner' });
+    data.set(PREFS_KEY, '{"ghost":"yes","sound":7,"bike":"chopper"}');
+    expect(loadPrefs(provider)).toEqual({ ghost: true, sound: 0, bike: 'daybreak' });
+    // prefs saved before the roster have no bike: the default
+    data.set(PREFS_KEY, '{"ghost":false,"sound":2}');
+    expect(loadPrefs(provider)).toEqual({ ghost: false, sound: 2, bike: 'daybreak' });
+  });
+});
+
+describe('per-bike records (v1.6)', () => {
+  const ghost = encodeGhost([{ x: 40, y: 222, angle: 0 }, { x: 52.5, y: 210, angle: 12 }]);
+  const record = (best: Best): string => JSON.stringify({ v: 1, stage: STAGE_COLS, ...best });
+
+  it('each bike has its own key, and a save touches only that key', () => {
+    expect(BIKE_ORDER.map(bestKey)).toEqual([
+      'hampi-at-dusk.best.tonup', 'hampi-at-dusk.best.daybreak', 'hampi-at-dusk.best.sundowner',
+    ]);
+    expect(LEGACY_BEST_KEY).toBe('hampi-at-dusk.best');
+    const { provider, data } = memoryStore();
+    const bests: Record<string, Best> = {
+      tonup: { timeMs: 33_000, diyas: 28, flips: 4, ghost },
+      daybreak: { timeMs: 39_000, diyas: 30, flips: 1, ghost: '' },
+      sundowner: { timeMs: 45_500, diyas: 12, flips: 0, ghost },
+    };
+    expect(saveBest('tonup', bests.tonup!, provider)).toBe(true);
+    expect([...data.keys()]).toEqual(['hampi-at-dusk.best.tonup']);
+    expect(loadBest('tonup', provider)).toEqual(bests.tonup);
+    expect(loadBest('daybreak', provider)).toEqual(EMPTY_BEST);
+    expect(loadBest('sundowner', provider)).toEqual(EMPTY_BEST);
+    expect(saveBest('daybreak', bests.daybreak!, provider)).toBe(true);
+    expect(saveBest('sundowner', bests.sundowner!, provider)).toBe(true);
+    for (const b of BIKE_ORDER) expect(loadBest(b, provider), b).toEqual(bests[b]);
+    expect(data.has(LEGACY_BEST_KEY)).toBe(false);
+    // a broken record on one bike does not disturb the others
+    data.set(bestKey('tonup'), 'not json');
+    expect(loadBest('tonup', provider)).toEqual(EMPTY_BEST);
+    expect(loadBest('sundowner', provider)).toEqual(bests.sundowner);
+  });
+
+  it('migration: a pre-roster record becomes the Daybreak record; the legacy key is kept', () => {
+    const { provider, data } = memoryStore();
+    const old: Best = { timeMs: 38_125, diyas: 30, flips: 2, ghost };
+    data.set(LEGACY_BEST_KEY, record(old));
+    // not for the other bikes, and reading them migrates nothing
+    expect(loadBest('tonup', provider)).toEqual(EMPTY_BEST);
+    expect(loadBest('sundowner', provider)).toEqual(EMPTY_BEST);
+    expect([...data.keys()]).toEqual([LEGACY_BEST_KEY]);
+    // the Daybreak gets it, copied to its own key
+    expect(loadBest('daybreak', provider)).toEqual(old);
+    expect(JSON.parse(data.get(bestKey('daybreak'))!)).toEqual({ v: 1, stage: STAGE_COLS, ...old });
+    expect(data.get(LEGACY_BEST_KEY)).toBe(record(old));
+    expect([...data.keys()].sort()).toEqual([LEGACY_BEST_KEY, bestKey('daybreak')]);
+    // from then on the Daybreak's own record wins, whatever the legacy key says
+    const better: Best = { timeMs: 37_000, diyas: 30, flips: 2, ghost };
+    expect(saveBest('daybreak', better, provider)).toBe(true);
+    data.set(LEGACY_BEST_KEY, record({ ...old, timeMs: 20_000 }));
+    expect(loadBest('daybreak', provider)).toEqual(better);
+    // a worse own record is not "improved" from the legacy key either
+    expect(saveBest('daybreak', { ...old, timeMs: 55_000 }, provider)).toBe(true);
+    expect(loadBest('daybreak', provider).timeMs).toBe(55_000);
+  });
+
+  it('migration ignores a malformed or other-layout legacy record', () => {
+    const { provider, data } = memoryStore();
+    for (const raw of ['', 'not json', '42', '{"v":1}', record({ ...EMPTY_BEST, timeMs: 1 }).replace(`"stage":${STAGE_COLS}`, '"stage":1')]) {
+      data.set(LEGACY_BEST_KEY, raw);
+      expect(loadBest('daybreak', provider), raw).toEqual(EMPTY_BEST);
+      expect(data.has(bestKey('daybreak')), raw).toBe(false);
+    }
+  });
+
+  it('migration works with read-only or throwing storage: the record is still used, nothing escapes', () => {
+    const old: Best = { timeMs: 41_000, diyas: 25, flips: 0, ghost };
+    const readOnly: StoreProvider = () => ({
+      getItem: (k) => (k === LEGACY_BEST_KEY ? record(old) : null),
+      setItem: () => { throw new Error('QuotaExceededError'); },
+    });
+    expect(loadBest('daybreak', readOnly)).toEqual(old);
+    expect(loadBest('daybreak', readOnly)).toEqual(old); // and again: it simply migrates every time
+    expect(loadBest('tonup', readOnly)).toEqual(EMPTY_BEST);
+    for (const provider of [throwingAccess, throwingMethods]) {
+      for (const b of BIKE_ORDER) expect(loadBest(b, provider)).toEqual(EMPTY_BEST);
+    }
   });
 });
 

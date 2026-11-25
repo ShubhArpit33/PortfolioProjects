@@ -1,6 +1,8 @@
 // The river jump needs boost (GAME_SPEC.md section 9, criterion 4). Both runs start at the river checkpoint.
 
-import { boot, expect, getLevel, layout, shot, startAt, test } from './helpers';
+import { BIKES, BIKE_ORDER, DEFAULT_BIKE } from '../../src/bike/bikes';
+import { LEGACY_BEST_KEY, bestKey } from '../../src/progress';
+import { boot, expect, getLevel, layout, shot as saveShot, startAt, test } from './helpers';
 
 /** The river checkpoint (cp6 since v1.3). */
 const RIVER_CP = 6;
@@ -15,12 +17,16 @@ interface RiverResult {
   midAir: boolean;
 }
 
-test.describe('river jump', () => {
+for (const bike of BIKE_ORDER) test.describe(`river jump on the ${BIKES[bike].name}`, () => {
+  const cfg = BIKES[bike].cfg;
+  const shot = (p: Parameters<typeof saveShot>[0], name: string): Promise<void> =>
+    saveShot(p, bike === DEFAULT_BIKE ? name : `${name}-${bike}`);
+
   test('throttle only (no boost, no hop) ends in the water', async ({ page }) => {
     await boot(page);
     const level = await getLevel(page);
     const { river } = layout(level);
-    await startAt(page, RIVER_CP);
+    await startAt(page, RIVER_CP, bike);
 
     const r = await page.evaluate(({ river, killY }) => {
       const t = window.__test!;
@@ -38,10 +44,10 @@ test.describe('river jump', () => {
     }, { river, killY: level.waterKillY });
 
     console.log(
-      `[river, no boost] lip speed ${r.lipSpeed.toFixed(1)}; last airborne position x=${r.x.toFixed(1)} y=${r.y.toFixed(1)} ` +
+      `[river ${bike}, no boost] lip speed ${r.lipSpeed.toFixed(1)}; last airborne position x=${r.x.toFixed(1)} y=${r.y.toFixed(1)} ` +
       `(${(river.x1 - r.x).toFixed(1)} px short of the far bank), crashed=${r.crashed}`,
     );
-    expect(r.lipSpeed, 'reaches normal top speed on the ramp').toBeCloseTo(240, 0);
+    expect(r.lipSpeed, 'reaches normal top speed on the ramp').toBeCloseTo(cfg.topSpeed, 0);
     expect(r.crashed).toBe(true);
     expect(r.crashes).toBe(1);
     // It went down over the river, at the water (not on the ramp, not on the far wall).
@@ -54,7 +60,7 @@ test.describe('river jump', () => {
     await boot(page);
     const level = await getLevel(page);
     const { river, rampStartX } = layout(level);
-    await startAt(page, RIVER_CP);
+    await startAt(page, RIVER_CP, bike);
 
     const run = (untilLanded: boolean): Promise<RiverResult> =>
       page.evaluate(({ river, untilLanded }) => {
@@ -88,7 +94,7 @@ test.describe('river jump', () => {
       return { atRest, boosting: s.x - s.camX, v: s.v };
     }, rampStartX + 48);
     await shot(page, 'boost-streaks');
-    expect(runUp.v).toBeGreaterThan(340);
+    expect(runUp.v).toBeGreaterThan(cfg.boostSpeed - 20);
     expect(runUp.boosting, 'the camera pulls back at boost speed').toBeLessThan(runUp.atRest - 15);
     expect(runUp.boosting).toBeGreaterThan(90);
 
@@ -102,30 +108,30 @@ test.describe('river jump', () => {
     expect(r.landingX).not.toBeNull();
     const margin = r.landingX! - river.x1;
     console.log(
-      `[river, boost] lip speed ${mid.lipSpeed.toFixed(1)}; lands at x=${r.landingX!.toFixed(1)}, ` +
+      `[river ${bike}, boost] lip speed ${mid.lipSpeed.toFixed(1)}; lands at x=${r.landingX!.toFixed(1)}, ` +
       `margin ${margin.toFixed(1)} px past the far edge (x=${river.x1}), meter left ${r.landingBoost!.toFixed(3)}`,
     );
     expect(river.x1).toBe(8960);
-    expect(mid.lipSpeed).toBeCloseTo(360, 0);
+    expect(mid.lipSpeed).toBeCloseTo(cfg.boostSpeed, 0);
     expect(margin).toBeGreaterThanOrEqual(16);
 
     const end = await page.evaluate(() => window.__test!.state());
     expect(end.crashes).toBe(0);
 
     // Riding on to the line from a checkpoint start is a practice run: no medal, nothing saved.
-    const fin = await page.evaluate(() => {
+    const fin = await page.evaluate((keys) => {
       const t = window.__test!;
       t.setInput({ throttle: true });
       for (let i = 0; i < 120 * 10 && !t.state().finished; i++) t.step(1);
       t.setInput({});
       t.step(240);
-      return { data: t.finish(), stored: window.localStorage.getItem('hampi-at-dusk.best') };
-    });
+      return { data: t.finish(), stored: keys.map((k) => window.localStorage.getItem(k)) };
+    }, [LEGACY_BEST_KEY, ...BIKE_ORDER.map(bestKey)]);
     expect(fin.data).not.toBeNull();
     expect(fin.data!.ranked).toBe(false);
     expect(fin.data!.medal).toBeNull();
     expect([fin.data!.newTime, fin.data!.saved]).toEqual([false, false]);
-    expect(fin.stored).toBeNull();
+    expect(fin.stored).toEqual([null, null, null, null]);
     await shot(page, 'finish-practice');
   });
 });

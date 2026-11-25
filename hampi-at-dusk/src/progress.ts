@@ -3,6 +3,7 @@
 // Everything that touches storage goes through try/catch: localStorage can be missing, full, or throw
 // on access (private windows, blocked site data, sandboxed frames). The game must play the same without it.
 
+import { BIKES, DEFAULT_BIKE, isBikeId, type BikeId, type MedalTimes } from './bike/bikes';
 import { STAGE_COLS } from './level/levelData';
 
 // ---------------------------------------------------------------------------------------------
@@ -12,27 +13,28 @@ import { STAGE_COLS } from './level/levelData';
 export type Medal = 'gold' | 'silver' | 'bronze';
 
 /**
- * Time targets (ms), set from the measured bot run: 38.13 s for a clean, no-flip run that boosts only at
- * the river. Gold leaves about 2 s of slack on that line (or pays for one slip with boost and flips).
+ * Time targets (ms) of the default bike, set from the measured bot run: 38.13 s for a clean, no-flip run
+ * that boosts only at the river. Gold leaves about 2 s of slack on that line (or pays for one slip with
+ * boost and flips). Every bike has its own targets, set the same way (bikes.ts).
  */
-export const MEDAL_TIMES_MS: Record<Medal, number> = { gold: 40_000, silver: 46_000, bronze: 56_000 };
+export const MEDAL_TIMES_MS: MedalTimes = BIKES[DEFAULT_BIKE].medalsMs;
 export const MEDAL_ORDER: readonly Medal[] = ['bronze', 'silver', 'gold'];
 
 /** The medal a finishing time earns (targets are inclusive), or null. */
-export function medalFor(timeMs: number): Medal | null {
+export function medalFor(timeMs: number, targets: MedalTimes = MEDAL_TIMES_MS): Medal | null {
   if (!(timeMs >= 0)) return null;
-  if (timeMs <= MEDAL_TIMES_MS.gold) return 'gold';
-  if (timeMs <= MEDAL_TIMES_MS.silver) return 'silver';
-  if (timeMs <= MEDAL_TIMES_MS.bronze) return 'bronze';
+  if (timeMs <= targets.gold) return 'gold';
+  if (timeMs <= targets.silver) return 'silver';
+  if (timeMs <= targets.bronze) return 'bronze';
   return null;
 }
 
 /** The next medal up from a finishing time and its target, or null once gold is earned. */
-export function nextMedal(timeMs: number): { medal: Medal; timeMs: number } | null {
-  const have = medalFor(timeMs);
+export function nextMedal(timeMs: number, targets: MedalTimes = MEDAL_TIMES_MS): { medal: Medal; timeMs: number } | null {
+  const have = medalFor(timeMs, targets);
   if (have === 'gold') return null;
   const next: Medal = have === 'silver' ? 'gold' : have === 'bronze' ? 'silver' : 'bronze';
-  return { medal: next, timeMs: MEDAL_TIMES_MS[next] };
+  return { medal: next, timeMs: targets[next] };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -153,7 +155,10 @@ export interface KeyValueStore {
 /** Returns the store, or throws / returns null when there is none. */
 export type StoreProvider = () => KeyValueStore | null | undefined;
 
-export const BEST_KEY = 'hampi-at-dusk.best';
+/** The single record of v1.3 - v1.5 (one bike). Read once to seed the Daybreak's record; never written or removed. */
+export const LEGACY_BEST_KEY = 'hampi-at-dusk.best';
+/** Each bike keeps its own best run and ghost (v1.6). */
+export const bestKey = (bike: BikeId): string => `${LEGACY_BEST_KEY}.${bike}`;
 export const PREFS_KEY = 'hampi-at-dusk.prefs';
 /** Bumped (with the stage length) whenever old records stop being comparable. */
 const RECORD_VERSION = 1;
@@ -185,20 +190,35 @@ function write(key: string, value: unknown, store: StoreProvider): boolean {
 const wholeOrNull = (v: unknown, max: number): number | null =>
   typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= max ? Math.round(v) : null;
 
-/** Load the bests. Anything missing, malformed or from another stage layout comes back as "no run yet". */
-export function loadBest(store: StoreProvider = browserStore): Best {
-  const raw = read(BEST_KEY, store);
-  if (typeof raw !== 'object' || raw === null) return { ...EMPTY_BEST };
+function parseBest(raw: unknown): Best | null {
+  if (typeof raw !== 'object' || raw === null) return null;
   const r = raw as Record<string, unknown>;
-  if (r.v !== RECORD_VERSION || r.stage !== STAGE_COLS) return { ...EMPTY_BEST };
+  if (r.v !== RECORD_VERSION || r.stage !== STAGE_COLS) return null;
   const timeMs = wholeOrNull(r.timeMs, 3_600_000);
   const ghost = timeMs !== null && decodeGhost(r.ghost).length > 0 ? (r.ghost as string) : '';
   return { timeMs, diyas: wholeOrNull(r.diyas, 999), flips: wholeOrNull(r.flips, 9999), ghost };
 }
 
-/** Save the bests. Returns false (and changes nothing else) when storage is unavailable or throws. */
-export function saveBest(best: Best, store: StoreProvider = browserStore): boolean {
-  return write(BEST_KEY, { v: RECORD_VERSION, stage: STAGE_COLS, ...best }, store);
+/**
+ * Load a bike's bests. Anything missing, malformed or from another stage layout comes back as "no run yet".
+ *
+ * Migration (v1.6): records from before the roster were all ridden on the Daybreak. While the Daybreak has
+ * no record of its own, the legacy record is used and copied to the Daybreak's key (if storage allows).
+ * The legacy key is left alone, and it is never read for another bike or once the Daybreak has a record.
+ */
+export function loadBest(bike: BikeId = DEFAULT_BIKE, store: StoreProvider = browserStore): Best {
+  const own = read(bestKey(bike), store);
+  if (own !== null) return parseBest(own) ?? { ...EMPTY_BEST };
+  if (bike !== DEFAULT_BIKE) return { ...EMPTY_BEST };
+  const legacy = parseBest(read(LEGACY_BEST_KEY, store));
+  if (legacy === null) return { ...EMPTY_BEST };
+  saveBest(bike, legacy, store);
+  return legacy;
+}
+
+/** Save a bike's bests. Returns false (and changes nothing else) when storage is unavailable or throws. */
+export function saveBest(bike: BikeId, best: Best, store: StoreProvider = browserStore): boolean {
+  return write(bestKey(bike), { v: RECORD_VERSION, stage: STAGE_COLS, ...best }, store);
 }
 
 export interface Prefs {
@@ -206,9 +226,11 @@ export interface Prefs {
   ghost: boolean;
   /** 0 = all sound, 1 = music off, 2 = everything muted */
   sound: 0 | 1 | 2;
+  /** the bike picked last */
+  bike: BikeId;
 }
 
-export const DEFAULT_PREFS: Readonly<Prefs> = { ghost: true, sound: 0 };
+export const DEFAULT_PREFS: Readonly<Prefs> = { ghost: true, sound: 0, bike: DEFAULT_BIKE };
 
 export function loadPrefs(store: StoreProvider = browserStore): Prefs {
   const raw = read(PREFS_KEY, store);
@@ -217,6 +239,7 @@ export function loadPrefs(store: StoreProvider = browserStore): Prefs {
   return {
     ghost: typeof r.ghost === 'boolean' ? r.ghost : DEFAULT_PREFS.ghost,
     sound: r.sound === 1 || r.sound === 2 ? r.sound : 0,
+    bike: isBikeId(r.bike) ? r.bike : DEFAULT_BIKE,
   };
 }
 

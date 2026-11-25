@@ -12,7 +12,9 @@ import {
   type BikeState, type CrashCause,
 } from '../bike/BikePhysics';
 import { BikeView, GhostBike } from '../bike/BikeView';
-import { CONFIG } from '../config';
+import { BIKES, isBikeId, type BikeDef, type BikeId } from '../bike/bikes';
+import { currentBike, selectBike } from '../bike/selection';
+import type { Config } from '../config';
 import { Checkpoint } from '../entities/Checkpoint';
 import { Cow } from '../entities/Cow';
 import { Diya } from '../entities/Diya';
@@ -51,11 +53,11 @@ type Phase = 'ride' | 'crash';
  * The bests as of the last finished run in this page session. Storage is only a copy of this: when it
  * is unavailable or throws, best / medal / ghost still work until the page is closed.
  */
-let sessionBest: Best | null = null;
+const sessionBest: Partial<Record<BikeId, Best>> = {};
 
-/** The bests: this session's if a run has finished, else whatever storage holds. */
-export function currentBest(): Best {
-  return sessionBest ?? loadBest();
+/** A bike's bests: this session's if a run on it has finished, else whatever storage holds. */
+export function currentBest(bike: BikeId = currentBike()): Best {
+  return sessionBest[bike] ?? loadBest(bike);
 }
 
 /** Popup text for n full flips in one air. */
@@ -70,6 +72,8 @@ export interface GameSnapshot {
   x: number; y: number; vx: number; vy: number; v: number; angle: number;
   grounded: boolean; boost: number; crashed: boolean; crashes: number; diyas: number;
   finished: boolean; checkpoint: number; timeMs: number;
+  /** the bike being ridden */
+  bike: BikeId;
   /** full flips landed this run (the trick tally) */
   flips: number;
   /** degrees turned in the current air (0 while grounded) */
@@ -82,6 +86,9 @@ export interface GameSnapshot {
 
 export class GameScene extends Phaser.Scene {
   // --- sim state ---
+  /** the bike being ridden: its tuning is this.cfg, used for everything in the run */
+  bikeDef: BikeDef = BIKES[currentBike()];
+  cfg: Config = this.bikeDef.cfg;
   bike!: BikeState;
   phase: Phase = 'ride';
   checkpoint = 0;
@@ -105,7 +112,7 @@ export class GameScene extends Phaser.Scene {
   private finishShown = false;
   private camX = 0;
   /** smoothed look-ahead (px): grows with speed, so obstacles show earlier the faster the bike goes */
-  private look: number = CONFIG.cameraLookAheadRest;
+  private look = 0;
   /** landing bump: the view dips by bumpY px (a damped spring, game time) */
   private bumpY = 0;
   private bumpV = 0;
@@ -152,7 +159,10 @@ export class GameScene extends Phaser.Scene {
     super('Game');
   }
 
-  init(data: { cp?: number }): void {
+  init(data: { cp?: number; bike?: BikeId }): void {
+    if (isBikeId(data?.bike)) selectBike(data.bike);
+    this.bikeDef = BIKES[currentBike()];
+    this.cfg = this.bikeDef.cfg;
     this.startCp = Math.min(CHECKPOINTS.length - 1, Math.max(0, data?.cp ?? 0));
     this.phase = 'ride';
     this.checkpoint = this.startCp;
@@ -172,7 +182,7 @@ export class GameScene extends Phaser.Scene {
     this.honkQueued = false;
     this.restartQueued = false;
     this.ranked = this.startCp === 0;
-    this.best = currentBest();
+    this.best = currentBest(this.bikeDef.id);
     this.ghostPoses = this.ranked ? decodeGhost(this.best.ghost) : [];
     this.ghostRec = [];
     this.ghostOn = loadPrefs().ghost;
@@ -181,7 +191,7 @@ export class GameScene extends Phaser.Scene {
     this.lastInput = {};
     this.acc = 0;
     this.visT = 0;
-    this.look = CONFIG.cameraLookAheadRest;
+    this.look = this.cfg.cameraLookAheadRest;
     this.bumpY = 0;
     this.bumpV = 0;
     this.boostFx = 0;
@@ -238,7 +248,7 @@ export class GameScene extends Phaser.Scene {
       .setDepth(DEPTH.fade).setAlpha(0);
 
     for (const cp of this.checkpoints) cp.setLit(cp.id <= this.checkpoint);
-    this.bike = createBikeState(this.checkpoints[this.checkpoint]!.x);
+    this.bike = createBikeState(this.checkpoints[this.checkpoint]!.x, TERRAIN, this.cfg);
     this.camX = this.cameraTarget();
     const startHint = this.checkpoints[this.checkpoint]!.hint;
     if (startHint) this.showHint(startHint);
@@ -292,7 +302,7 @@ export class GameScene extends Phaser.Scene {
     return {
       x: b.x, y: b.y, vx: b.vx, vy: b.vy, v: b.v, angle: b.angle, grounded: b.grounded, boost: b.boost,
       crashed: this.phase === 'crash', crashes: this.crashes, diyas: this.diyaCount,
-      finished: this.finished, checkpoint: this.checkpoint, timeMs: this.timeMs,
+      finished: this.finished, checkpoint: this.checkpoint, timeMs: this.timeMs, bike: this.bikeDef.id,
       flips: this.flips, spin: b.spin, camX: this.camX,
       ghost: this.ghostPose ? { ...this.ghostPose } : null,
     };
@@ -428,13 +438,14 @@ export class GameScene extends Phaser.Scene {
     }
 
     const prev = this.bike;
-    let b = step(prev, input, dt);
+    const cfg = this.cfg;
+    let b = step(prev, input, dt, TERRAIN, cfg);
 
     if (this.finished) {
       // After the line nothing can go wrong: a bad landing just settles the bike.
       if (b.crashed !== null) {
         const x = TERRAIN.surfaceY(b.x) === null ? prev.x : b.x;
-        b = { ...createBikeState(x), boost: b.boost };
+        b = { ...createBikeState(x, TERRAIN, cfg), boost: b.boost };
       }
       // Pull up inside the gateway instead of rolling out to the end wall (matters after a boosted finish).
       if (b.grounded) {
@@ -459,7 +470,7 @@ export class GameScene extends Phaser.Scene {
       this.view.landed(!clean, b.x, b.y, b.evImpact);
       this.fx.landingPuff(b.x, b.y, b.evImpact, !clean);
       // Camera bump, scaled by how hard the bike came down (harder still for a rough landing).
-      this.bumpV += b.evImpact * CONFIG.cameraBumpPerImpact * (clean ? 1 : 1.35);
+      this.bumpV += b.evImpact * cfg.cameraBumpPerImpact * (clean ? 1 : 1.35);
       // One landing popup at a time: a flip replaces "CLEAN!" (the clean bonus still applies).
       if (b.evFlips !== 0) {
         const n = Math.abs(b.evFlips);
@@ -486,19 +497,20 @@ export class GameScene extends Phaser.Scene {
   /** Obstacles, cow, monkeys and diyas against the bike box. */
   private collide(prev: BikeState, bike: BikeState): BikeState {
     let b = bike;
-    if (hitsObstacle(b, this.obstacles.map((o) => o.box))) return crash(b, 'obstacle');
+    const cfg = this.cfg;
+    if (hitsObstacle(b, this.obstacles.map((o) => o.box), cfg)) return crash(b, 'obstacle');
 
-    if (this.cow.solid && aabbOverlap(bikeAABB(b), this.cow.box)) {
-      if (Math.abs(b.vx) > CONFIG.cowCrashSpeed) return crash(b, 'cow');
+    if (this.cow.solid && aabbOverlap(bikeAABB(b, cfg), this.cow.box)) {
+      if (Math.abs(b.vx) > cfg.cowCrashSpeed) return crash(b, 'cow');
       // Slow contact: the cow is simply solid. Put the bike back beside her and stop it.
       const fromLeft = prev.x <= this.cow.x + COW.w / 2;
-      const x = fromLeft ? this.cow.x - CONFIG.bikeHitW / 2 : this.cow.x + COW.w + CONFIG.bikeHitW / 2;
+      const x = fromLeft ? this.cow.x - cfg.bikeHitW / 2 : this.cow.x + COW.w + cfg.bikeHitW / 2;
       b = { ...b, x, vx: 0, v: b.grounded ? 0 : Math.abs(b.vy) };
     }
 
     for (const m of this.troop.monkeys) {
-      if (m.collidable && aabbOverlap(bikeAABB(b), m.box)) {
-        const f = CONFIG.monkeyStumbleFactor;
+      if (m.collidable && aabbOverlap(bikeAABB(b, cfg), m.box)) {
+        const f = cfg.monkeyStumbleFactor;
         b = { ...b, v: b.v * f, vx: b.vx * f };
         m.leap();
         this.view.stumble();
@@ -508,10 +520,10 @@ export class GameScene extends Phaser.Scene {
     }
 
     for (const d of this.diyas) {
-      if (!d.collected && touchesDiya(b, d)) {
+      if (!d.collected && touchesDiya(b, d, cfg)) {
         d.collect();
         this.diyaCount++;
-        b = addBoost(b, CONFIG.boostDiya);
+        b = addBoost(b, cfg.boostDiya);
         sfx.play('diya');
         this.fx.sparkle(d.x, d.y);
         this.popup('+1', d.x, d.y - 10);
@@ -522,7 +534,7 @@ export class GameScene extends Phaser.Scene {
 
   private stepAnimals(dt: number): void {
     const b = this.bike;
-    this.cow.step(dt, bikeAABB(b), this.phase === 'crash' ? Infinity : Math.hypot(b.vx, b.vy));
+    this.cow.step(dt, bikeAABB(b, this.cfg), this.phase === 'crash' ? Infinity : Math.hypot(b.vx, b.vy));
     this.troop.step(dt, this.phase === 'crash' ? -Infinity : b.x);
   }
 
@@ -554,9 +566,10 @@ export class GameScene extends Phaser.Scene {
   /** At the line: medal, bests and the ghost. Storage failing changes nothing here. */
   private scoreRun(): void {
     const run = { timeMs: this.timeMs, diyas: this.diyaCount, flips: this.flips };
+    const targets = this.bikeDef.medalsMs;
     const data: FinishData = {
-      ...run, crashes: this.crashes, ranked: this.ranked,
-      medal: this.ranked ? medalFor(run.timeMs) : null, next: this.ranked ? nextMedal(run.timeMs) : null,
+      ...run, crashes: this.crashes, ranked: this.ranked, bike: this.bikeDef.id,
+      medal: this.ranked ? medalFor(run.timeMs, targets) : null, next: this.ranked ? nextMedal(run.timeMs, targets) : null,
       prevBest: { timeMs: this.best.timeMs, diyas: this.best.diyas, flips: this.best.flips },
       newTime: false, newDiyas: false, newFlips: false, saved: false,
     };
@@ -567,9 +580,9 @@ export class GameScene extends Phaser.Scene {
       data.newTime = update.newTime;
       data.newDiyas = update.newDiyas;
       data.newFlips = update.newFlips;
-      sessionBest = update.best;
+      sessionBest[this.bikeDef.id] = update.best;
       this.best = update.best;
-      data.saved = saveBest(update.best);
+      data.saved = saveBest(this.bikeDef.id, update.best);
     }
     this.finishData = data;
   }
@@ -578,9 +591,9 @@ export class GameScene extends Phaser.Scene {
     sfx.play('honk');
     if (this.phase !== 'ride') return;
     const x = this.bike.x;
-    this.troop.honked(x, CONFIG.honkRange);
+    this.troop.honked(x, this.cfg.honkRange);
     const cowMid = this.cow.x + COW.w / 2;
-    if (Math.abs(x - cowMid) <= CONFIG.honkRange) this.cow.honked();
+    if (Math.abs(x - cowMid) <= this.cfg.honkRange) this.cow.honked();
     this.popups.show('POM-POM!', x + 8, this.bike.y - 40, undefined, undefined, 'honk');
   }
 
@@ -597,7 +610,7 @@ export class GameScene extends Phaser.Scene {
       this.respawnDelay = 0;
       return;
     }
-    this.respawnDelay = CONFIG.respawnDelayMs / 1000;
+    this.respawnDelay = this.cfg.respawnDelayMs / 1000;
     if (cause === 'water') {
       this.view.crashSplash(b.x, WATER_LINE_Y);
       sfx.play('splash');
@@ -610,14 +623,14 @@ export class GameScene extends Phaser.Scene {
 
   private respawn(): void {
     const cp = this.checkpoints[this.checkpoint]!;
-    this.bike = createBikeState(cp.x); // speed 0, boost full
+    this.bike = createBikeState(cp.x, TERRAIN, this.cfg); // speed 0, boost full
     this.phase = 'ride';
     this.fadeInT = FADE_S;
     // Animals ahead of the checkpoint go back to their starting places.
     if (this.cow.homeX > cp.x) this.cow.reset();
     if (this.troop.triggerX > cp.x) this.troop.reset();
     this.view.reset();
-    this.look = CONFIG.cameraLookAheadRest;
+    this.look = this.cfg.cameraLookAheadRest;
     this.bumpY = 0;
     this.bumpV = 0;
     this.camX = this.cameraTarget();
@@ -631,7 +644,7 @@ export class GameScene extends Phaser.Scene {
 
   /** Look-ahead for a speed: Rest at 0, cameraLookAhead at topSpeed, Boost at boostSpeed. */
   private lookFor(speed: number): number {
-    const c = CONFIG;
+    const c = this.cfg;
     if (speed <= c.topSpeed) return c.cameraLookAheadRest + (c.cameraLookAhead - c.cameraLookAheadRest) * Math.max(0, speed / c.topSpeed);
     const k = Math.min(1, (speed - c.topSpeed) / (c.boostSpeed - c.topSpeed));
     return c.cameraLookAhead + (c.cameraLookAheadBoost - c.cameraLookAhead) * k;
@@ -643,15 +656,15 @@ export class GameScene extends Phaser.Scene {
     if (this.phase === 'ride') {
       const b = this.bike;
       const speed = b.grounded ? b.v : Math.abs(b.vx);
-      this.look += (this.lookFor(speed) - this.look) * (1 - Math.exp(-dt / CONFIG.cameraLookSmoothS));
+      this.look += (this.lookFor(speed) - this.look) * (1 - Math.exp(-dt / this.cfg.cameraLookSmoothS));
     }
-    const k = 1 - Math.pow(1 - CONFIG.cameraLerp, dt * 60);
+    const k = 1 - Math.pow(1 - this.cfg.cameraLerp, dt * 60);
     this.camX += (this.cameraTarget() - this.camX) * k;
 
     // Landing bump: a damped spring back to rest.
     this.bumpV += (-BUMP_STIFFNESS * this.bumpY - BUMP_DAMPING * this.bumpV) * dt;
     this.bumpY += this.bumpV * dt;
-    if (this.bumpY > CONFIG.cameraBumpMaxPx) { this.bumpY = CONFIG.cameraBumpMaxPx; this.bumpV = Math.min(0, this.bumpV); }
+    if (this.bumpY > this.cfg.cameraBumpMaxPx) { this.bumpY = this.cfg.cameraBumpMaxPx; this.bumpV = Math.min(0, this.bumpV); }
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -733,7 +746,7 @@ export class GameScene extends Phaser.Scene {
     if (this.hintT > 0) this.hintT = Math.max(0, this.hintT - dt);
     const riding = this.phase === 'ride' && !this.paused && !(this.finished && b.v < 1);
     const inp = this.lastInput;
-    sfx.setEngine(riding, Math.hypot(b.vx, b.vy) / CONFIG.topSpeed,
+    sfx.setEngine(riding, Math.hypot(b.vx, b.vy) / this.cfg.topSpeed,
       !this.finished && (inp.throttle === true || b.boosting), b.boosting);
 
     // Music: lifted while boosting, a little on the river run-up.
@@ -788,11 +801,11 @@ export class GameScene extends Phaser.Scene {
       if (m.collidable) g.strokeRect(m.box.x + 0.5, m.box.y + 0.5, m.box.w - 1, m.box.h - 1);
     }
     g.lineStyle(1, 0xffff00, 1);
-    for (const d of this.diyas) if (!d.collected) g.strokeCircle(d.x, d.y, CONFIG.diyaRadius);
+    for (const d of this.diyas) if (!d.collected) g.strokeCircle(d.x, d.y, this.cfg.diyaRadius);
     for (const cp of this.checkpoints) g.lineBetween(cp.x, cp.y - 52, cp.x, cp.y);
     g.lineBetween(FINISH.col * TILE, 0, FINISH.col * TILE, VIEW_H);
     g.lineStyle(1, 0x00ff00, 1);
-    const box = bikeAABB(b);
+    const box = bikeAABB(b, this.cfg);
     g.strokeRect(box.x + 0.5, box.y + 0.5, box.w - 1, box.h - 1);
 
     const f = (n: number): string => n.toFixed(1);
@@ -801,7 +814,7 @@ export class GameScene extends Phaser.Scene {
       `X ${f(b.x)} Y ${f(b.y)}`,
       `V ${f(b.v)} VX ${f(b.vx)} VY ${f(b.vy)}`,
       `ANG ${f(b.angle)} ${b.grounded ? 'GROUND' : 'AIR'}`,
-      `BOOST ${b.boost.toFixed(2)} CP ${this.checkpoint}`,
+      `BOOST ${b.boost.toFixed(2)} CP ${this.checkpoint} ${this.bikeDef.name}`,
       `${this.phase.toUpperCase()}${this.finished ? ' FINISHED' : ''}`,
     ]);
   }

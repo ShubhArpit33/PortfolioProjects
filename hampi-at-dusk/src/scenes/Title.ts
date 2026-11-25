@@ -5,6 +5,7 @@ import { PAL } from '../art/palette';
 import { soundLabel } from '../audio/sfx';
 import { setMusicIntensity, tickMusic } from '../audio/music';
 import { BikeView } from '../bike/BikeView';
+import { currentBikeDef } from '../bike/selection';
 import { URL_CP, onKeyPress } from '../input';
 import { BASELINE_Y } from '../level/levelData';
 import { medalFor } from '../progress';
@@ -38,9 +39,10 @@ export class TitleScene extends Phaser.Scene {
     this.press = pixelText(this, 240, 128, 'PRESS ENTER', PAL.uiYellow).setOrigin(0.5, 0).setDepth(ui);
 
     // The time to beat, with its medal.
-    const best = currentBest();
+    const def = currentBikeDef();
+    const best = currentBest(def.id);
     if (best.timeMs !== null) {
-      const medal = medalFor(best.timeMs);
+      const medal = medalFor(best.timeMs, def.medalsMs);
       const label = `BEST ${formatTime(best.timeMs)}`;
       const tx = medal ? 247 : 240;
       pixelText(this, tx, 150, label, PAL.cream).setOrigin(0.5, 0).setDepth(ui);

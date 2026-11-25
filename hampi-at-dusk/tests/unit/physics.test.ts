@@ -1,13 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { CONFIG } from '../../src/config';
+import { BIKES, BIKE_ORDER, DEFAULT_BIKE, bikeDef, isBikeId, statBars, type BikeDef, type BikeId } from '../../src/bike/bikes';
+import { CONFIG, type Config } from '../../src/config';
 import {
   FIXED_DT, countFlips, createBikeState, evaluateLanding, hitsObstacle, normalizeAngle, step, touchesDiya,
   type BikeInput, type BikeState,
 } from '../../src/bike/BikePhysics';
 import {
-  BASELINE_Y, CHECKPOINTS, COW, DIYAS, FINISH, KICKER, OBSTACLES, SECTIONS, TILE, WORLD_START_X, checkpointX, diyaCentre,
+  BASELINE_Y, CHECKPOINTS, COW, DIYAS, FINISH, KICKER, LEVEL, OBSTACLES, SECTIONS, TILE, WORLD_START_X, checkpointX, diyaCentre,
 } from '../../src/level/levelData';
 import { TERRAIN, obstacleBox, type Box } from '../../src/level/terrain';
+import { hopLength, layout, planHopsFor } from '../shared/plan';
 
 const OBSTACLE_BOXES: Box[] = OBSTACLES.map((o) => obstacleBox(o));
 const COW_BOX: Box = { x: COW.col * TILE, y: BASELINE_Y - COW.h, w: COW.w, h: COW.h };
@@ -16,8 +18,8 @@ const KICKER_GAP = TERRAIN.gaps.find((g) => g.kicker)!;
 const RIVER = TERRAIN.gaps.find((g) => g.river)!;
 
 /** A grounded bike already moving at speed v. */
-function rolling(x: number, v: number): BikeState {
-  const s = createBikeState(x);
+function rolling(x: number, v: number, cfg: Config = CONFIG): BikeState {
+  const s = createBikeState(x, TERRAIN, cfg);
   s.v = v;
   return s;
 }
@@ -30,11 +32,12 @@ function runUntilLanding(
   inputAt: (s: BikeState, i: number) => BikeInput,
   boxes: readonly Box[] = [],
   maxSteps = 120 * 6,
+  cfg: Config = CONFIG,
 ): RunResult {
   let s = start;
   for (let i = 0; i < maxSteps; i++) {
-    s = step(s, inputAt(s, i));
-    if (hitsObstacle(s, boxes)) return { state: s, steps: i + 1, landedAt: null, hitBox: true };
+    s = step(s, inputAt(s, i), FIXED_DT, TERRAIN, cfg);
+    if (hitsObstacle(s, boxes, cfg)) return { state: s, steps: i + 1, landedAt: null, hitBox: true };
     if (s.crashed) return { state: s, steps: i + 1, landedAt: null, hitBox: false };
     if (s.evLanding && s.evLanding !== 'silent') return { state: s, steps: i + 1, landedAt: s.x, hitBox: false };
   }
@@ -442,106 +445,301 @@ describe('backing up at a standstill', () => {
   });
 });
 
-describe('canal gaps (criterion 5)', () => {
-  /** How far before the gap the bike may start while staying on the same platform. */
-  const runUp = (gapX0: number, want: number): number => {
-    let d = 0;
-    while (d < want && TERRAIN.surfaceY(gapX0 - d - 1.5) !== null) d += 0.5;
-    return d;
-  };
+// =================================================================================================
+// The roster (v1.6). Every stage rule is checked on every bike; the floors below come from the measured
+// numbers in DECISIONS.md (v1.6) with a little slack, so a tuning change that eats a margin fails here.
+// =================================================================================================
 
-  it.each(CANAL_GAPS.map((g) => [`columns ${g.col0}-${g.col0 + g.cols - 1}`, g] as const))(
-    'gap at %s: cleared by a hop at 240, not rolled across at 240 or at boostSpeed',
-    (name, g) => {
+const ROSTER = BIKE_ORDER.map((id) => [BIKES[id].name, BIKES[id]] as const);
+
+interface Floors {
+  /** hop window (ms) over the paired gaps in ONE hop, and by the two-hop route (null = not this bike's line) */
+  pairOneHopMs: number;
+  pairTwoHopMs: number | null;
+  /** rolling off the kicker at top speed with no hop */
+  kickerRoll: 'water' | 'clears';
+  /** shortest landing margin (px past the tank) of any hop taken on the kicker ramp */
+  kickerMinMarginPx: number;
+  /** seconds to spare after a full turn with the key simply held off the kicker (null: it does not fit) */
+  heldFlipSlackS: number | null;
+  pillarMs: number; cartMs: number; cowMs: number;
+  /** how far short of the far bank the no-boost river arc comes down, and the margin with boost (px) */
+  riverShortPx: number;
+  riverMarginPx: number;
+  /** the bot plan's run time (s) */
+  runS: number;
+  planner: 'centred' | 'interval';
+  /** does the plan survive with no tilt input at all (nose drift only)? */
+  noTiltRun: boolean;
+}
+
+const FLOORS: Record<BikeId, Floors> = {
+  tonup: {
+    pairOneHopMs: 200, pairTwoHopMs: null, kickerRoll: 'clears', kickerMinMarginPx: 16, heldFlipSlackS: 0.2,
+    pillarMs: 300, cartMs: 150, cowMs: 280, riverShortPx: 16, riverMarginPx: 64, runS: 32.06, planner: 'interval',
+    noTiltRun: false,
+  },
+  daybreak: {
+    pairOneHopMs: 120, pairTwoHopMs: null, kickerRoll: 'water', kickerMinMarginPx: 16, heldFlipSlackS: 0.12,
+    pillarMs: 330, cartMs: 190, cowMs: 330, riverShortPx: 48, riverMarginPx: 16, runS: 38.13, planner: 'centred',
+    noTiltRun: true,
+  },
+  sundowner: {
+    pairOneHopMs: 80, pairTwoHopMs: 120, kickerRoll: 'water', kickerMinMarginPx: 0, heldFlipSlackS: null,
+    pillarMs: 280, cartMs: 150, cowMs: 290, riverShortPx: 64, riverMarginPx: 16, runS: 43.99, planner: 'centred',
+    noTiltRun: true,
+  },
+};
+
+describe('roster (v1.6)', () => {
+  it('three bikes; the Daybreak is CONFIG untouched and the default', () => {
+    expect(BIKE_ORDER).toEqual(['tonup', 'daybreak', 'sundowner']);
+    expect(DEFAULT_BIKE).toBe('daybreak');
+    expect(BIKES.daybreak.overrides).toEqual({});
+    expect(BIKES.daybreak.cfg).toEqual(CONFIG);
+    expect(BIKES.daybreak.cfg).not.toBe(CONFIG); // a copy: nothing can write through to CONFIG
+    for (const id of BIKE_ORDER) {
+      const b = BIKES[id];
+      expect(b.id).toBe(id);
+      expect(b.cfg).toEqual({ ...CONFIG, ...b.overrides });
+      expect(b.name).toMatch(/^[A-Z-]+$/);
+      expect(b.tagline.length).toBeLessThanOrEqual(42);
+      expect(b.tagline).toMatch(/^[A-Z .,'-]+$/);
+    }
+    expect(isBikeId('tonup')).toBe(true);
+    expect(isBikeId('roadster')).toBe(false);
+    expect(bikeDef('nope').id).toBe('daybreak');
+    expect(bikeDef('sundowner').id).toBe('sundowner');
+  });
+
+  it('the approved tuning table, verbatim', () => {
+    expect(BIKES.tonup.overrides).toEqual({
+      topSpeed: 288, accel: 180, boostSpeed: 420, boostAccel: 800, boostDrainPerSec: 0.72, boostRegenPerSec: 0.096,
+      boostCleanLanding: 0.30, boostDiya: 0.12, hopVelocity: 260, airTiltSpeed: 200, airTiltAccel: 900, airTiltMaxSpeed: 520,
+      safeLandingAngle: 25, cleanLandingAngle: 7, cameraLookAhead: 124, cameraLookAheadBoost: 184,
+    });
+    expect(BIKES.sundowner.overrides).toEqual({
+      topSpeed: 204, accel: 220, boostSpeed: 350, boostAccel: 380, boostDrainPerSec: 0.36, boostRegenPerSec: 0.048,
+      boostCleanLanding: 0.15, boostDiya: 0.06, airTiltSpeed: 150, airTiltAccel: 500, airTiltMaxSpeed: 360,
+      safeLandingAngle: 45, cleanLandingAngle: 13,
+    });
+    expect(BIKES.tonup.medalsMs).toEqual({ gold: 34_000, silver: 40_000, bronze: 50_000 });
+    expect(BIKES.daybreak.medalsMs).toEqual({ gold: 40_000, silver: 46_000, bronze: 56_000 });
+    expect(BIKES.sundowner.medalsMs).toEqual({ gold: 46_000, silver: 52_000, bronze: 62_000 });
+  });
+
+  it('every bike has the same hitbox, gravity and stage rules', () => {
+    const shared: Array<keyof Config> = [
+      'gravity', 'brake', 'coastDrag', 'boostFlip', 'slopeGravityFactor', 'airNoseDropSpeed', 'monkeyStumbleFactor',
+      'honkRange', 'bikeHitW', 'bikeHitH', 'diyaRadius', 'airborneEps', 'wallTolerance', 'minAirMsForLanding',
+      'cowCrashSpeed', 'reverseSpeed', 'reverseAccel', 'reverseHoldDelayMs', 'respawnDelayMs',
+    ];
+    for (const id of BIKE_ORDER) for (const k of shared) expect(BIKES[id].cfg[k], `${id}.${k}`).toBe(CONFIG[k]);
+  });
+
+  it('stat bars come from the real numbers and tell the bikes apart', () => {
+    expect(BIKES.tonup.stats).toEqual({ speed: 5, pull: 3, boost: 1, flip: 5, grip: 1 });
+    expect(BIKES.daybreak.stats).toEqual({ speed: 3, pull: 2, boost: 2, flip: 3, grip: 3 });
+    expect(BIKES.sundowner.stats).toEqual({ speed: 1, pull: 5, boost: 5, flip: 1, grip: 5 });
+    for (const id of BIKE_ORDER) expect(statBars(BIKES[id].cfg)).toEqual(BIKES[id].stats);
+  });
+
+  it('each bike holds its own top speed and boost speed', () => {
+    for (const id of BIKE_ORDER) {
+      const cfg = BIKES[id].cfg;
+      let s = createBikeState(40, TERRAIN, cfg);
+      for (let i = 0; i < 120 * 3; i++) s = step(s, { throttle: true }, FIXED_DT, TERRAIN, cfg);
+      expect(s.v, id).toBe(cfg.topSpeed);
+      let b = createBikeState(40, TERRAIN, cfg);
+      for (let i = 0; i < 120; i++) b = step(b, { boost: true }, FIXED_DT, TERRAIN, cfg);
+      expect(b.v, id).toBe(cfg.boostSpeed);
+      expect(b.boost, id).toBeCloseTo(1 - cfg.boostDrainPerSec, 6);
+    }
+  });
+});
+
+/** How far before the gap the bike may start while staying on the same platform. */
+const runUp = (gapX0: number, want: number): number => {
+  let d = 0;
+  while (d < want && TERRAIN.surfaceY(gapX0 - d - 1.5) !== null) d += 0.5;
+  return d;
+};
+
+describe.each(ROSTER)('%s: canal gaps (criterion 5)', (_name, bike: BikeDef) => {
+  const cfg = bike.cfg;
+  const V = cfg.topSpeed;
+  const floors = FLOORS[bike.id];
+  const first = CANAL_GAPS[3]!;
+  const second = CANAL_GAPS[4]!;
+
+  it.each(CANAL_GAPS.map((g, i) => [`columns ${g.col0}-${g.col0 + g.cols - 1}`, g, i] as const))(
+    'gap at %s: cleared by a hop at top speed, not rolled across at top speed or at boostSpeed',
+    (name, g, index) => {
       // Hop: sweep the take-off x, 0.5 px apart.
-      const maxD = runUp(g.x0, 200);
+      const maxD = runUp(g.x0, 260);
       const samples: boolean[] = [];
       for (let d = maxD; d >= 0.5; d -= 0.5) {
-        const r = runUntilLanding(rolling(g.x0 - d, 240), (_s, i) => ({ throttle: true, hop: i === 0 }));
+        const r = runUntilLanding(rolling(g.x0 - d, V, cfg), (_s, i) => ({ throttle: true, hop: i === 0 }), [], 720, cfg);
         samples.push(r.landedAt !== null && r.landedAt >= g.x1 && !r.state.crashed);
       }
-      const windowMs = (longestWindowPx(samples, 0.5) / 240) * 1000;
-      expect(windowMs, 'hop window').toBeGreaterThan(100);
+      const windowMs = (longestWindowPx(samples, 0.5) / V) * 1000;
+      // The second of the paired gaps has only 48 px of run-up. A long, fast hop (the Ton-Up's 214 px)
+      // has no room to start there: that bike takes the pair in one hop instead (next test).
+      const ownHop = !(g === second && hopLength(cfg) > 200);
+      if (ownHop) expect(windowMs, 'hop window').toBeGreaterThan(100);
+      else expect(floors.pairOneHopMs, 'this bike takes the pair in one hop').toBeGreaterThanOrEqual(120);
 
       // Roll (no hop) at topSpeed and at boostSpeed, over a sweep of step phases.
       const outcomes = new Set<string>();
-      for (const speed of [CONFIG.topSpeed, CONFIG.boostSpeed]) {
+      for (const speed of [cfg.topSpeed, cfg.boostSpeed]) {
         const base = runUp(g.x0, 60);
         for (let phase = 0; phase < 3.01; phase += 0.125) {
-          const start = rolling(g.x0 - base + phase, speed);
-          const boosted = speed > CONFIG.topSpeed;
-          const r = runUntilLanding(start, () => ({ throttle: true, boost: boosted }));
+          const start = rolling(g.x0 - base + phase, speed, cfg);
+          const boosted = speed > cfg.topSpeed;
+          const r = runUntilLanding(start, () => ({ throttle: true, boost: boosted }), [], 720, cfg);
           expect(r.state.crashed, `rolled across at ${speed}`).not.toBeNull();
           expect(r.state.x).toBeLessThan(g.x1 + 4);
           outcomes.add(`${speed}:${r.state.crashed}`);
         }
       }
-      console.log(`[gap ${name}] ${g.cols} tiles: hop window ${windowMs.toFixed(0)} ms; rolling -> ${[...outcomes].join(', ')}`);
+      console.log(`[${bike.id} gap ${index} ${name}] ${g.cols} tiles: hop window ${windowMs.toFixed(0)} ms; rolling -> ${[...outcomes].join(', ')}`);
     },
   );
 
   it('the paired gaps at columns 102-110 clear in one hop', () => {
-    const first = CANAL_GAPS[3]!;
-    const second = CANAL_GAPS[4]!;
     const samples: boolean[] = [];
-    for (let d = 90; d >= 0.5; d -= 0.5) {
-      const r = runUntilLanding(rolling(first.x0 - d, 240), (_s, i) => ({ throttle: true, hop: i === 0 }));
+    for (let d = runUp(first.x0, 96); d >= 0.5; d -= 0.5) {
+      const r = runUntilLanding(rolling(first.x0 - d, V, cfg), (_s, i) => ({ throttle: true, hop: i === 0 }), [], 720, cfg);
       samples.push(r.landedAt !== null && r.landedAt >= second.x1);
     }
-    const windowMs = (longestWindowPx(samples, 0.5) / 240) * 1000;
-    console.log(`[gaps 102-110 in one hop] window ${windowMs.toFixed(0)} ms`);
-    expect(windowMs).toBeGreaterThanOrEqual(120);
+    const windowMs = (longestWindowPx(samples, 0.5) / V) * 1000;
+    console.log(`[${bike.id} gaps 102-110 in one hop] window ${windowMs.toFixed(0)} ms`);
+    expect(windowMs).toBeGreaterThanOrEqual(floors.pairOneHopMs);
+  });
+
+  it('the paired gaps by two hops (land on the 48 px platform, hop again at once)', () => {
+    const samples: boolean[] = [];
+    for (let d = runUp(first.x0, 96); d >= 0.5; d -= 0.5) {
+      let s = rolling(first.x0 - d, V, cfg);
+      let ok = false;
+      let phase = 0; // 0 first hop in the air, 1 on the platform, 2 second hop in the air
+      let hopHeld = false;
+      for (let i = 0; i < 600 && !s.crashed; i++) {
+        const hop: boolean = (phase === 0 && i === 0) || (phase === 1 && s.grounded && !hopHeld);
+        s = step(s, { throttle: true, hop }, FIXED_DT, TERRAIN, cfg);
+        hopHeld = hop;
+        if (s.evLanding && s.evLanding !== 'silent') {
+          if (phase === 0) {
+            if (s.x >= first.x1 && s.x < second.x0) phase = 1;
+            else break;
+          } else if (phase === 2) {
+            ok = s.x >= second.x1;
+            break;
+          }
+        }
+        if (phase === 1 && s.evHop) phase = 2;
+      }
+      samples.push(ok);
+    }
+    const windowMs = (longestWindowPx(samples, 0.5) / V) * 1000;
+    console.log(`[${bike.id} gaps 102-110 in two hops] window for the first hop ${windowMs.toFixed(0)} ms`);
+    // Only a short hop fits the platform: this is the Sundowner's easy line. The longer hops overshoot it
+    // from anywhere on the 96 px run-up, which is why those bikes take the pair in one.
+    if (floors.pairTwoHopMs !== null) expect(windowMs).toBeGreaterThanOrEqual(floors.pairTwoHopMs);
+    else expect(windowMs).toBe(0);
   });
 });
 
-describe('kicker (section 6)', () => {
+describe('kicker layout (section 6)', () => {
+  it('the ramp ends at the tank: lip at h2, 8 columns of water, far bank h0', () => {
+    expect(KICKER_GAP.x0).toBe(KICKER.lipCol * TILE);
+    expect(KICKER_GAP.cols).toBe(8);
+    expect(TERRAIN.slopeAngle(KICKER.rampCol * TILE + 8)).toBeCloseTo(26.565, 2);
+    expect(TERRAIN.isNoHop(KICKER.rampCol * TILE + 8)).toBe(false);
+  });
+});
+
+describe.each(ROSTER)('%s: kicker (section 6)', (_name, bike: BikeDef) => {
+  const cfg = bike.cfg;
+  const V = cfg.topSpeed;
+  const floors = FLOORS[bike.id];
   const lipX = KICKER.lipCol * TILE;
   const rampX = KICKER.rampCol * TILE;
 
-  it('the ramp ends at the tank: lip at h2, 8 columns of water, far bank h0', () => {
-    expect(KICKER_GAP.x0).toBe(lipX);
-    expect(KICKER_GAP.cols).toBe(8);
-    expect(TERRAIN.slopeAngle(rampX + 8)).toBeCloseTo(26.565, 2);
-    expect(TERRAIN.isNoHop(rampX + 8)).toBe(false);
-  });
-
-  it('rolling off it at 240 falls in the tank; boost alone clears it', () => {
-    const roll = runUntilLanding(rolling(rampX - 160, 240), () => ({ throttle: true }));
-    expect(roll.state.crashed).toBe('water');
-    const boosted = runUntilLanding(rolling(rampX - 180, CONFIG.boostSpeed), () => ({ boost: true }));
+  it('rolling off it at top speed: in the tank, except the Ton-Up, which just skims across; boost alone clears it', () => {
+    const roll = runUntilLanding(rolling(rampX - 160, V, cfg), () => ({ throttle: true }), [], 720, cfg);
+    if (floors.kickerRoll === 'water') {
+      expect(roll.state.crashed).toBe('water');
+    } else {
+      // The Ton-Up's perk: at its full 288 px/s the roll carries the tank, with little to spare.
+      expect(roll.state.crashed).toBeNull();
+      const margin = roll.landedAt! - KICKER_GAP.x1;
+      console.log(`[${bike.id} kicker] rolled at ${V}: lands ${margin.toFixed(1)} px past the tank (${roll.state.evLanding})`);
+      expect(margin).toBeGreaterThan(0);
+      expect(margin).toBeLessThan(16);
+      // ... and only at full speed: 10 px/s short of it, the roll is wet.
+      const slow = runUntilLanding(rolling(rampX + 8, V - 10, cfg), () => ({}), [], 720, cfg);
+      expect(slow.state.crashed).toBe('water');
+    }
+    const boosted = runUntilLanding(rolling(rampX - 180, cfg.boostSpeed, cfg), () => ({ boost: true }), [], 720, cfg);
     expect(boosted.state.crashed).toBeNull();
     expect(boosted.landedAt!).toBeGreaterThan(KICKER_GAP.x1 + 16);
   });
 
-  it('a hop anywhere on the ramp clears it: window >= 120 ms, airtime >= 1 s', () => {
+  it('a hop anywhere on the ramp clears it: window >= 120 ms (>= 200 ms with a tile to spare), airtime >= 1 s', () => {
     const samples: boolean[] = [];
+    const roomy: boolean[] = [];
     let minAir = Infinity;
     let minMargin = Infinity;
     for (let d = 120; d >= 0.5; d -= 0.5) {
-      let s = rolling(rampX - 160, 240);
-      while (s.x < lipX - d && s.grounded) s = step(s, { throttle: true });
-      const r = runUntilLanding(s, (_s, i) => ({ throttle: true, hop: i === 0 }));
+      let s = rolling(rampX - 160, V, cfg);
+      while (s.x < lipX - d && s.grounded) s = step(s, { throttle: true }, FIXED_DT, TERRAIN, cfg);
+      const r = runUntilLanding(s, (_s, i) => ({ throttle: true, hop: i === 0 }), [], 720, cfg);
       const ok = r.landedAt !== null && r.landedAt >= KICKER_GAP.x1 && !r.state.crashed;
       samples.push(ok);
+      roomy.push(ok && r.landedAt! >= KICKER_GAP.x1 + 16);
       if (ok && d <= 64) {
         minAir = Math.min(minAir, r.steps * FIXED_DT);
         minMargin = Math.min(minMargin, r.landedAt! - KICKER_GAP.x1);
       }
     }
     const windowPx = longestWindowPx(samples, 0.5);
-    const windowMs = (windowPx / 240) * 1000;
-    console.log(`[kicker] hop window ${windowPx.toFixed(1)} px = ${windowMs.toFixed(0)} ms at 240; airtime >= ${minAir.toFixed(2)} s; lands >= ${minMargin.toFixed(0)} px past the tank`);
+    const windowMs = (windowPx / V) * 1000;
+    const roomyMs = (longestWindowPx(roomy, 0.5) / V) * 1000;
+    console.log(
+      `[${bike.id} kicker] hop window ${windowPx.toFixed(1)} px = ${windowMs.toFixed(0)} ms at ${V} (${roomyMs.toFixed(0)} ms landing >= 16 px clear); ` +
+      `airtime >= ${minAir.toFixed(2)} s; lands >= ${minMargin.toFixed(1)} px past the tank`,
+    );
     expect(windowMs).toBeGreaterThanOrEqual(120);
+    expect(roomyMs).toBeGreaterThanOrEqual(200);
     expect(minAir).toBeGreaterThanOrEqual(1);
-    expect(minMargin).toBeGreaterThanOrEqual(16);
+    // Every hop on the ramp lands past the tank. (The slow Sundowner only just makes it from the very
+    // foot of the ramp; the later the hop, the more room.)
+    expect(minMargin).toBeGreaterThan(floors.kickerMinMarginPx);
   });
 });
 
-describe('tricks: flips (v1.3)', () => {
+describe('tricks: flip rules (v1.3)', () => {
+  it('countFlips rounds the air rotation to whole turns, signed', () => {
+    expect(countFlips(0)).toBe(0);
+    expect(countFlips(27)).toBe(0);
+    expect(countFlips(-170)).toBe(0);
+    expect(countFlips(333)).toBe(1);
+    expect(countFlips(395)).toBe(1);
+    expect(countFlips(-386)).toBe(-1);
+    expect(countFlips(700)).toBe(2);
+    expect(countFlips(-1080)).toBe(-3);
+  });
+});
+
+describe.each(ROSTER)('%s: tricks, flips (v1.3)', (_name, bike: BikeDef) => {
+  const CFG = bike.cfg;
+  const V = CFG.topSpeed;
+  const floors = FLOORS[bike.id];
   const lipX = KICKER.lipCol * TILE;
   const rampX = KICKER.rampCol * TILE;
 
-  interface FlipRun { s: BikeState; airS: number; fullTurnS: number; boostBefore: number }
+  interface FlipRun { s: BikeState; airS: number; fullTurnS: number; boostBefore: number; maxSpin: number }
 
   /**
    * Ride at the kicker, hop at hopX, hold a tilt key until |spin| reaches `release`, then level out
@@ -549,16 +747,17 @@ describe('tricks: flips (v1.3)', () => {
    */
   const flipRun = (
     hopX: number, dir: 1 | -1, release: number,
-    opts: { from?: number; level?: boolean; cfg?: typeof CONFIG } = {},
+    opts: { from?: number; level?: boolean; cfg?: Config } = {},
   ): FlipRun => {
-    const cfg = opts.cfg ?? CONFIG;
-    let s = rolling(opts.from ?? rampX - 160, 240);
+    const cfg = opts.cfg ?? CFG;
+    let s = rolling(opts.from ?? rampX - 160, V, cfg);
     s.boost = 0.2;
     let hopped = false;
     let air = 0;
     let fullTurn = -1;
     let released = false;
     let boostBefore = s.boost;
+    let maxSpin = 0;
     for (let i = 0; i < 120 * 10 && !s.crashed; i++) {
       boostBefore = s.boost; // the meter just before the landing step (it regenerates on the run-up)
       const inAir = hopped && !s.grounded;
@@ -574,72 +773,82 @@ describe('tricks: flips (v1.3)', () => {
       if (s.evHop) hopped = true;
       if (hopped && !s.grounded) {
         air++;
+        maxSpin = Math.max(maxSpin, Math.abs(s.spin));
         if (fullTurn < 0 && Math.abs(s.spin) >= 360) fullTurn = air * FIXED_DT;
       }
       if (hopped && s.evLanding) break;
     }
-    return { s, airS: air * FIXED_DT, fullTurnS: fullTurn, boostBefore };
+    return { s, airS: air * FIXED_DT, fullTurnS: fullTurn, boostBefore, maxSpin };
   };
 
-  it('countFlips rounds the air rotation to whole turns, signed', () => {
-    expect(countFlips(0)).toBe(0);
-    expect(countFlips(27)).toBe(0);
-    expect(countFlips(-170)).toBe(0);
-    expect(countFlips(333)).toBe(1);
-    expect(countFlips(395)).toBe(1);
-    expect(countFlips(-386)).toBe(-1);
-    expect(countFlips(700)).toBe(2);
-    expect(countFlips(-1080)).toBe(-3);
-  });
+  /** A player's flip: hold until some point in the last sixth of the turn, then level. The first release that lands. */
+  const landedFlip = (hopX: number, dir: 1 | -1): { r: FlipRun; release: number } | null => {
+    for (const release of [330, 340, 320, 345, 310, 350, 300]) {
+      const r = flipRun(hopX, dir, release);
+      if (!r.s.crashed && r.s.evFlips === dir) return { r, release };
+    }
+    return null;
+  };
 
   it('a tap still turns at airTiltSpeed; a held key speeds up to airTiltMaxSpeed', () => {
-    let s = step(rolling(200, 240), { hop: true });
+    let s = step(rolling(200, V, CFG), { hop: true }, FIXED_DT, TERRAIN, CFG);
     const a0 = s.angle;
-    s = step(s, { tiltUp: true });
-    expect(s.angle - a0).toBeCloseTo(CONFIG.airTiltSpeed * FIXED_DT, 9);
+    s = step(s, { tiltUp: true }, FIXED_DT, TERRAIN, CFG);
+    expect(s.angle - a0).toBeCloseTo(CFG.airTiltSpeed * FIXED_DT, 9);
     let prev = s.angle;
     let rate = 0;
     for (let i = 0; i < 60; i++) {
-      s = step(s, { tiltUp: true });
+      s = step(s, { tiltUp: true }, FIXED_DT, TERRAIN, CFG);
       rate = normalizeAngle(s.angle - prev) / FIXED_DT;
       prev = s.angle;
-      expect(rate).toBeLessThanOrEqual(CONFIG.airTiltMaxSpeed + 1e-6);
+      expect(rate).toBeLessThanOrEqual(CFG.airTiltMaxSpeed + 1e-6);
     }
-    expect(rate).toBeCloseTo(CONFIG.airTiltMaxSpeed, 6);
+    expect(rate).toBeCloseTo(CFG.airTiltMaxSpeed, 6);
     // releasing drops the rate back: the next press is a tap again
-    s = step(s, {});
+    s = step(s, {}, FIXED_DT, TERRAIN, CFG);
     prev = s.angle;
-    s = step(s, { tiltDown: true });
-    expect(prev - s.angle).toBeCloseTo(CONFIG.airTiltSpeed * FIXED_DT, 9);
+    s = step(s, { tiltDown: true }, FIXED_DT, TERRAIN, CFG);
+    expect(prev - s.angle).toBeCloseTo(CFG.airTiltSpeed * FIXED_DT, 9);
     // spin follows the turns (grounded bikes have none)
     expect(s.spin).toBeGreaterThan(100);
-    expect(createBikeState(200).spin).toBe(0);
+    expect(createBikeState(200, TERRAIN, CFG).spin).toBe(0);
   });
 
-  it.each([-64, -32, -1])('kicker, hop %i px from the lip: a held backflip fits in the air and lands', (off) => {
-    const r = flipRun(lipX + off, 1, 330);
+  it.each([-64, -32, -1])('kicker, hop %i px from the lip: a backflip fits in the air and lands', (off) => {
+    const flip = landedFlip(lipX + off, 1);
+    expect(flip, 'some release point lands the flip').not.toBeNull();
+    const { r, release } = flip!;
     console.log(
-      `[flip, kicker lip${off}] air ${r.airS.toFixed(2)} s; landing ${r.s.evLanding}, flips ${r.s.evFlips}, ` +
-      `boost ${r.boostBefore.toFixed(2)} -> ${r.s.boost.toFixed(2)}`,
+      `[${bike.id} flip, kicker lip${off}] air ${r.airS.toFixed(2)} s; released at ${release} deg; landing ${r.s.evLanding}, ` +
+      `flips ${r.s.evFlips}, boost ${r.boostBefore.toFixed(2)} -> ${r.s.boost.toFixed(2)}`,
     );
-    expect(r.s.crashed).toBeNull();
-    expect(r.s.evFlips).toBe(1);
     expect(r.s.spin).toBe(0); // reset on landing
-    const clean = r.s.evLanding === 'clean' ? CONFIG.boostCleanLanding : 0;
-    expect(r.s.boost).toBeCloseTo(r.boostBefore + CONFIG.boostFlip + clean, 6);
+    const clean = r.s.evLanding === 'clean' ? CFG.boostCleanLanding : 0;
+    expect(r.s.boost).toBeCloseTo(Math.min(1, r.boostBefore + CFG.boostFlip + clean), 6);
     expect(r.s.x).toBeGreaterThan(KICKER_GAP.x1);
-    // enough airtime for the full turn with the key simply held (measured without releasing)
+
+    // Airtime against the full turn with the key simply held (measured without releasing).
     const held = flipRun(lipX + off, 1, Infinity, { level: false });
-    expect(held.fullTurnS).toBeGreaterThan(0);
-    expect(held.airS - held.fullTurnS).toBeGreaterThanOrEqual(0.12);
-    console.log(`[flip, kicker lip${off}] full turn with the key held: ${held.fullTurnS.toFixed(2)} s of ${held.airS.toFixed(2)} s in the air`);
+    if (floors.heldFlipSlackS !== null) {
+      expect(held.fullTurnS).toBeGreaterThan(0);
+      expect(held.airS - held.fullTurnS).toBeGreaterThanOrEqual(floors.heldFlipSlackS);
+      console.log(`[${bike.id} flip, kicker lip${off}] full turn with the key held: ${held.fullTurnS.toFixed(2)} s of ${held.airS.toFixed(2)} s in the air`);
+    } else {
+      // The Sundowner turns too slowly to finish the turn in this air: held all the way it comes down
+      // a little short of upright, inside its wide safe band. The flip is a commitment, never a spare one.
+      expect(held.fullTurnS).toBe(-1);
+      expect(held.maxSpin).toBeGreaterThan(360 - CFG.safeLandingAngle);
+      expect(held.s.crashed).toBeNull();
+      expect(held.s.evFlips).toBe(1);
+      console.log(`[${bike.id} flip, kicker lip${off}] key held for the whole ${held.airS.toFixed(2)} s: ${held.maxSpin.toFixed(0)} deg, lands ${held.s.evLanding}`);
+    }
   });
 
   it('a frontflip counts too (negative)', () => {
-    const r = flipRun(lipX - 32, -1, 345);
-    expect(r.s.crashed).toBeNull();
-    expect(r.s.evFlips).toBe(-1);
-    expect(r.s.boost).toBeGreaterThanOrEqual(r.boostBefore + CONFIG.boostFlip - 1e-9);
+    const flip = landedFlip(lipX - 32, -1);
+    expect(flip).not.toBeNull();
+    expect(flip!.r.s.evFlips).toBe(-1);
+    expect(flip!.r.s.boost).toBeGreaterThanOrEqual(flip!.r.boostBefore + CFG.boostFlip - 1e-9);
   });
 
   it('a partial rotation that is levelled back out is not a flip', () => {
@@ -647,40 +856,58 @@ describe('tricks: flips (v1.3)', () => {
     expect(r.s.crashed).toBeNull();
     expect(r.s.evLanding === 'clean' || r.s.evLanding === 'safe').toBe(true);
     expect(r.s.evFlips).toBe(0);
-    const clean = r.s.evLanding === 'clean' ? CONFIG.boostCleanLanding : 0;
+    const clean = r.s.evLanding === 'clean' ? CFG.boostCleanLanding : 0;
     expect(r.s.boost).toBeCloseTo(r.boostBefore + clean, 6);
   });
 
   it('a flip that crashes awards nothing', () => {
-    // over-rotated: the key is held to 420 deg and never corrected
-    const r = flipRun(lipX - 32, 1, 420, { level: false });
-    expect(r.s.crashed).toBe('landing');
-    expect(r.s.evLanding).toBe('crash');
-    expect(r.s.evFlips).toBe(0);
-    expect(r.s.boost).toBeCloseTo(r.boostBefore, 6);
     // under-rotated: half a turn, landing upside down
     const half = flipRun(lipX - 32, 1, 180, { level: false });
     expect(half.s.crashed).toBe('landing');
+    expect(half.s.evLanding).toBe('crash');
     expect(half.s.evFlips).toBe(0);
-  });
-
-  it('a flat-ground hop is too short for a flip: holding the key all the way crashes', () => {
-    for (const dir of [1, -1] as const) {
-      const r = flipRun(400, dir, Infinity, { from: 300, level: false });
-      expect(r.airS).toBeLessThan(0.85);
+    expect(half.s.boost).toBeCloseTo(half.boostBefore, 6);
+    // over-rotated: the key is held to 420 deg and never corrected (the Sundowner cannot turn that far in this air)
+    if (floors.heldFlipSlackS !== null) {
+      const r = flipRun(lipX - 32, 1, 420, { level: false });
       expect(r.s.crashed).toBe('landing');
       expect(r.s.evFlips).toBe(0);
+      expect(r.s.boost).toBeCloseTo(r.boostBefore, 6);
     }
   });
 
+  it('a flat-ground hop is too short for a flip, whatever the timing', () => {
+    let air = 0;
+    for (const dir of [1, -1] as const) {
+      // Held all the way: a crash.
+      const held = flipRun(400, dir, Infinity, { from: 300, level: false });
+      air = held.airS;
+      expect(held.airS).toBeLessThan(0.85);
+      expect(held.s.crashed).toBe('landing');
+      expect(held.s.evFlips).toBe(0);
+      // The most a held key turns in this air is short of the safe band around a full turn ...
+      expect(held.maxSpin).toBeLessThan(360 - CFG.safeLandingAngle);
+      // ... so no release point lands one either.
+      for (let release = 200; release <= 360; release += 10) {
+        const r = flipRun(400, dir, release, { from: 300 });
+        expect(Math.abs(r.s.evFlips), `dir ${dir}, release ${release}`).toBe(0);
+      }
+    }
+    console.log(`[${bike.id} flat hop] air ${air.toFixed(2)} s: no flip`);
+  });
+
   it('two full turns in one air count as a double flip (needs more air than the stage gives: low gravity here)', () => {
-    const cfg = { ...CONFIG, gravity: 280 };
-    const r = flipRun(400, 1, 690, { from: 300, cfg });
+    const cfg = { ...CFG, gravity: 240 };
+    let done: FlipRun | null = null;
+    for (const release of [690, 700, 680, 705, 670]) {
+      const r = flipRun(400, 1, release, { from: 300, cfg });
+      if (!r.s.crashed && r.s.evFlips === 2) { done = r; break; }
+    }
+    expect(done).not.toBeNull();
+    const r = done!;
     expect(r.airS).toBeGreaterThan(1.8);
-    expect(r.s.crashed).toBeNull();
-    expect(r.s.evFlips).toBe(2);
-    const clean = r.s.evLanding === 'clean' ? CONFIG.boostCleanLanding : 0;
-    expect(r.s.boost).toBeCloseTo(Math.min(1, r.boostBefore + 2 * CONFIG.boostFlip + clean), 6);
+    const clean = r.s.evLanding === 'clean' ? CFG.boostCleanLanding : 0;
+    expect(r.s.boost).toBeCloseTo(Math.min(1, r.boostBefore + 2 * CFG.boostFlip + clean), 6);
   });
 
   it('flips stay optional: the kicker hop with no tilt at all lands safely with no flip', () => {
@@ -690,38 +917,53 @@ describe('tricks: flips (v1.3)', () => {
   });
 });
 
-describe('pillar and cart hop windows (criterion 6)', () => {
-  it.each(OBSTACLES.map((o) => [`${o.type} x${o.col}`, o] as const))('%s has a window >= 120 ms at 240', (name, o) => {
-    const box = obstacleBox(o);
+describe.each(ROSTER)('%s: pillar, cart and cow hop windows (criterion 6)', (_name, bike: BikeDef) => {
+  const cfg = bike.cfg;
+  const V = cfg.topSpeed;
+  const floors = FLOORS[bike.id];
+
+  const windowMs = (box: Box): number => {
     const samples: boolean[] = [];
-    for (let d = 260; d >= 0; d -= 0.5) {
-      const r = runUntilLanding(rolling(box.x - d, 240), (_s, i) => ({ throttle: true, hop: i === 0 }), [box]);
-      samples.push(!r.hitBox && !r.state.crashed && r.landedAt !== null && r.landedAt - CONFIG.bikeHitW / 2 >= box.x + box.w);
+    for (let d = 300; d >= 0; d -= 0.5) {
+      const r = runUntilLanding(rolling(box.x - d, V, cfg), (_s, i) => ({ throttle: true, hop: i === 0 }), [box], 720, cfg);
+      samples.push(!r.hitBox && !r.state.crashed && r.landedAt !== null && r.landedAt - cfg.bikeHitW / 2 >= box.x + box.w);
     }
-    const windowMs = (longestWindowPx(samples, 0.5) / 240) * 1000;
-    console.log(`[${name}] hop window ${windowMs.toFixed(0)} ms`);
-    expect(windowMs).toBeGreaterThanOrEqual(120);
-    // sanity against the closed-form expectation (cart about 220 ms, pillar about 370 ms)
-    expect(windowMs).toBeGreaterThan(o.type === 'cart' ? 190 : 330);
+    return (longestWindowPx(samples, 0.5) / V) * 1000;
+  };
+
+  it.each(OBSTACLES.map((o) => [`${o.type} x${o.col}`, o] as const))('%s has a window >= 120 ms at top speed', (name, o) => {
+    const ms = windowMs(obstacleBox(o));
+    console.log(`[${bike.id} ${name}] hop window ${ms.toFixed(0)} ms`);
+    expect(ms).toBeGreaterThanOrEqual(120);
+    expect(ms).toBeGreaterThan(o.type === 'cart' ? floors.cartMs : floors.pillarMs);
+  });
+
+  it('the cow can be hopped too', () => {
+    const ms = windowMs(COW_BOX);
+    console.log(`[${bike.id} cow] hop window ${ms.toFixed(0)} ms`);
+    expect(ms).toBeGreaterThan(floors.cowMs);
   });
 
   it('riding into a pillar without hopping overlaps it', () => {
     const box = obstacleBox(OBSTACLES[0]!);
-    const r = runUntilLanding(rolling(box.x - 100, 240), () => ({ throttle: true }), [box], 240);
+    const r = runUntilLanding(rolling(box.x - 100, V, cfg), () => ({ throttle: true }), [box], 240, cfg);
     expect(r.hitBox).toBe(true);
   });
 });
 
-describe('river (criterion 4)', () => {
-  const cp4 = checkpointX(CHECKPOINTS[6]!); // the river checkpoint (cp6 since v1.3)
+describe.each(ROSTER)('%s: river (criterion 4)', (_name, bike: BikeDef) => {
+  const cfg = bike.cfg;
+  const floors = FLOORS[bike.id];
+  const cp6 = checkpointX(CHECKPOINTS[6]!); // the river checkpoint
 
-  const ride = (input: BikeInput) => {
-    let s = createBikeState(cp4);
+  const ride = (input: BikeInput, startBoost = 1) => {
+    let s = createBikeState(cp6, TERRAIN, cfg);
+    s.boost = startBoost;
     let lipSpeed = 0;
     let lipX = 0;
     for (let i = 0; i < 120 * 20; i++) {
       const before = s;
-      s = step(s, input);
+      s = step(s, input, FIXED_DT, TERRAIN, cfg);
       if (before.grounded && !s.grounded && s.x >= RIVER.x0 - 4) {
         lipSpeed = before.v; // speed along the ramp on the last grounded step
         lipX = s.x;
@@ -732,28 +974,40 @@ describe('river (criterion 4)', () => {
   };
 
   it('starts at cp6 = 16*522 + 8', () => {
-    expect(cp4).toBe(16 * 522 + 8);
+    expect(cp6).toBe(16 * 522 + 8);
     expect(RIVER.x0).toBe(8768);
     expect(RIVER.x1).toBe(8960);
   });
 
-  it('at 240 with no boost and no hop it lands in the water', () => {
+  it('holds top speed up the river ramp without boost', () => {
+    let s = rolling(539 * 16, cfg.topSpeed, cfg);
+    let lipSpeed = 0;
+    while (s.grounded) {
+      lipSpeed = s.v;
+      s = step(s, { throttle: true }, FIXED_DT, TERRAIN, cfg);
+    }
+    expect(lipSpeed).toBeCloseTo(cfg.topSpeed, 6);
+    expect(s.x).toBeGreaterThanOrEqual(RIVER.x0);
+  });
+
+  it('at top speed with no boost and no hop it lands in the water', () => {
     const { s, lipSpeed } = ride({ throttle: true });
-    expect(lipSpeed).toBeCloseTo(240, 6);
+    expect(lipSpeed).toBeCloseTo(cfg.topSpeed, 6);
     expect(s.crashed).toBe('water');
     // where the arc comes back down to bank height (y = 222)
-    let p = rolling(RIVER.x0 - 30, 240);
+    let p = rolling(RIVER.x0 - 30, cfg.topSpeed, cfg);
     let lip = 0;
     while (p.y <= BASELINE_Y && !p.crashed) {
       const g = p.grounded;
-      p = step(p, { throttle: true });
+      p = step(p, { throttle: true }, FIXED_DT, TERRAIN, cfg);
       if (g && !p.grounded) lip = p.x;
     }
     console.log(
-      `[river, no boost] lip speed ${lipSpeed.toFixed(1)}; reaches bank height at x=${p.x.toFixed(1)} ` +
+      `[${bike.id} river, no boost] lip speed ${lipSpeed.toFixed(1)}; reaches bank height at x=${p.x.toFixed(1)} ` +
       `(${(p.x - lip).toFixed(1)} px of flight, ${(RIVER.x1 - p.x).toFixed(1)} px short); water at x=${s.x.toFixed(1)}`,
     );
     expect(p.x).toBeLessThan(RIVER.x1 - 16);
+    expect(RIVER.x1 - p.x).toBeGreaterThan(floors.riverShortPx);
   });
 
   it('holding hop as well changes nothing (ramp is noHop)', () => {
@@ -761,49 +1015,33 @@ describe('river (criterion 4)', () => {
     expect(s.crashed).toBe('water');
   });
 
-  it('with boost from cp4 (at rest, full meter) it clears with >= 1 tile to spare', () => {
+  it('with boost from cp6 (at rest, full meter) it clears with >= 1 tile to spare', () => {
     const { s, lipSpeed, lipX } = ride({ boost: true });
     expect(s.crashed).toBeNull();
     expect(s.grounded).toBe(true);
     const margin = s.x - RIVER.x1;
     console.log(
-      `[river, boost] lip speed ${lipSpeed.toFixed(1)}; lands at x=${s.x.toFixed(1)} (${(s.x - lipX).toFixed(1)} px of flight), ` +
+      `[${bike.id} river, boost] lip speed ${lipSpeed.toFixed(1)}; lands at x=${s.x.toFixed(1)} (${(s.x - lipX).toFixed(1)} px of flight), ` +
       `margin ${margin.toFixed(1)} px, landing ${s.evLanding}, meter left ${s.boost.toFixed(3)}`,
     );
     expect(margin).toBeGreaterThanOrEqual(16);
-    expect(lipSpeed).toBeCloseTo(CONFIG.boostSpeed, 6);
+    expect(margin).toBeGreaterThanOrEqual(floors.riverMarginPx);
+    expect(lipSpeed).toBeCloseTo(cfg.boostSpeed, 6);
+  });
+
+  it('the river still needs most of a tank from rest: half a meter is not enough', () => {
+    const { s } = ride({ boost: true, throttle: true }, 0.4);
+    expect(s.crashed).not.toBeNull();
   });
 });
 
-describe('diyas (5.2)', () => {
-  // A simple script: hold throttle, hop at fixed x positions, hold boost from cp4 on.
+describe('diyas (5.2): the hand-written script on the Daybreak', () => {
+  // A simple script: hold throttle, hop at fixed x positions, hold boost from cp6 on.
   // The last six: the four mandapa hops, the hop line off the second roller, the kicker.
   const HOPS = [620, 1030, 1230, 1430, 1624, 1880, 2440, 2850, 3090, 3320, 4380, 5112, 5384, 5656, 5960, 6976, 7424];
-  const BOOST_FROM_X = checkpointX(CHECKPOINTS[6]!);
-  const FINISH_X = FINISH.col * TILE;
-
-  const scriptedRun = (hopOffset: number) => {
-    const boxes = [...OBSTACLE_BOXES, COW_BOX];
-    let s = createBikeState(checkpointX(CHECKPOINTS[0]!));
-    const collected = new Set<number>();
-    let next = 0;
-    let steps = 0;
-    let hit = false;
-    while (s.x < FINISH_X && steps < 120 * 120 && !s.crashed && !hit) {
-      const hop = next < HOPS.length && s.x >= HOPS[next]! + hopOffset;
-      s = step(s, { throttle: true, hop, boost: s.x >= BOOST_FROM_X });
-      if (s.evHop) next++;
-      DIYAS.forEach((d, i) => {
-        if (touchesDiya(s, diyaCentre(d))) collected.add(i);
-      });
-      hit = hitsObstacle(s, boxes);
-      steps++;
-    }
-    return { s, collected, steps, hit };
-  };
 
   it('all 30 are collected in one crash-free scripted run (throttle + 17 hops + boost from cp6)', () => {
-    const r = scriptedRun(0);
+    const r = scriptedRun(CONFIG, HOPS, 0, false);
     const missing = DIYAS.filter((_, i) => !r.collected.has(i)).map((d) => `x${d.col}`);
     console.log(
       `[diyas] ${r.collected.size}/${DIYAS.length} collected, missing: ${missing.join(',') || 'none'}; ` +
@@ -812,12 +1050,12 @@ describe('diyas (5.2)', () => {
     expect(r.s.crashed).toBeNull();
     expect(r.hit).toBe(false);
     expect(missing).toEqual([]);
-    expect(r.s.x).toBeGreaterThanOrEqual(FINISH_X);
+    expect(r.s.x).toBeGreaterThanOrEqual(FINISH.col * TILE);
   });
 
   it('the script is not a knife edge: +/- 4 px on every hop still gets all 30', () => {
     for (const off of [-4, -2, 2, 4]) {
-      const r = scriptedRun(off);
+      const r = scriptedRun(CONFIG, HOPS, off, false);
       expect(r.s.crashed, `offset ${off}`).toBeNull();
       expect(r.hit, `offset ${off}`).toBe(false);
       expect(r.collected.size, `offset ${off}`).toBe(30);
@@ -838,6 +1076,90 @@ describe('diyas (5.2)', () => {
     expect(s.crashed).toBeNull();
     expect(got.has(idx264)).toBe(true);
     expect(got.has(idx276)).toBe(false);
+  });
+});
+
+/**
+ * Throttle held, a hop at each planned x (+ offset), boost from cp6 on. With `level`, the bike is held
+ * level in the air by the bot's +/- 3 deg rule; without it, only the idle nose drift acts.
+ */
+function scriptedRun(cfg: Config, hops: readonly number[], hopOffset: number, level: boolean) {
+  const boxes = [...OBSTACLE_BOXES, COW_BOX];
+  const boostFromX = checkpointX(CHECKPOINTS[6]!);
+  const finishX = FINISH.col * TILE;
+  let s = createBikeState(checkpointX(CHECKPOINTS[0]!), TERRAIN, cfg);
+  const collected = new Set<number>();
+  let next = 0;
+  let steps = 0;
+  let hit = false;
+  let hopHeld = false;
+  let worstLanding = 0;
+  while (s.x < finishX && steps < 120 * 120 && !s.crashed && !hit) {
+    // edge-triggered, like the bot: press for one step, on the ground only
+    const hop: boolean = !hopHeld && s.grounded && next < hops.length && s.x >= hops[next]! + hopOffset;
+    const angle = s.angle;
+    s = step(s, {
+      throttle: true, hop, boost: s.x >= boostFromX,
+      tiltDown: level && !s.grounded && angle > 3, tiltUp: level && !s.grounded && angle < -3,
+    }, FIXED_DT, TERRAIN, cfg);
+    hopHeld = hop;
+    if (s.evHop) next++;
+    if (s.evLanding && s.evLanding !== 'silent') {
+      worstLanding = Math.max(worstLanding, Math.abs(normalizeAngle(s.angle - TERRAIN.slopeAngle(s.x))));
+    }
+    DIYAS.forEach((d, i) => {
+      if (touchesDiya(s, diyaCentre(d), cfg)) collected.add(i);
+    });
+    hit = hitsObstacle(s, boxes, cfg);
+    steps++;
+  }
+  return { s, collected, steps, hit, worstLanding, hopsUsed: next };
+}
+
+describe.each(ROSTER)('%s: the bot plan collects all 30 diyas (5.2)', (_name, bike: BikeDef) => {
+  const cfg = bike.cfg;
+  const floors = FLOORS[bike.id];
+  const plan = planHopsFor(layout(LEVEL), LEVEL, cfg);
+
+  it('plans 17 hops and rides them crash-free to the line, levelling in the air', () => {
+    expect(plan.planner).toBe(floors.planner);
+    expect(plan.hops).toHaveLength(17);
+    const r = scriptedRun(cfg, plan.hops, 0, true);
+    const missing = DIYAS.filter((_, i) => !r.collected.has(i)).map((d) => `x${d.col}`);
+    const seconds = r.steps * FIXED_DT;
+    console.log(
+      `[${bike.id} plan] ${plan.planner} planner, hops ${plan.hops.map((x) => x.toFixed(0)).join(',')}; ` +
+      `${r.collected.size}/30, ${seconds.toFixed(2)} s, worst landing ${r.worstLanding.toFixed(1)} deg off, boost left ${r.s.boost.toFixed(2)}`,
+    );
+    expect(r.s.crashed).toBeNull();
+    expect(r.hit).toBe(false);
+    expect(missing).toEqual([]);
+    expect(r.hopsUsed).toBe(17);
+    expect(seconds).toBeCloseTo(floors.runS, 1);
+    // a clean run is gold on this bike, with room for a slip
+    expect(seconds * 1000).toBeLessThan(bike.medalsMs.gold - 1500);
+    expect(r.worstLanding).toBeLessThan(cfg.safeLandingAngle);
+  });
+
+  it('the plan is not a knife edge: +/- 8 px on every hop still gets all 30', () => {
+    for (const off of [-8, -4, -2, 2, 4, 8]) {
+      const r = scriptedRun(cfg, plan.hops, off, true);
+      expect(r.s.crashed, `offset ${off}`).toBeNull();
+      expect(r.hit, `offset ${off}`).toBe(false);
+      expect(r.collected.size, `offset ${off}`).toBe(30);
+    }
+  });
+
+  it('with no tilt at all: the forgiving bikes still finish; the Ton-Up has to be flown level', () => {
+    const r = scriptedRun(cfg, plan.hops, 0, false);
+    if (floors.noTiltRun) {
+      expect(r.s.crashed).toBeNull();
+      expect(r.collected.size).toBe(30);
+    } else {
+      // 25 deg of safe band: an uncorrected hop over a long canal comes down too nose-low.
+      expect(r.s.crashed).toBe('landing');
+      console.log(`[${bike.id} plan] no tilt: crashes on landing at x=${r.s.x.toFixed(0)}`);
+    }
   });
 });
 

@@ -3,9 +3,12 @@
 // no key stays stuck, and the best / medal / ghost survive the trip.
 
 import type { Page } from '@playwright/test';
-import { BEST_KEY } from '../../src/progress';
+import { DEFAULT_BIKE } from '../../src/bike/bikes';
+import { bestKey } from '../../src/progress';
 import { advance, planFor, resetBot } from './bot';
 import { boot, expect, getState, getLevel, shot, test } from './helpers';
+
+const BEST_KEY = bestKey(DEFAULT_BIKE);
 
 type Rect = { x: number; y: number; w: number; h: number };
 

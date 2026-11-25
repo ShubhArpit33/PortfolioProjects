@@ -5,6 +5,7 @@ import { PAL } from '../art/palette';
 import { tickMusic } from '../audio/music';
 import { onKeyPress } from '../input';
 import { DIYAS } from '../level/levelData';
+import type { BikeId } from '../bike/bikes';
 import type { Medal } from '../progress';
 import { Menu } from '../ui/Menu';
 import { formatTime, pixelFrame, pixelText } from '../ui/text';
@@ -15,6 +16,8 @@ export interface FinishData {
   diyas: number;
   crashes: number;
   flips: number;
+  /** the bike the run was ridden on (medal targets and bests are per bike) */
+  bike: BikeId;
   /** false for a practice run (started from a checkpoint): no medal, nothing saved */
   ranked: boolean;
   medal: Medal | null;

@@ -1,6 +1,8 @@
 // window.__test (GAME_SPEC.md section 9.1). Installed only in dev / test builds.
 import type Phaser from 'phaser';
 import { audioDebug, type AudioDebug } from './audio/sfx';
+import { isBikeId, type BikeId } from './bike/bikes';
+import { currentBike, selectBike } from './bike/selection';
 import { runtime, testInput, type GameInput } from './input';
 import { LEVEL } from './level/levelData';
 import type { FinishData } from './scenes/Finish';
@@ -14,7 +16,10 @@ export interface TestHooks {
   ready(): boolean;
   setInput(input: GameInput): void;
   state(): GameSnapshot;
-  startAt(checkpoint: number): void;
+  /** start a fresh run at a checkpoint, on the given bike (default: the selected one) */
+  startAt(checkpoint: number, bike?: BikeId): void;
+  /** the selected bike; with an id, selects that bike first (as the select screen does) */
+  bike(id?: BikeId): BikeId;
   setManual(manual: boolean): void;
   step(n: number): void;
   /** the finished run's result (medal, bests), or null before the finish line */
@@ -38,7 +43,7 @@ declare global {
 
 const IDLE: GameSnapshot = {
   x: 0, y: 0, vx: 0, vy: 0, v: 0, angle: 0, grounded: true, boost: 1, crashed: false,
-  crashes: 0, diyas: 0, finished: false, checkpoint: 0, timeMs: 0, flips: 0, spin: 0, camX: 0, ghost: null,
+  crashes: 0, diyas: 0, finished: false, checkpoint: 0, timeMs: 0, bike: 'daybreak', flips: 0, spin: 0, camX: 0, ghost: null,
 };
 
 export function installTestHooks(game: Phaser.Game): void {
@@ -55,14 +60,19 @@ export function installTestHooks(game: Phaser.Game): void {
       Object.assign(testInput, input);
     },
 
-    state: () => gameScene()?.snapshot() ?? { ...IDLE },
+    state: () => gameScene()?.snapshot() ?? { ...IDLE, bike: currentBike() },
 
     /** Start a fresh run at a checkpoint, from any screen. */
-    startAt(checkpoint) {
+    startAt(checkpoint, bike) {
       for (const key of ['Title', 'Finish', 'Hud']) {
         if (game.scene.getScene(key) && (game.scene.isActive(key) || game.scene.isPaused(key))) game.scene.stop(key);
       }
-      game.scene.start('Game', { cp: checkpoint });
+      game.scene.start('Game', { cp: checkpoint, bike });
+    },
+
+    bike(id) {
+      if (isBikeId(id)) selectBike(id);
+      return currentBike();
     },
 
     /** true stops rAF-driven stepping: only step() advances (and draws) the game. */
