@@ -353,7 +353,8 @@ Animated details are a pure function of game time and camera scroll (no tweens, 
     the tread) on black wire wheels, a brake disc on the front; a tall long-stroke finned single, black with a few bright
     fin edges; a black battery box under the saddle; twin shocks; one black slash-cut pipe run low to behind the rear
     axle. Mid-set pegs (the boot under the knee, behind the cylinder). The rider sits upright with a slight lean back,
-    arms raised to the grips: tan jacket, open-face helmet, dark glasses.
+    arms raised to the grips: tan jacket, and (v1.6.3) a cream open-face helmet with goggles pushed up on the brow, their
+    black strap round the shell, the face open below, a chin strap. All three riders are helmeted in every pose.
 - **One near leg in every pose (v1.6.2).** Each body has two textures: `bike_<id>` (riding: the near leg on its peg) and
   `bike_<id>_stand` (foot down: that leg is off the peg, and only a thigh is left, reaching the planted leg). The planted
   leg `leg_<id>` is only ever shown with the `_stand` body (`BikeRig.setFootDown`), at a standstill, while backing up and

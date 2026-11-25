@@ -250,7 +250,8 @@ const DAYBREAK_WHEEL: readonly string[] = [
 // mudguard hugging the tyre with a small round tail lamp and a side-mounted plate stub, tall mini-ape
 // bars with a round mirror, a round headlamp in a black cowl, gaitered forks, whitewall tyres on black
 // wire wheels (a disc on the front), a long-stroke finned single, twin shocks and a black slash-cut
-// pipe run low to behind the rear axle. Mid-set pegs; the rider sits upright, arms raised to the bars.
+// pipe run low to behind the rear axle. Mid-set pegs; the rider sits upright, arms raised to the bars, in a
+// cream open-face helmet with goggles on the brow (v1.6.3).
 // ---------------------------------------------------------------------------------------------------
 
 const PURPLE = 0x7436b8;
@@ -261,7 +262,9 @@ const SUNDOWNER: Legend = {
   Y: LAMP, W: PAL.cream, T: TAIL, A: 0xe8912a,
   J: 0xb98a4e, j: 0xd8ad6c, q: 0x8a6335, // tan jacket
   P: 0x44557c, p: 0x303d5c,          // blue jeans
-  H: 0x26222b, h: 0x4a4553,          // open-face helmet
+  H: PAL.cream, h: mix(PAL.cream, PAL.ink, 0.28), // open-face (3/4) helmet: cream shell, its shaded back edge
+  S: 0x2b2731,                       // the goggle strap round the shell (the helmet's one black stripe) and the chin strap
+  G: 0x7fa6d8, g: CHROME,            // goggles pushed up on the brow: glass, chrome frame
   F: 0xd9a37a, f: 0xa9744f,          // face
   B: 0x1a1418,
 };
@@ -321,8 +324,10 @@ const SUNDOWNER_RIDER: readonly Seg[] = [
   [13, 15, 'qJJJJJ'], [14, 15, 'qq'], [15, 16, 'q'],
   // arm raised to the high grip, glove
   [9, 20, 'JJ'], [8, 20, 'jjjj'], [9, 22, 'qqq'], [7, 23, 'jjjjj'], [8, 24, 'qqqq'], [7, 28, 'BB'], [8, 28, 'B'],
-  // open-face helmet, glasses, a bit of beard
-  [1, 15, 'hhhh'], [2, 14, 'hHHHHH'], [3, 14, 'HHHHHHH'], [4, 14, 'HHHFKKF'], [5, 14, 'HHFFFF'], [6, 16, 'fFF'],
+  // open-face retro helmet (v1.6.3): a cream shell over the crown and down behind the ear, goggles pushed up on
+  // the brow with their black strap round the shell, the face open below it, a chin strap. Same seven columns
+  // and six rows as the head it replaces.
+  [1, 15, 'HHHH'], [2, 14, 'hHHHHH'], [3, 14, 'hSSSSGg'], [4, 14, 'hHHHFKF'], [5, 14, 'hhHSFF'], [6, 16, 'SFF'],
 ];
 
 /** Whitewall on a black wire wheel: black tread, a cream sidewall stripe, a black rim, thin spokes. */

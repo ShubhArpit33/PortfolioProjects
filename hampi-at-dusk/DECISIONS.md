@@ -575,6 +575,23 @@ Notes on the table:
     `test-results/shots` re-rendered and checked by eye for all three bikes (standing, riding, reverse, boost, hop, flip,
     landing, crash, respawn, finish, select).
 
+### v1.6.3: a helmet for the Sundowner rider (sprite only)
+32. **Reported:** "the guy on the bobber is missing a helmet". He had one, but it was matte black (`0x26222b`) with no
+    rim, stripe or highlight, so at game scale it read as dark hair, with the dark glasses as more of it.
+33. **Fix:** a cream open-face (3/4) retro helmet in the same seven columns and six rows (columns 14..20, rows 1..6), so
+    nothing else moves: cream shell over the crown and down behind the ear with a shaded back edge, goggles pushed up on
+    the brow (blue glass, chrome frame), their black strap round the shell, the face open below with one eye, a black
+    chin strap. Matte black was tried first, three ways (cream crown stripe, cream band, highlight only): against the
+    dusk sky each read as a hat, a bandana or hair. A separate crown stripe was dropped too: two pixels of it on the top
+    row cut notches in the dome. The goggle strap is the helmet's one black stripe.
+34. **Told apart:** Ton-Up, a plain silver-white full-face with a dark visor, tucked; Daybreak, cream with a gold band
+    and a dark visor, no face; Sundowner, cream with a black band, goggles and an open face. One rider layer feeds both
+    body textures, so riding, foot down, reverse, crash, respawn, flip, the select preview and the ghost all changed
+    together.
+35. **Tests:** new suite "every rider is helmeted" (one test per bike, both bodies: no hair-dark pixel on the crown, a
+    bright shell that outweighs visor and straps, nothing above it; one for the Sundowner's open face, goggles, straps
+    and its difference from the other two).
+
 - Nothing changed during the build: the tuning table, the medal targets and every measured number match the proposal.
 
 ### Tests (v1.6)

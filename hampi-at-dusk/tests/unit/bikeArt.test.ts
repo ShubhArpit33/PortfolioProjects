@@ -216,6 +216,56 @@ describe('bike sprites: each is its own bike', () => {
   });
 });
 
+// v1.6.3: every rider wears a helmet in every body texture (the Sundowner's old matte black one read as hair).
+describe('bike sprites: every rider is helmeted', () => {
+  /** The head of each rider: its columns and rows in the body texture. */
+  const HEAD: Record<string, [x0: number, y0: number, x1: number, y1: number]> = {
+    tonup: [27, 3, 32, 8], daybreak: [20, 1, 26, 6], sundowner: [14, 1, 20, 6],
+  };
+  const isDark = (p: Px): boolean => { const [r, g, b] = rgb(p.c); return r < 125 && g < 115 && b < 130; }; // hair, or a black shell lost in the dusk
+  const isSkin = (p: Px): boolean => { const [r, g, b] = rgb(p.c); return r > 160 && r > g + 35 && g > b + 25 && b > 90; };
+
+  for (const id of BIKE_ORDER) it(`${id}: a light shell over the crown, in the riding and the foot-down body`, () => {
+    const sp = BIKE_SPRITES[id];
+    const [x0, y0, x1, y1] = HEAD[id]!;
+    for (const key of [sp.body, sp.standBody]) {
+      const g = render(key);
+      expect(count(g, x0, y0, x1, y0 + 1, () => true), `${key}: crown`).toBeGreaterThanOrEqual(9);
+      expect(count(g, x0, y0, x1, y0 + 1, isDark), `${key}: no hair-dark pixel on the crown`).toBe(0);
+      expect(count(g, x0, y0, x1, y1, isBright), `${key}: bright shell`).toBeGreaterThanOrEqual(12);
+      expect(count(g, x0, y0, x1, y1, isDark), `${key}: the shell outweighs visor, straps and eyes`).toBeLessThan(count(g, x0, y0, x1, y1, isBright));
+      expect(count(g, 0, 0, 47, y0 - 1, () => true) - count(g, 28, 0, 47, y0 - 1, () => true), `${key}: nothing above the helmet`).toBe(0);
+    }
+  });
+
+  it('Sundowner: an open-face helmet with goggles on the brow, unlike the other two', () => {
+    const g = render('bike_sundowner');
+    const [x0, y0, x1, y1] = HEAD.sundowner!;
+    // the head keeps its place and size: columns 14..20, rows 1..6
+    expect(count(g, x0, y0, x1, y1, () => true)).toBe(33);
+    expect(count(g, 0, 0, 20, 6, () => true), 'and nothing else is up there with it').toBe(33);
+    // shell: the crown and down the back of the head, behind the ear
+    expect(count(g, 14, 4, 17, 5, (p) => !isSkin(p) && !isDark(p)), 'shell behind the ear').toBeGreaterThanOrEqual(6);
+    // open face: skin below the brow at the front, and only on this rider
+    expect(count(g, 18, 4, 20, 6, isSkin), 'face').toBeGreaterThanOrEqual(5);
+    expect(count(g, x0, y0, x1, y0 + 2, isSkin), 'no bare forehead').toBe(0);
+    for (const other of ['tonup', 'daybreak'] as const) {
+      const [a, b, c, d] = HEAD[other]!;
+      expect(count(render(`bike_${other}`), a, b, c, d, isSkin), `${other}: closed helmet`).toBe(0);
+    }
+    // goggles at the front of the brow row (glass, chrome frame), their black strap running back round the shell
+    expect(isBlue(g[3]![19]!), 'goggle glass').toBe(true);
+    expect(isBright(g[3]![20]!), 'goggle frame').toBe(true);
+    expect(count(g, 15, 3, 18, 3, isDark), 'strap').toBe(4);
+    // chin strap from the shell to under the chin
+    expect(isDark(g[5]![17]!) && isDark(g[6]![16]!), 'chin strap').toBe(true);
+    // not the Daybreak's helmet: no gold band
+    const isGold = (p: Px): boolean => p.c === 0xf4c542;
+    expect(count(render('bike_daybreak'), 20, 1, 26, 6, isGold), 'Daybreak band').toBeGreaterThanOrEqual(5);
+    expect(count(g, x0, y0, x1, y1, isGold)).toBe(0);
+  });
+});
+
 // v1.6.2: the planted leg is the rider's near leg. The riding body has it on the peg; the foot-down body
 // must not, or the rider has two near legs.
 describe('bike sprites: one near leg in every pose', () => {
