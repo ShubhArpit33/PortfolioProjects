@@ -1,402 +1,15 @@
 // Code-drawn placeholder art (GAME_SPEC.md section 6). Every texture is drawn with integer-aligned
 // fillRects on a Phaser Graphics object and baked with generateTexture, so pixels stay crisp.
+// The parallax layers, the landmark and the light / mist sprites are not here: they come from the stage
+// theme, baked by the look system (src/art/look).
 
 import Phaser from 'phaser';
 import { BIKE_TEXTURES } from './bikeArt';
 import { PAL, mix, rng } from './palette';
 import { Pen } from './pen';
 
-const TAU = Math.PI * 2;
 const LAYER_W = 960;
 const LAYER_H = 270;
-
-// --- Shared silhouette profiles (periodic over 960 px so the layers tile) --------------------------
-
-/** Top of the far skyline ridge at x (also used to stand the stone chariot on it). */
-export function skylineRidgeY(x: number): number {
-  const u = (x / LAYER_W) * TAU;
-  const y = 190 + 9 * Math.sin(2 * u + 1) + 5 * Math.sin(5 * u + 2) + 3 * Math.sin(11 * u);
-  return Math.round(y / 2) * 2;
-}
-
-function farHillY(x: number): number {
-  const u = (x / LAYER_W) * TAU;
-  const y = 172 + 12 * Math.sin(3 * u + 4) + 6 * Math.sin(7 * u + 1);
-  return Math.round(y / 2) * 2;
-}
-
-function midGroundY(x: number): number {
-  const u = (x / LAYER_W) * TAU;
-  const y = 210 + 4 * Math.sin(3 * u) + 2 * Math.sin(7 * u + 1);
-  return Math.round(y);
-}
-
-// --- Parallax layers -------------------------------------------------------------------------------
-
-function drawSky(p: Pen): void {
-  const stops: Array<[number, number]> = [[0, PAL.skyTop], [0.55, PAL.skyMid], [1, PAL.skyHorizon]];
-  const colourAt = (t: number): number => {
-    if (t <= stops[1]![0]) return mix(stops[0]![1], stops[1]![1], t / stops[1]![0]);
-    return mix(stops[1]![1], stops[2]![1], Math.min(1, (t - stops[1]![0]) / (1 - stops[1]![0])));
-  };
-  const bands = 13;
-  const bandH = 16;
-  const horizonY = bands * bandH; // 208
-  const colours: number[] = [];
-  for (let i = 0; i < bands; i++) colours.push(colourAt(i / (bands - 1)));
-  for (let i = 0; i < bands; i++) p.r(colours[i]!, 0, i * bandH, LAYER_W, bandH);
-  p.r(colours[bands - 1]!, 0, horizonY, LAYER_W, LAYER_H - horizonY);
-  // Ordered dither across each band boundary (2 px cells, three density rows).
-  for (let i = 1; i < bands; i++) {
-    const y = i * bandH;
-    const next = colours[i]!;
-    const prev = colours[i - 1]!;
-    for (let cx = 0; cx < LAYER_W / 2; cx++) {
-      const x = cx * 2;
-      if (cx % 4 === 1) p.r(next, x, y - 4, 2, 2);
-      if (cx % 2 === 0) p.r(next, x, y - 2, 2, 2);
-      if (cx % 2 === 0) p.r(prev, x, y, 2, 2);
-      if (cx % 4 === 3) p.r(prev, x, y + 2, 2, 2);
-    }
-  }
-
-  // Pixel stars in the upper sky.
-  const rand = rng(11);
-  for (let i = 0; i < 70; i++) {
-    const x = Math.floor(rand() * LAYER_W);
-    const y = Math.floor(rand() * 96);
-    const a = 0.35 + rand() * 0.55 * (1 - y / 130);
-    p.r(PAL.cream, x, y, 1, 1, a);
-    if (rand() < 0.12) {
-      p.r(PAL.cream, x - 1, y, 3, 1, a * 0.6);
-      p.r(PAL.cream, x, y - 1, 1, 3, a * 0.6);
-    }
-  }
-
-  // Large low sun with a soft halo and retro horizon slits.
-  const sx = 360, sy = 168;
-  p.disc(PAL.sun, sx, sy, 58, 0.1);
-  p.disc(PAL.sun, sx, sy, 50, 0.14);
-  p.disc(PAL.sun, sx, sy, 42);
-  p.disc(PAL.gold, sx - 4, sy - 6, 30, 0.45);
-  const slit = colours[bands - 2]!;
-  p.r(slit, sx - 44, sy + 6, 88, 1, 0.9);
-  p.r(slit, sx - 44, sy + 13, 88, 2, 0.9);
-  p.r(slit, sx - 44, sy + 21, 88, 3, 0.9);
-  p.r(slit, sx - 44, sy + 30, 88, 4, 0.9);
-
-  // Thin cloud streaks near the horizon.
-  const streak = mix(PAL.skyMid, PAL.skyHorizon, 0.35);
-  for (const [x, y, w] of [[60, 150, 90], [520, 138, 120], [760, 160, 70], [200, 126, 60], [880, 120, 100]] as const) {
-    p.r(streak, x, y, w, 2, 0.7);
-    p.r(streak, x + 10, y - 2, w - 30, 2, 0.5);
-    p.r(streak, x + 16, y + 2, w - 24, 1, 0.5);
-  }
-
-  // Kites.
-  const kite = (x: number, y: number, c: number): void => {
-    p.rows(c, x, y, [[3, 1], [2, 3], [1, 5], [0, 7], [1, 5], [2, 3], [2, 3], [3, 1], [3, 1]]);
-    p.r(PAL.ink, x + 3, y + 1, 1, 7, 0.35);
-    p.r(PAL.ink, x + 1, y + 3, 5, 1, 0.35);
-    // tail
-    for (let i = 0; i < 6; i++) p.r(PAL.cream, x + 3 - i - (i % 2), y + 10 + i * 2, 1, 1, 0.8);
-  };
-  kite(150, 58, PAL.gold);
-  kite(560, 40, PAL.cream);
-  kite(830, 76, PAL.glint);
-}
-
-function gopuram(p: Pen, c: number, cx: number, baseY: number, baseW: number, tiers: number, tierH: number): void {
-  let w = baseW;
-  let y = baseY;
-  const shrink = Math.max(2, Math.floor((baseW * 0.55) / tiers / 2) * 2);
-  for (let i = 0; i < tiers; i++) {
-    const h = i === 0 ? tierH + 6 : tierH;
-    p.r(c, cx - w / 2, y - h, w, h);
-    p.r(c, cx - w / 2 - 1, y - h, w + 2, 2); // cornice
-    // lamp-lit openings
-    if (w > 12) p.r(PAL.gold, cx - 1, y - h + 4, 2, Math.min(3, h - 5), 0.55);
-    y -= h;
-    w -= shrink;
-  }
-  // barrel-vault cap with finials
-  const capW = Math.max(8, w + 2);
-  p.r(c, cx - capW / 2, y - 5, capW, 5);
-  p.r(c, cx - capW / 2 + 2, y - 7, capW - 4, 2);
-  for (let i = 0; i < 3; i++) p.r(c, cx - capW / 2 + 2 + Math.round((i * (capW - 5)) / 2), y - 9, 1, 2);
-}
-
-function pavilion(p: Pen, c: number, cx: number, topY: number, w: number, cols: number): void {
-  p.r(c, cx - w / 2 - 2, topY, w + 4, 2);
-  p.r(c, cx - w / 2, topY + 2, w, 3);
-  for (let i = 0; i < cols; i++) {
-    const x = Math.round(cx - w / 2 + 1 + (i * (w - 5)) / (cols - 1));
-    p.r(c, x, topY + 5, 3, 18);
-  }
-  p.r(c, cx - w / 2 - 2, topY + 23, w + 4, 40);
-}
-
-/**
- * A hill of stacked granite boulders (Hampi's signature): round rocks piled in shrinking tiers with a
- * balanced one on top. `rim` is the faint sun-lit edge on top of each rock; crevices are a shade darker.
- */
-function boulderHill(
-  p: Pen, c: number, rim: number, cx: number, baseY: number, w: number, h: number, rand: () => number,
-): void {
-  const shade = mix(c, PAL.ink, 0.2);
-  const rock = (x: number, y: number, r: number): void => {
-    x = Math.round(x); y = Math.round(y);
-    p.disc(shade, x, y + 1, r);
-    p.disc(rim, x, y - 1, r);
-    p.disc(c, x, y, r);
-  };
-  const r0 = Math.max(6, Math.min(15, Math.round(w / 5)));
-  const tiers = Math.max(2, Math.round(h / (r0 * 1.1)));
-  for (let k = 0; k < tiers; k++) {
-    const f = k / tiers;
-    const tw = Math.max(r0 * 2, w * Math.pow(1 - f, 0.85));
-    const r = Math.max(4, Math.round(r0 * (1 - 0.45 * f)));
-    const y = baseY - f * h - r * 0.4;
-    const n = Math.max(1, Math.round((tw - 2 * r) / (r * 1.7)) + 1);
-    // solid core so no sky shows through the pile
-    p.r(c, Math.round(cx - tw / 2 + r), Math.round(y), Math.round(tw - 2 * r), Math.round(baseY - y) + 24);
-    for (let i = 0; i < n; i++) {
-      const t = n === 1 ? 0.5 : i / (n - 1);
-      const x = cx - tw / 2 + r + t * (tw - 2 * r) + (rand() - 0.5) * r * 0.5;
-      rock(x, y - rand() * r * 0.5, r + Math.floor(rand() * 3) - 1);
-    }
-  }
-  // the balanced boulder
-  const rt = Math.max(4, Math.round(r0 * 0.55));
-  rock(cx + (rand() - 0.5) * r0, baseY - h - rt * 0.7, rt);
-  if (rand() < 0.6) rock(cx + (rand() < 0.5 ? -1 : 1) * (rt + 3), baseY - h + rt * 0.4, Math.max(3, rt - 2));
-}
-
-/** Top of the small skyline shrine the smoke wisp rises from (skyline layer coordinates). */
-export function shrineSmokeOrigin(): { x: number; y: number } {
-  return { x: 540, y: Math.min(skylineRidgeY(526), skylineRidgeY(554)) - 28 };
-}
-
-function drawSkyline(p: Pen): void {
-  const far = mix(PAL.skyline, PAL.skyHorizon, 0.3);
-  for (let x = 0; x < LAYER_W; x += 2) p.r(far, x, farHillY(x), 2, LAYER_H - farHillY(x));
-  const rand = rng(23);
-  // Distant boulder hills, hazy against the sunset.
-  const farRim = mix(far, PAL.skyHorizon, 0.16);
-  const hillRand = rng(29);
-  for (const [x, w, h] of [[95, 120, 30], [300, 90, 22], [585, 140, 36], [840, 100, 26]] as const) {
-    boulderHill(p, far, farRim, x, farHillY(x) + 6, w, h, hillRand);
-  }
-  for (let i = 0; i < 10; i++) {
-    const x = Math.floor(rand() * LAYER_W);
-    p.disc(far, x, farHillY(x) + 2, 5 + Math.floor(rand() * 8));
-  }
-
-  const c = PAL.skyline;
-  for (let x = 0; x < LAYER_W; x += 2) p.r(c, x, skylineRidgeY(x), 2, LAYER_H - skylineRidgeY(x));
-  // Boulder ridge: round boulders sitting on the hills (kept away from the chariot spot at x ~ 396).
-  for (let i = 0; i < 26; i++) {
-    const x = Math.floor(rand() * LAYER_W);
-    const rad = 4 + Math.floor(rand() * 10);
-    if (x > 350 && x < 450) continue;
-    p.disc(c, x, skylineRidgeY(x) + Math.floor(rad / 3), rad);
-    if (rand() < 0.4) p.disc(c, x + rad, skylineRidgeY(x) - rad + 3, Math.max(3, rad - 4));
-  }
-  // Nearer boulder hills between the monuments (clear of the chariot spot).
-  const rim = mix(c, PAL.skyHorizon, 0.13);
-  for (const [x, w, h] of [[198, 44, 16], [310, 52, 24], [484, 70, 30], [712, 56, 26], [826, 48, 18], [934, 40, 20]] as const) {
-    boulderHill(p, c, rim, x, skylineRidgeY(x) + 6, w, h, hillRand);
-  }
-  gopuram(p, c, 130, skylineRidgeY(130) + 4, 54, 7, 9);
-  gopuram(p, c, 640, skylineRidgeY(640) + 4, 42, 6, 8);
-  gopuram(p, c, 770, skylineRidgeY(770) + 4, 28, 5, 6);
-  gopuram(p, c, 10, skylineRidgeY(10) + 4, 24, 4, 6);
-  pavilion(p, c, 250, Math.min(skylineRidgeY(222), skylineRidgeY(278)) - 26, 56, 6);
-  pavilion(p, c, 880, Math.min(skylineRidgeY(860), skylineRidgeY(900)) - 26, 40, 5);
-  pavilion(p, c, 540, Math.min(skylineRidgeY(526), skylineRidgeY(554)) - 26, 28, 4);
-}
-
-function palm(p: Pen, c: number, x: number, baseY: number, h: number, lean: number, rand: () => number): void {
-  for (let i = 0; i <= h; i++) {
-    const t = i / h;
-    p.r(c, x + Math.round(lean * t * t), baseY - i, i < h * 0.3 ? 3 : 2, 1);
-  }
-  const cx = x + lean + 1;
-  const cy = baseY - h;
-  const fronds = 8;
-  for (let f = 0; f < fronds; f++) {
-    const ang = -Math.PI * 0.08 + (f / (fronds - 1)) * Math.PI * 1.16; // fan from right to left
-    const len = 16 + Math.floor(rand() * 7);
-    const dx = Math.cos(ang);
-    const up = Math.sin(ang) * 0.7;
-    for (let s = 0; s <= len; s++) {
-      const t = s / len;
-      const px = Math.round(cx + dx * s);
-      const py = Math.round(cy - up * s + 12 * t * t);
-      p.r(c, px, py, 2, 1);
-      if (s > 3 && s % 2 === 0) p.r(c, px, py + 1, 1, 2 + (s % 4 === 0 ? 1 : 0));
-    }
-  }
-  p.disc(c, cx, cy + 1, 3);
-}
-
-function banana(p: Pen, c: number, x: number, baseY: number, rand: () => number): void {
-  const leaves = 5;
-  for (let f = 0; f < leaves; f++) {
-    const dir = f / (leaves - 1) - 0.5; // -0.5 .. 0.5
-    const len = 14 + Math.floor(rand() * 8);
-    for (let s = 0; s <= len; s++) {
-      const t = s / len;
-      const px = Math.round(x + dir * 26 * t);
-      const py = Math.round(baseY - 22 * Math.sin(t * Math.PI * 0.62) - 2 * t);
-      const w = Math.max(1, Math.round(4 * Math.sin(t * Math.PI)));
-      p.r(c, px - (w >> 1), py, w + 1, 2);
-    }
-  }
-  p.r(c, x - 1, baseY - 8, 3, 10);
-}
-
-/** A ruined pillared hall: a row of pillars on a plinth, lintels only where both neighbours still stand. */
-function mandapa(
-  p: Pen, c: number, x: number, baseY: number, cols: number, gap: number, h: number, broken: readonly number[],
-): void {
-  const w = (cols - 1) * gap + 4;
-  p.r(c, x - 4, baseY - 3, w + 8, 16);
-  p.r(c, x - 2, baseY - 5, w + 4, 2);
-  const top = baseY - 5 - h;
-  for (let i = 0; i < cols; i++) {
-    const px = x + i * gap;
-    const isBroken = broken.includes(i);
-    const ph = isBroken ? Math.round(h * 0.4) + (i % 2) * 5 : h;
-    p.r(c, px, baseY - 5 - ph, 4, ph);
-    p.r(c, px - 1, baseY - 8, 6, 3);
-    if (isBroken) p.r(c, px, baseY - 5 - ph - 1, 2, 1);
-    else p.r(c, px - 1, top, 6, 2).r(c, px - 2, top - 1, 8, 1);
-    if (i < cols - 1 && !isBroken && !broken.includes(i + 1)) {
-      p.r(c, px - 2, top - 5, gap + 8, 4);
-      p.r(c, px - 3, top - 7, gap + 10, 2);
-    }
-  }
-}
-
-/** A crumbling arched gateway: two piers, a round arch, and a wall above that has fallen away on one side. */
-function ruinedArch(p: Pen, c: number, x: number, baseY: number, w: number, h: number): void {
-  const r = w >> 1;
-  const inner = r - 5;
-  const cy = baseY - h + r;
-  for (let dx = 0; dx <= w; dx++) {
-    const u = dx - r;
-    const open = Math.abs(u) < inner;
-    const bottom = open ? cy - Math.round(Math.sqrt(inner * inner - u * u)) : baseY + 10;
-    const fallen = dx > w * 0.55 ? Math.floor((dx - w * 0.55) / 4) * 3 : 0;
-    const top = baseY - h - 6 + fallen;
-    p.r(c, x + dx, top, 1, bottom - top);
-  }
-  p.r(c, x - 2, baseY - h - 8, Math.round(w * 0.55) + 3, 2);
-  p.r(c, x - 1, cy, 7, 2).r(c, x + w - 5, cy, 7, 2);
-}
-
-const midBase = (x: number): number => midGroundY(x) + 2;
-/** [x, ground-reference x, cols, gap, pillar height, broken pillars] */
-const MANDAPAS: ReadonlyArray<readonly [number, number, number, number, number, readonly number[]]> = [
-  [60, 90, 5, 14, 30, [3]],
-  [432, 470, 6, 14, 34, [0, 4]],
-  [640, 665, 4, 15, 28, []],
-  [850, 880, 4, 14, 32, [1]],
-];
-/** [x, ground-reference x, span, height] */
-const ARCHES: ReadonlyArray<readonly [number, number, number, number]> = [[252, 270, 38, 34], [742, 760, 30, 28]];
-
-/** Lamps hung in the mid-layer ruins (mid layer coordinates); Ambience flickers a small glow on each. */
-export const MID_LAMPS: ReadonlyArray<readonly [number, number]> = [
-  ...([[0, 1], [1, 1], [1, 2], [2, 1], [3, 2]] as const).map(([m, bay]): [number, number] => {
-    const [x, refX, , gap, h] = MANDAPAS[m]!;
-    return [x + bay * gap + 4 + ((gap - 4) >> 1) - 1, midBase(refX) - 5 - h + 6];
-  }),
-  ...ARCHES.map(([x, refX, w, h]): [number, number] => [x + (w >> 1) - 1, midBase(refX) - h + 10]),
-];
-
-function drawMidBack(p: Pen): void {
-  // A hazier row behind the main silhouettes: pillared halls, an arch, boulder stacks, banana clumps.
-  const c = mix(PAL.mid, PAL.skyline, 0.55);
-  const rim = mix(c, PAL.skyHorizon, 0.1);
-  const rand = rng(41);
-  const base = midBase;
-  boulderHill(p, c, rim, 20, base(20), 70, 30, rand);
-  boulderHill(p, c, rim, 535, base(535), 64, 34, rand);
-  boulderHill(p, c, rim, 790, base(790), 80, 26, rand);
-  for (const [x, refX, cols, gap, h, broken] of MANDAPAS) mandapa(p, c, x, base(refX), cols, gap, h, broken);
-  for (const [x, refX, w, h] of ARCHES) ruinedArch(p, c, x, base(refX), w, h);
-  for (const x of [190, 370, 610, 925]) banana(p, c, x, base(x), rand);
-  for (const [lx, ly] of MID_LAMPS) p.r(PAL.gold, lx, ly, 2, 2, 0.55).r(PAL.sun, lx, ly - 1, 2, 1, 0.3);
-}
-
-function drawMid(p: Pen): void {
-  drawMidBack(p);
-  const c = PAL.mid;
-  const rand = rng(37);
-  // Trees first, then the ground band over their feet.
-  const palms: Array<[number, number, number]> = [[40, 70, 8], [210, 58, -6], [232, 74, 5], [470, 64, -8], [700, 72, 6], [716, 56, -4], [905, 66, -7]];
-  for (const [x, h, lean] of palms) palm(p, c, x, midGroundY(x) + 2, h, lean, rand);
-  for (const x of [110, 300, 392, 600, 820]) banana(p, c, x, midGroundY(x) + 2, rand);
-  // More banana clumps and two free-standing broken pillars for density (separate stream: keeps the palms as they were).
-  const rand2 = rng(43);
-  for (const x of [140, 425, 580, 745, 868]) banana(p, c, x, midGroundY(x) + 2, rand2);
-  for (const [x, h] of [[322, 26], [331, 14], [653, 22]] as const) {
-    const y = midGroundY(x) + 2;
-    p.r(c, x, y - h, 4, h).r(c, x - 1, y - h, 6, 2).r(c, x - 1, y - 3, 6, 3);
-  }
-  // Round boulder piles.
-  for (const x of [160, 345, 560, 770, 945]) {
-    const y = midGroundY(x);
-    p.disc(c, x, y - 2, 13);
-    p.disc(c, x + 15, y, 9);
-    p.disc(c, x - 13, y + 1, 8);
-    p.disc(c, x + 5, y - 15, 7);
-  }
-  for (let x = 0; x < LAYER_W; x++) p.r(c, x, midGroundY(x), 1, LAYER_H - midGroundY(x));
-  // A bend of the river with sunset glints.
-  for (const [x0, w] of [[250, 150], [640, 110]] as const) {
-    for (let i = 0; i < 4; i++) {
-      p.r(PAL.water, x0 + i * 6, 216 + i * 2, w - i * 12, 2);
-    }
-    for (let i = 0; i < 14; i++) {
-      const gx = x0 + 8 + Math.floor(rand() * (w - 30));
-      const gy = 216 + Math.floor(rand() * 4) * 2;
-      p.r(PAL.glint, gx, gy, 3 + Math.floor(rand() * 5), 1, 0.45 + rand() * 0.4);
-    }
-  }
-}
-
-function drawNear(p: Pen): void {
-  const dark = mix(PAL.mossDark, PAL.ink, 0.62);
-  const midc = mix(PAL.mossDark, PAL.ink, 0.35);
-  const rand = rng(53);
-  // Grass tufts along the very bottom edge (below the road surface, so they never cover obstacles).
-  for (const x of [70, 215, 330, 505, 640, 790, 900]) {
-    const blades = 6 + Math.floor(rand() * 5);
-    for (let i = 0; i < blades; i++) {
-      const bx = x + i * 3 + Math.floor(rand() * 2);
-      const h = 7 + Math.floor(rand() * 12);
-      const lean = Math.floor(rand() * 7) - 3;
-      p.line(i % 3 === 0 ? midc : dark, bx, LAYER_H, bx + lean, LAYER_H - h, 2);
-    }
-  }
-  // Hanging vines along the very top edge.
-  for (const x of [150, 455, 745]) {
-    const strands = 2 + Math.floor(rand() * 2);
-    for (let sIdx = 0; sIdx < strands; sIdx++) {
-      const vx = x + sIdx * 7;
-      const len = 14 + Math.floor(rand() * 18);
-      for (let y = 0; y < len; y++) {
-        const wob = Math.round(Math.sin(y / 4 + sIdx) * 1.5);
-        p.r(dark, vx + wob, y, 1, 1);
-        if (y % 5 === 2) p.r(midc, vx + wob + (y % 10 === 2 ? 1 : -2), y, 2, 2);
-      }
-      p.r(midc, vx - 1, len, 3, 2);
-    }
-  }
-}
 
 // --- Terrain tile ----------------------------------------------------------------------------------
 
@@ -786,29 +399,6 @@ function drawCoracle(p: Pen): void {
   for (let x = 2; x < 22; x += 3) p.r(BD, x, 5 + (x % 2), 1, 2);
 }
 
-function drawChariot(p: Pen): void {
-  const c = PAL.skyline;
-  p.disc(c, 14, 39, 8).disc(c, 46, 39, 8);
-  p.r(c, 2, 28, 56, 6);
-  for (const x of [9, 17, 39, 47]) p.r(c, x, 12, 4, 16);
-  p.r(c, 25, 12, 10, 16);
-  p.r(c, 5, 9, 50, 3).r(c, 11, 5, 38, 4).r(c, 18, 2, 24, 3).r(c, 26, 0, 8, 2);
-}
-
-function drawGlow(p: Pen): void {
-  for (let cy = 0; cy < 16; cy++) {
-    for (let cx = 0; cx < 16; cx++) {
-      const d = Math.hypot(cx - 7.5, cy - 7.5);
-      let a = 0;
-      if (d < 2.5) a = 0.5;
-      else if (d < 4.5) a = 0.3;
-      else if (d < 6.2) a = (cx + cy) % 2 === 0 ? 0.24 : 0.1;
-      else if (d < 7.8) a = (cx + cy) % 2 === 0 && cy % 2 === 0 ? 0.14 : 0;
-      if (a > 0) p.r(PAL.sun, cx * 2, cy * 2, 2, 2, a);
-    }
-  }
-}
-
 /** Two 5x3 frames: wings up, wings down. */
 function drawBird(p: Pen): void {
   const c = mix(PAL.skyTop, PAL.ink, 0.6);
@@ -881,18 +471,19 @@ function drawBubble(p: Pen): void {
 interface Def {
   w: number;
   h: number;
-  draw: (p: Pen) => void;
-  wrap?: boolean;
+  /** missing = painted by the look system from the stage theme */
+  draw?: (p: Pen) => void;
   /** frame size for strips (frames are numbered 0..n-1, left to right) */
   frameW?: number;
 }
 
 /** The 6.4 manifest: these names may be replaced by PNGs in public/assets. */
 export const MANIFEST: Record<string, Def> = {
-  bg_sky: { w: LAYER_W, h: LAYER_H, draw: drawSky, wrap: true },
-  bg_skyline: { w: LAYER_W, h: LAYER_H, draw: drawSkyline, wrap: true },
-  bg_mid: { w: LAYER_W, h: LAYER_H, draw: drawMid, wrap: true },
-  fg_near: { w: LAYER_W, h: LAYER_H, draw: drawNear, wrap: true },
+  bg_sky: { w: LAYER_W, h: LAYER_H },
+  bg_far: { w: LAYER_W, h: LAYER_H },
+  bg_skyline: { w: LAYER_W, h: LAYER_H },
+  bg_mid: { w: LAYER_W, h: LAYER_H },
+  fg_near: { w: LAYER_W, h: LAYER_H },
   // the three bikes: body + rider (48 x 32), wheels (12 x 12), planted leg (bikeArt.ts)
   ...BIKE_TEXTURES,
   tile_granite: { w: 16, h: 16, draw: drawGranite },
@@ -911,14 +502,12 @@ export const MANIFEST: Record<string, Def> = {
 
 /** Extra code-only textures (effects and UI icons); not part of the PNG manifest. */
 const EXTRAS: Record<string, Def> = {
-  chariot: { w: 60, h: 48, draw: drawChariot },
   colonnade: { w: 192, h: 72, draw: drawColonnade },
   temple_door: { w: 96, h: 80, draw: drawTempleDoor },
   ruins_a: { w: 160, h: 64, draw: drawRuinsA },
   ruins_b: { w: 128, h: 56, draw: drawRuinsB },
   boulder_shadow: { w: 20, h: 3, draw: (p) => p.r(PAL.ink, 3, 0, 14, 1, 0.3).r(PAL.ink, 0, 1, 20, 1, 0.35).r(PAL.ink, 3, 2, 14, 1, 0.3) },
   p_rock: { w: 3, h: 3, draw: (p) => p.r(PAL.graniteLight, 0, 0, 3, 3).r(PAL.graniteDark, 1, 1, 2, 2).r(mix(PAL.graniteLight, PAL.cream, 0.4), 0, 0, 1, 1) },
-  glow: { w: 32, h: 32, draw: drawGlow },
   star_on: { w: 13, h: 12, draw: (p) => drawStar(p, PAL.uiYellow, PAL.cream) },
   star_off: { w: 13, h: 12, draw: (p) => drawStar(p, mix(PAL.ink, PAL.uiYellow, 0.28), null) },
   bubble: { w: 20, h: 13, draw: drawBubble },
@@ -945,9 +534,9 @@ export function generatePlaceholders(scene: Phaser.Scene): void {
   const g = scene.make.graphics({}, false);
   const all: Record<string, Def> = { ...MANIFEST, ...EXTRAS };
   for (const [key, def] of Object.entries(all)) {
-    if (scene.textures.exists(key)) continue;
+    if (scene.textures.exists(key) || !def.draw) continue;
     g.clear();
-    def.draw(new Pen(g, def.wrap ? def.w : 0));
+    def.draw(new Pen(g));
     g.generateTexture(key, def.w, def.h);
     if (def.frameW) {
       const tex = scene.textures.get(key);

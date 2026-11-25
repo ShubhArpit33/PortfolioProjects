@@ -4,7 +4,7 @@
 // pool of images: no tweens, no wall clock, no Math.random, so manual stepping and screenshots are stable.
 
 import type Phaser from 'phaser';
-import { MID_LAMPS, shrineSmokeOrigin } from './placeholders';
+import { theme } from './look/theme';
 
 const VIEW_W = 480;
 const LAYER_W = 960;
@@ -50,8 +50,6 @@ const FLY_ZONES: ReadonlyArray<readonly [number, number, number]> = [[2820, 4220
 const FLY_BASE = 0.22;
 
 const WISP_COUNT = 7;
-const SKYLINE_SCROLL = 0.2;
-const MID_SCROLL = 0.45;
 
 export class Ambience {
   private birds: Phaser.GameObjects.Image[][] = [];
@@ -59,7 +57,9 @@ export class Ambience {
   private flies: Phaser.GameObjects.Image[] = [];
   private wisps: Phaser.GameObjects.Image[] = [];
   private lamps: Phaser.GameObjects.Image[] = [];
-  private smoke = shrineSmokeOrigin();
+  /** where the stage theme hangs its lamps and lets its smoke rise (layer coordinates and scroll factors) */
+  private lampDef = theme().lamps;
+  private smoke = theme().smoke;
 
   constructor(scene: Phaser.Scene) {
     const make = (key: string, depth: number, frame?: number): Phaser.GameObjects.Image =>
@@ -68,7 +68,7 @@ export class Ambience {
     for (let i = 0; i < BAT_COUNT; i++) this.bats.push(make('bat', D_SKYLINE, 0));
     for (let i = 0; i < FLY_POOL; i++) this.flies.push(make('p_firefly', D_FIREFLY));
     for (let i = 0; i < WISP_COUNT; i++) this.wisps.push(make('p_wisp', D_SKYLINE));
-    for (let i = 0; i < MID_LAMPS.length; i++) this.lamps.push(make('lamp_glow', D_MID));
+    for (let i = 0; i < this.lampDef.at.length; i++) this.lamps.push(make('lamp_glow', D_MID));
   }
 
   /** t = game time in seconds, scrollX = camera scroll in world px. */
@@ -143,7 +143,7 @@ export class Ambience {
   }
 
   private updateSmoke(t: number, scrollX: number): void {
-    const sx = mod(this.smoke.x - Math.round(scrollX * SKYLINE_SCROLL) + 40, LAYER_W) - 40;
+    const sx = mod(this.smoke.x - Math.round(scrollX * this.smoke.scroll) + 40, LAYER_W) - 40;
     const on = sx < VIEW_W + 30;
     this.wisps.forEach((img, i) => {
       img.setVisible(on);
@@ -156,8 +156,8 @@ export class Ambience {
   }
 
   private updateLamps(t: number, scrollX: number): void {
-    const off = Math.round(scrollX * MID_SCROLL);
-    MID_LAMPS.forEach(([lx, ly], i) => {
+    const off = Math.round(scrollX * this.lampDef.scroll);
+    this.lampDef.at.forEach(([lx, ly], i) => {
       const img = this.lamps[i]!;
       const x = mod(lx - off + 10, LAYER_W) - 10;
       const on = x < VIEW_W + 6;

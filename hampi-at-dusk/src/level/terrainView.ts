@@ -1,7 +1,11 @@
 // Bakes the heightfield into static textures, in chunks of 960 px (<= 1024, GAME_SPEC.md section 6.2).
 // Drawn once per page load with the 2D canvas API, one pixel column at a time so ramps stay crisp.
+// What a column of road or water looks like is the stage theme's ground kit (src/art/look/ground.ts);
+// where the surface is, the dressed stone of the Temple Steps and the boost strip are the level's.
 
 import Phaser from 'phaser';
+import { grassLine, roadColumn, roadDetail, waterColumn } from '../art/look/ground';
+import { theme } from '../art/look/theme';
 import { PAL, css, mix, rng } from '../art/palette';
 import { BASELINE_Y, BONUS, BOULDER, PROMPTS, STAGE_WIDTH, TILE, WATER_LINE_Y } from './levelData';
 import { TERRAIN, type Terrain } from './terrain';
@@ -55,41 +59,31 @@ function bakeChunk(scene: Phaser.Scene, key: string, x0: number, terrain: Terrai
     ctx.fillRect(x, y, w, h);
   };
 
+  const kit = theme().ground;
   const rows: Array<number | null> = [];
   for (let x = 0; x < CHUNK_W; x++) rows.push(surfaceRow(terrain, x0 + x));
   const dressed = dressedSpan(terrain);
+  const isDressed = (wx: number): boolean => dressed !== null && wx >= dressed.x0 && wx < dressed.x1;
   const LIP = mix(PAL.graniteLight, PAL.cream, 0.35);
 
   for (let x = 0; x < CHUNK_W; x++) {
     const sy = rows[x]!;
+    const wx = x0 + x;
     if (sy === null) {
-      // Water: soft glow above the line, bright line, base colour, deeper shade.
-      rect(PAL.glint, 0.08, x, WATER_LINE_Y - 6, 1, 2);
-      rect(PAL.glint, 0.16, x, WATER_LINE_Y - 4, 1, 2);
-      rect(PAL.glint, 0.28, x, WATER_LINE_Y - 2, 1, 2);
-      rect(PAL.water, 1, x, WATER_LINE_Y, 1, H - WATER_LINE_Y);
-      rect(PAL.glint, 0.95, x, WATER_LINE_Y, 1, 1);
-      rect(PAL.glint, 0.5, x, WATER_LINE_Y + 1, 1, 1);
-      rect(PAL.glint, 0.22, x, WATER_LINE_Y + 2, 1, 2);
-      rect(PAL.ink, 0.25, x, WATER_LINE_Y + 22, 1, H);
+      waterColumn(rect, kit, x, wx, WATER_LINE_Y, H);
       continue;
     }
     ctx.globalAlpha = 1;
     ctx.fillStyle = pattern ?? css(PAL.graniteDark);
     ctx.fillRect(x, sy, 1, H - sy);
-    // lighter lip under the moss, darker with depth
-    rect(PAL.graniteLight, 0.75, x, sy + 2, 1, 2);
-    rect(PAL.graniteLight, 0.35, x, sy + 4, 1, 3);
-    rect(PAL.ink, 0.16, x, sy + 22, 1, H);
-    rect(PAL.ink, 0.16, x, sy + 38, 1, H);
+    roadColumn(rect, kit, x, wx, sy, H, !isDressed(wx));
     // exposed vertical faces (gap walls, the cliff): shade the two columns next to a drop
     for (const d of [1, 2, -1, -2]) {
-      const n = surfaceRow(terrain, x0 + x + d);
+      const n = surfaceRow(terrain, wx + d);
       const bottom = n === null ? H : n;
       if (bottom - sy > 6) rect(PAL.ink, Math.abs(d) === 1 ? 0.45 : 0.22, x, sy + 2, 1, bottom - sy - 2);
     }
-    const wx = x0 + x;
-    if (dressed !== null && wx >= dressed.x0 && wx < dressed.x1) {
+    if (isDressed(wx)) {
       // Dressed stone: courses 8 px deep with staggered joints, and a pale worn lip instead of moss.
       rect(PAL.graniteLight, 0.16, x, sy, 1, 44);
       for (let c = 0; c < 6; c++) {
@@ -109,12 +103,11 @@ function bakeChunk(scene: Phaser.Scene, key: string, x0: number, terrain: Terrai
       }
       continue;
     }
-    // 2 px moss line with the odd drip
-    rect(PAL.mossLight, 1, x, sy, 1, 1);
-    rect(PAL.mossDark, 1, x, sy + 1, 1, 1);
-    if (rand() < 0.14) rect(PAL.mossDark, 1, x, sy + 2, 1, 1 + Math.floor(rand() * 3));
-    if (rand() < 0.05) rect(PAL.mossLight, 1, x, sy - 1, 1, 1);
+    grassLine(rect, kit, x, wx, sy);
   }
+  // Ruts, pebbles and grass tufts on the open road (not on the dressed stone, not on water).
+  const open = (wx: number): number | null => (isDressed(wx) || terrain.gapAt(wx + 0.5) !== null ? null : surfaceRow(terrain, wx));
+  roadDetail(rect, kit, open, x0, x0 + CHUNK_W);
 
   // The boost strip on the Warm-up Road (v1.7): chevrons painted on the road, pointing the way.
   for (let cx = Math.ceil(BOOST_STRIP.x0 / 16) * 16; cx < BOOST_STRIP.x1; cx += 16) {
@@ -134,9 +127,10 @@ function bakeChunk(scene: Phaser.Scene, key: string, x0: number, terrain: Terrai
     const roll = rand();
     const yy = rand();
     if (sy === null || sy === undefined) {
-      // sunset glints on the water
+      // glints on the water
       const y = WATER_LINE_Y + 4 + Math.floor(yy * (H - WATER_LINE_Y - 6));
-      if (roll < 0.5 && rows[Math.min(CHUNK_W - 1, x + 5)] === null) rect(PAL.glint, 0.25 + roll * 0.6, x, y, 2 + Math.floor(roll * 8), 1);
+      const glints = kit.water.glints;
+      if (roll < 0.5 && rows[Math.min(CHUNK_W - 1, x + 5)] === null) rect(glints[i % glints.length]!, 0.25 + roll * 0.6, x, y, 2 + Math.floor(roll * 8), 1);
       continue;
     }
     const y = sy + 6 + Math.floor(yy * (H - sy - 6));

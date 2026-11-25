@@ -3,7 +3,10 @@
 // so a missing PNG never causes a 404.
 
 import type Phaser from 'phaser';
+import { bakeKeyline, bakeLook } from './look/bake';
+import { setTheme, theme } from './look/theme';
 import { MANIFEST, generatePlaceholders } from './placeholders';
+import { HAMPI } from './themes/hampi';
 
 /** Queue the PNGs that exist. Call from a scene's preload(). */
 export function queueAssetPngs(scene: Phaser.Scene): void {
@@ -17,7 +20,19 @@ export function queueAssetPngs(scene: Phaser.Scene): void {
   }
 }
 
+/**
+ * Sprites that get a dark keyline under them, so they read against the lit background as well as against
+ * a dark ruin: the pickup (with a white sparkle beside its flame) and everything that can be ridden into.
+ * The boulder has its outline drawn in. [key, frame width (0 = one frame), sparkle position]
+ */
+const KEYLINED: ReadonlyArray<readonly [string, number, (readonly [number, number])?]> = [
+  ['diya', 0, [7, 1]], ['pillar', 0], ['cart', 0], ['log', 0], ['cow', 0], ['monkey', 16],
+];
+
 /** Fill in every texture that was not loaded from a PNG. Call from create(). */
 export function ensureTextures(scene: Phaser.Scene): void {
+  setTheme(HAMPI); // the only stage so far
+  bakeLook(scene, theme());
   generatePlaceholders(scene);
+  for (const [key, frameW, glint] of KEYLINED) bakeKeyline(scene, key, theme().ink, 0.9, frameW, glint);
 }
