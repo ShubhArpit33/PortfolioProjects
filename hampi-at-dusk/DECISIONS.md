@@ -613,3 +613,8 @@ Notes on the table:
 - The select screen has no touch controls beyond tapping a card twice or RIDE; riding still needs a keyboard.
 - The Sundowner's one-hop line over the paired canals (91 ms) is the tightest window in the game; its two-hop line is
   not hinted anywhere in the stage.
+
+## Working agreement (from v1.6.3)
+- Fable is used only for Fable-level work: level design, physics/tuning, large builds, hard bugs. Effort per task: medium for small follow-ups, high for design and big builds (user-approved).
+- Opus handles everything else directly: small art/text/number tweaks, docs, verification, publishing, commits.
+- Feedback is batched into as few Fable rounds as possible; small changes run targeted tests, with a full `npm test` before each push.
