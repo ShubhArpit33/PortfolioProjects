@@ -1,4 +1,6 @@
-# HAMPI AT DUSK — Game Spec (v1.7, one stage, three bikes)
+# OPEN ROADS: INDIA — Game Spec (v1.7, one stage, three bikes)
+
+The game was renamed from "Hampi at Dusk" (v1.6.5); Hampi at Dusk is now the name of Stage 1.
 
 A 2D side-scrolling arcade motorcycle game set in the ruins of Hampi, Karnataka, at sunset.
 16-bit pixel-art look. One stage, about a minute for a clean run (50–70 s, by bike).
@@ -492,7 +494,7 @@ Animated details are a pure function of game time and camera scroll (no tweens, 
 All on-screen text is ASCII only. Wait for `document.fonts.load('8px "Press Start 2P"')` before the Title scene.
 
 - **Flow (v1.6):** Title → **Bike select** → ride. `?cp=N` skips both and starts a practice run on the selected bike.
-- **Title:** the parallax scene slowly auto-scrolls; "HAMPI AT DUSK" in UI yellow; "PRESS ENTER" (Enter, click or tap:
+- **Title:** the parallax scene slowly auto-scrolls; "OPEN ROADS: INDIA" in UI yellow with "STAGE 1: HAMPI AT DUSK" under it; "PRESS ENTER" (Enter, click or tap:
   opens the bike select); a controls hint; the bike picked last rides across, and its best time is shown with its name and
   medal once there is one ("DAYBREAK BEST 00:59.51").
 - **Bike select (v1.6):** "CHOOSE YOUR RIDE" over the dimmed parallax. Three cards side by side in the pixel-frame style

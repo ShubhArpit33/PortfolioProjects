@@ -1,4 +1,6 @@
-# Hampi at Dusk
+# Open Roads: India
+
+A pixel-art motorcycle game across India. Stage 1: **Hampi at Dusk** (more routes, such as Ladakh and Goa, are planned).
 
 A one-stage, 2D side-scrolling arcade motorcycle game set in the ruins of Hampi, Karnataka, at sunset, with three bikes to ride.
 It is built with Phaser 3, TypeScript and Vite. The bike physics is custom, and all art, sound and music are generated in code.

@@ -37,8 +37,8 @@ export class TitleScene extends Phaser.Scene {
     this.bike = new BikeView(this, DEPTH.bike, DEPTH.fx, def.id);
 
     const ui = DEPTH.fade;
-    pixelText(this, 240, 58, 'HAMPI AT DUSK', PAL.uiYellow, 24).setOrigin(0.5, 0).setDepth(ui);
-    pixelText(this, 240, 92, 'A SUNSET RIDE THROUGH THE RUINS', PAL.cream).setOrigin(0.5, 0).setDepth(ui);
+    pixelText(this, 240, 58, 'OPEN ROADS: INDIA', PAL.uiYellow, 24).setOrigin(0.5, 0).setDepth(ui);
+    pixelText(this, 240, 92, 'STAGE 1: HAMPI AT DUSK', PAL.cream).setOrigin(0.5, 0).setDepth(ui);
     this.press = pixelText(this, 240, 128, 'PRESS ENTER', PAL.uiYellow).setOrigin(0.5, 0).setDepth(ui);
 
     // The time to beat, with its medal.

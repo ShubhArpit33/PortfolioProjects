@@ -793,3 +793,8 @@ Notes on the table:
 - Ton-Up tagline is now "THE CAFE RACER. FAST AND SHARP." (user trimmed "LAND IT STRAIGHT"; the length test allows up to 50 chars, which fit the select screen at 4x).
 - Sundowner hands: the glove and grip were near-black and vanished against the dark bars, so the arm seemed to stop short of the handlebar. The glove is now brown leather and the grip a visible dark grey that joins the riser.
 - Music plays on the menus only (title, bike select, finish). Game.create() calls setMusicInRun(true) and the menu scenes setMusicInRun(false); the bus fades out/in, the song resumes where it left off, M still works, and a crash duck cannot bring the music back during a run. The audio e2e now checks silence in a run (peak 0.000) and music back on the title (peak ~0.045).
+
+## v1.6.5 (Opus): renamed to "Open Roads: India"
+- The user renamed the game for the planned multi-region road trip (Ladakh, Goa). Hampi at Dusk is now Stage 1.
+- Changed: title screen logo ("OPEN ROADS: INDIA", subtitle "STAGE 1: HAMPI AT DUSK"), page title, README heading, GAME_SPEC heading and title-screen line.
+- Deliberately unchanged: the folder and branch name `hampi-at-dusk`, the package name, and the saved-record keys (`hampi-at-dusk.*`), so existing best times, ghosts and settings carry over. These can be renamed later with a migration.
