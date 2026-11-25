@@ -112,6 +112,8 @@ export function bakeLook(scene: Phaser.Scene, t: StageTheme): void {
     toTexture(scene, t.landmark.key, p);
   }
   toTexture(scene, 'glow', halo(t.lamp, 32, 11, t.glow * 1.1));
+  // v1.8.1: the diyas pop more than the rest of the stage's lights (the user's call); the scene glow stays subtle.
+  toTexture(scene, 'glow_diya', halo(t.lamp, 36, 13, t.glow * 1.9));
   toTexture(scene, 'light_pool', lightPool(t.lamp, 26, t.glow * 1.6));
   if (t.sun) toTexture(scene, 'sun_glitter', sunGlitter(t.sun.glitter, t.glow));
 

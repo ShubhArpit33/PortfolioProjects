@@ -880,3 +880,7 @@ fills this in, and calls `setTheme`.
 - The ambience's firefly zones and the birds-to-bats change are still Hampi constants in `Ambience.ts`, not in the theme.
 - `HOW_TO_BUILD.md` still describes the old look in its prompts for optional PNG art.
 - Round 2 candidates: rim light on sprites, lit windows that flicker, reflections of the far bank in the river.
+
+## v1.8.1 — diyas pop, bobber mirror
+- Diyas get their own halo (`glow_diya`: radius 13, strength glow x 1.9, flicker alpha 0.85..1) so they pop more; the rest of the stage's lights stay at the subtle level (user's call).
+- Sundowner mirror sits 2 px lower on a shorter stalk (user: "a bit lower").

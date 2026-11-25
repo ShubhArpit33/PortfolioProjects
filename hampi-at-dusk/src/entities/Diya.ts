@@ -19,7 +19,7 @@ export class Diya {
     this.x = c.x;
     this.y = c.y;
     this.phase = index * 1.7;
-    this.glow = scene.add.image(c.x, c.y - 1, 'glow').setDepth(depth).setBlendMode(Phaser.BlendModes.ADD);
+    this.glow = scene.add.image(c.x, c.y - 1, 'glow_diya').setDepth(depth).setBlendMode(Phaser.BlendModes.ADD);
     this.sprite = scene.add.image(c.x, c.y, 'diya').setDepth(depth + 0.1);
     this.key = keyUnder(scene, this.sprite);
   }
@@ -39,7 +39,7 @@ export class Diya {
       return;
     }
     const f = Math.sin(t * 13 + this.phase) * 0.5 + Math.sin(t * 29 + this.phase * 2) * 0.5; // -1..1 flicker
-    this.glow.setVisible(true).setScale(1).setAlpha(0.72 + 0.28 * f);
+    this.glow.setVisible(true).setScale(1).setAlpha(0.85 + 0.15 * f);
     this.sprite.setVisible(true);
     this.sprite.y = this.y + (Math.sin(t * 2.2 + this.phase) > 0.3 ? -1 : 0);
     followKey(this.key, this.sprite);

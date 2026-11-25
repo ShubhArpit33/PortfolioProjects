@@ -305,7 +305,7 @@ const SUNDOWNER_BODY: readonly Seg[] = [
   [10, 34, 'eee'], [11, 33, 'nNNNcY'], [12, 33, 'nNNNcYW'], [13, 33, 'NNNNcYY'], [14, 34, 'NNNcY'],
   // tall mini-ape bar: riser up from the yoke, pulled back to the grip; a round mirror standing above it
   [13, 32, 'n'], [12, 32, 'e'], [11, 32, 'e'], [10, 32, 'e'], [9, 31, 'e'], [8, 31, 'e'], [7, 29, 'nne'],
-  [6, 31, 'e'], [5, 31, 'e'], [4, 31, 'ee'], [3, 30, 'eNNe'], [2, 31, 'ee'],
+  [6, 31, 'ee'], [5, 30, 'eNNe'], [4, 31, 'ee'], // v1.8.1: mirror sits 2 px lower on a shorter stalk
 ];
 
 /** Riding: knee bent, shin down to the mid-set peg just behind the cylinder. */
