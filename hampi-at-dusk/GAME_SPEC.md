@@ -1,4 +1,4 @@
-# HAMPI AT DUSK — Game Spec (v1.3, one stage)
+# HAMPI AT DUSK — Game Spec (v1.6, one stage, three bikes)
 
 A 2D side-scrolling arcade motorcycle game set in the ruins of Hampi, Karnataka, at sunset.
 16-bit pixel-art look. One stage, about 30–45 seconds for a clean run.
@@ -13,6 +13,11 @@ simplest option and write it down in `DECISIONS.md`.
 > v1.3 (the gameplay loop): still one stage, now 580 columns with two new sections (5.1, 5.2); tricks (flips, section 4.1);
 > game feel (landing dust and camera bump, boost streaks, speed look-ahead; sections 4 and 6.3); procedural music (section 7);
 > best run, medals, ghost and quick restart (section 8.1). A clean bot run takes 38.1 s.
+>
+> v1.5: pause menu and the way back to the title (section 8).
+>
+> v1.6 (the roster): three bikes to choose from, each with its own feel, sprite, medal targets and records
+> (section 3.1, 6.3, 8, 8.1). The stage, the background and `CONFIG` are unchanged.
 
 ---
 
@@ -109,6 +114,43 @@ export const CONFIG = {
 ```
 
 ---
+
+### 3.1 The roster (v1.6)
+
+Three bikes. Each is a set of **overrides on `CONFIG`** (`src/bike/bikes.ts`); `CONFIG` itself is the Daybreak and is not
+changed. All three share the 24 × 16 hitbox, the wheel contact points, gravity, brakes and every stage rule. The Game scene
+takes the selected bike's config (`this.cfg`) and uses it for everything in the run: stepping, respawn, collisions, the cow,
+monkeys, diyas, the horn, the camera and the engine pitch.
+
+| | **Ton-Up** (`tonup`) | **Daybreak** (`daybreak`, default) | **Sundowner** (`sundowner`) |
+|---|---|---|---|
+| Character | cafe racer: fast, sharp, strict | the all-rounder | cruiser: slow, easy, forgiving |
+| `topSpeed` / `accel` | 288 / 180 | 240 / 160 | 204 / 220 |
+| `boostSpeed` / `boostAccel` | 420 / 800 | 360 / 500 | 350 / 380 |
+| `boostDrainPerSec` / `boostRegenPerSec` | 0.72 / 0.096 | 0.6 / 0.08 | 0.36 / 0.048 |
+| `boostCleanLanding` / `boostDiya` | 0.30 / 0.12 | 0.25 / 0.10 | 0.15 / 0.06 |
+| `hopVelocity` | 260 | 280 | 280 |
+| `airTiltSpeed` / `airTiltAccel` / `airTiltMaxSpeed` | 200 / 900 / 520 | 180 / 700 / 450 | 150 / 500 / 360 |
+| `safeLandingAngle` / `cleanLandingAngle` | 25 / 7 | 35 / 10 | 45 / 13 |
+| `cameraLookAhead` / `cameraLookAheadBoost` | 124 / 184 | 108 / 166 | 108 / 166 |
+| Medals: gold / silver / bronze | 34 / 40 / 50 s | 40 / 46 / 56 s | 46 / 52 / 62 s |
+| Stat bars (SPEED PULL BOOST FLIP GRIP, 1–5) | 5 3 1 5 1 | 3 2 2 3 3 | 1 5 5 1 5 |
+
+The stat bars are computed from the config: SPEED = `topSpeed`, PULL = `accel`, BOOST = seconds of boost in a full tank
+(`1 / boostDrainPerSec`), FLIP = `airTiltMaxSpeed`, GRIP = `safeLandingAngle`.
+
+What the numbers mean on the stage (all measured; see `DECISIONS.md` v1.6):
+- Every bike clears every canal, pillar, cart, the cow, the kicker and the river by the same rules; no gap can be rolled
+  on any of them, and the river needs boost on all three.
+- **Ton-Up:** a flat hop is 214 px, so the paired canals (columns 102–110) are taken in one hop. Rolling off the kicker at
+  its full 288 px/s just skims the tank (a perk; the hop is the safe line). A landing more than 25° off the slope is a
+  crash, so the bike has to be flown level.
+- **Sundowner:** a flat hop is 163 px, short enough to land on the 48 px platform between the paired canals and hop again
+  (its easy line; one hop also works, with a short window). Its flip only just fits the kicker's air, and its 45° safe
+  band forgives the landing. A full tank is 2.8 s of boost.
+
+The bike is chosen on the select screen (section 8), with `?bike=tonup|daybreak|sundowner` (this page load only), or it is
+the one ridden last (remembered in the prefs).
 
 ## 4. Bike physics model (custom)
 
@@ -261,6 +303,10 @@ use it; otherwise use the code-drawn version. This way the build never depends o
 
 Alpha blends and tints of palette colours are allowed.
 
+**Exception (v1.6): the three bike sprites** may use their own colours (competition green and gold on the Ton-Up, a brighter
+red on the Daybreak, celestial blue and cream on the Sundowner, the riders' clothes). Nothing else leaves the palette, and
+the background is exactly as it was.
+
 ### 6.2 Parallax layers (back to front)
 
 | Layer | Scroll factor | Code-drawn placeholder |
@@ -282,17 +328,33 @@ Animated details are a pure function of game time and camera scroll (no tweens, 
 
 ### 6.3 Bike (built from parts — no sprite-sheet animation)
 
-- `bike_body` 40×24: roadster motorcycle (round headlamp, teardrop tank, single seat) with a rider in a helmet and jacket.
-  It must be an original design: no brand names, logos or model numbers.
-  (The sprite is 40 px wide; the collision box is `bikeHitW × bikeHitH`.)
-- `wheel` 12×12, used twice and rotated by code at `speed / radius`.
+- One chassis for every bike (`src/bike/sprites.ts`): a body texture of 48×32 whose bottom edge is the ground, wheel centres
+  at (11, 26) and (37, 26) (the physics' two contact points, 13 px either side of the bike's position), and the pixel
+  (24, 26) as the pivot the body leans and bobs about. Wheels are separate 12×12 textures rotated by code at
+  `speed / radius`. The collision box is `bikeHitW × bikeHitH` for all three.
+- The three bikes (v1.6, `src/art/bikeArt.ts`) are tributes to three kinds of motorcycle, clearly different at game scale.
+  **No brand names, logos, tank badges, wordmarks or model names anywhere on screen.**
+  - `bike_tonup`: a cafe racer in competition green. A cockpit fairing (a rounded shell standing above the tank line, with
+    a short smoked screen) around a round headlamp; a long flat tank with a silver stripe and knee recesses; a single seat
+    with a humped cowl; low clip-ons; upswept megaphone silencers; wire wheels; gold fork legs and shock springs; an exposed
+    finned twin with polished covers. The rider is tucked in behind the screen: black leathers, silver helmet.
+  - `bike_daybreak`: a modern naked twin in red and black. An angular, peaked tank with shrouds; a short, sharp, upswept
+    tail; upright tubular bars and a mirror; exposed engine and frame; cast wheels; a compact headlamp low in a dark housing;
+    a stubby underslung silencer. The rider sits upright: brown jacket, cream helmet with a gold band (the v1.0 rider).
+  - `bike_sundowner`: a long, low cruiser in celestial blue with a cream tank panel and a lot of chrome. A big teardrop
+    tank; a large round chrome headlamp; wide pulled-back bars; forward foot controls; a stepped two-tier seat; a chunky
+    raked fork; a fat rear tyre under a deep mudguard and a slimmer front; twin long pipes running back past the rear axle.
+    The rider leans back with feet forward: tan jacket, open-face helmet, dark glasses.
+- Per bike as well: the planted leg (`leg_<id>`), the exhaust tip (where the boost flame and the smoke puffs come from),
+  and the wheel textures (`wheel_tonup`, `wheel_daybreak`, `wheel_sundowner_rear` / `_front`).
 - Code-driven motion: rider bobs by 1 px at speed, body leans back under throttle and forward under braking,
   exhaust puffs scale with throttle, a dust trail when grounded and fast, sparks on a hard landing.
 - Game feel (v1.3), all pooled, deterministic (integer hash, no `Math.random`) and driven by game time:
   landing dust puffs to both sides, more and faster the harder the landing (low and wide, never above wheel height);
   a ring of sparks on a diya pickup; while boosting, a flickering exhaust flame and thin speed streaks through the sky band
   (screen space, drawn behind the terrain and every entity, so they never cover an obstacle or a diya).
-- Ghost (section 8.1): the same sprites at 45% alpha, no effects, drawn just behind the bike.
+- Ghost (section 8.1): the selected bike's own sprites at 45% alpha, no effects, drawn just behind the bike.
+- Foot down at a standstill, the foot shuffle while backing up, the crash tumble and the respawn work the same for all three.
 
 ### 6.4 Asset manifest (optional PNGs that replace the placeholders)
 
@@ -302,8 +364,9 @@ Animated details are a pure function of game time and camera scroll (no tweens, 
 | `bg_skyline.png` | 960×270 | transparent, tiles horizontally |
 | `bg_mid.png` | 960×270 | transparent, tiles horizontally |
 | `fg_near.png` | 960×270 | transparent, tiles horizontally, sparse |
-| `bike_body.png` | 40×24 | transparent |
-| `wheel.png` | 12×12 | transparent |
+| `bike_tonup.png` / `bike_daybreak.png` / `bike_sundowner.png` | 48×32 | transparent; body and rider, layout as in 6.3 |
+| `wheel_tonup.png` / `wheel_daybreak.png` / `wheel_sundowner_rear.png` / `wheel_sundowner_front.png` | 12×12 | transparent |
+| `leg_tonup.png` / `leg_daybreak.png` / `leg_sundowner.png` | 4×17 / 4×17 / 4×15 | transparent; boot on the bottom row |
 | `tile_granite.png` | 16×16 | tiles in both directions, used as a texture fill |
 | `pillar.png` / `cart.png` / `cow.png` | 48×16 / 48×32 / 32×24 | transparent |
 | `monkey.png` | 32×16 | 2 frames of 16×16 |
@@ -342,18 +405,30 @@ Animated details are a pure function of game time and camera scroll (no tweens, 
 
 All on-screen text is ASCII only. Wait for `document.fonts.load('8px "Press Start 2P"')` before the Title scene.
 
-- **Title:** the parallax scene slowly auto-scrolls; "HAMPI AT DUSK" in UI yellow; "PRESS ENTER"; a controls hint;
-  the best time with its medal once there is one.
+- **Flow (v1.6):** Title → **Bike select** → ride. `?cp=N` skips both and starts a practice run on the selected bike.
+- **Title:** the parallax scene slowly auto-scrolls; "HAMPI AT DUSK" in UI yellow; "PRESS ENTER" (Enter, click or tap:
+  opens the bike select); a controls hint; the bike picked last rides across, and its best time is shown with its name and
+  medal once there is one ("DAYBREAK BEST 00:38.12").
+- **Bike select (v1.6):** "CHOOSE YOUR RIDE" over the dimmed parallax. Three cards side by side in the pixel-frame style
+  (yellow frame on the highlighted one): the bike at 3× idling on a strip of road (the highlighted one revs: wheels turning,
+  rider leaning in), its name, five stat bars of five pips (SPEED, PULL, BOOST, FLIP, GRIP; section 3.1), and that bike's
+  own best time and medal or "NO RUN YET". Below: the highlighted bike's one-line tagline, RIDE / BACK, and the key hint.
+  Left / Right move the highlight (wrapping); Enter rides; Esc goes back to the title; Up / Down move between RIDE and BACK.
+  A click or tap on a card highlights it, a second one (or RIDE) rides. It opens on the bike ridden last (Daybreak the first
+  time). The pick is saved when the ride starts, not while browsing.
 - **HUD** (a separate UI scene that doesn't scroll): timer `00:00.00`, diyas `x/30`, boost bar, crash count, the flip tally
-  once it is above 0, "BEST mm:ss.cc" (the time to beat) once there is one, and a "MUSIC OFF" / "MUTED" tag.
+  once it is above 0, "BEST mm:ss.cc" (the time to beat on this bike) once there is one, a "MUSIC OFF" / "MUTED" tag, and
+  the bike's name, small, bottom left.
   The timer starts on the first fixed step after Enter, pauses with Pause, and stops at the finish.
 - **Popups:** "CLEAN!", "+FLIP", "CHECKPOINT", short floating text.
 - **Finish:** a yellow pixel frame (2 px UI-yellow border, 4 px notched corners, UI-ink fill). The medal earned (icons either
-  side of "STAGE CLEAR", "GOLD MEDAL" / "NO MEDAL YET"); time, diyas and flips for this run next to the best before it, with a
+  side of "STAGE CLEAR", "DAYBREAK - GOLD MEDAL" / "DAYBREAK - NO MEDAL YET" with the bike's name); time, diyas and flips for this run next to the best before it, with a
   blinking "NEW BEST!" where the run beat it; crashes; the next target ("NEXT: SILVER UNDER 00:46.00", or after gold
   "GOLD! BEAT YOUR mm:ss.cc"); three code-drawn star icons: star 1 finished · star 2 all 30 diyas · star 3 zero crashes.
-  Two options: "RIDE AGAIN" (selected; Enter or R) and "MAIN MENU" (Left / Right + Enter, or click). A practice run (`?cp=N`) shows "PRACTICE RUN - NO MEDAL" and saves nothing.
-- **Pause** (v1.5): dim overlay and the same yellow pixel frame: "PAUSED", then RESUME / RESTART / MAIN MENU
+  Three options: "RIDE AGAIN" (selected; Enter or R), "CHANGE BIKE" (v1.6: to the bike select) and "MAIN MENU"
+  (Left / Right + Enter, or click). Medal, targets and bests are the ridden bike's own. A practice run (`?cp=N`) shows
+  "PRACTICE RUN - NO MEDAL" and saves nothing.
+- **Pause** (v1.5): dim overlay and the same yellow pixel frame: "PAUSED", then RESUME / RESTART / CHANGE BIKE (v1.6) / MAIN MENU
   (Up / Down + Enter, or click / tap; P / Esc resumes). Game time stands still while it is open. A small pause
   button at the top centre of the HUD opens it with the mouse.
 
@@ -361,11 +436,15 @@ All on-screen text is ASCII only. Wait for `document.fonts.load('8px "Press Star
 
 Only a run from cp0 is ranked. It is scored on the step it crosses the line.
 
-- **Medals** by time, inclusive: gold ≤ 40.00 s, silver ≤ 46.00 s, bronze ≤ 56.00 s. Set from the bot's clean run (38.13 s,
-  no flips, boost only at the river): gold leaves about 2 s of slack on that line. All diyas is the separate middle star.
+- **Medals** by time, inclusive, **per bike** (v1.6): Daybreak gold ≤ 40.00 s, silver ≤ 46.00 s, bronze ≤ 56.00 s; Ton-Up
+  34 / 40 / 50 s; Sundowner 46 / 52 / 62 s. Each is set from that bike's clean bot run (38.13 s, 32.06 s, 43.99 s; no flips,
+  boost only at the river): gold leaves about 2 s of slack on that line. All diyas is the separate middle star.
 - **Best run:** the fastest time, the most diyas and the most flips are kept, each on its own, in `localStorage`
-  (`hampi-at-dusk.best`; the record carries the stage length and is ignored if that changes). Preferences (ghost on/off,
-  sound mode) are in `hampi-at-dusk.prefs`. **Every storage access is wrapped in try/catch**; when storage is missing or
+  **one record per bike** (v1.6): `hampi-at-dusk.best.tonup`, `hampi-at-dusk.best.daybreak`, `hampi-at-dusk.best.sundowner`
+  (each carries the stage length and is ignored if that changes). The single pre-roster record `hampi-at-dusk.best` was
+  ridden on the Daybreak: while the Daybreak has no record of its own it is used and copied to the Daybreak's key; the old
+  key is never changed or removed, and never read for another bike. Preferences (ghost on/off, sound mode, the bike picked
+  last) are in `hampi-at-dusk.prefs`. **Every storage access is wrapped in try/catch**; when storage is missing or
   throws, the game plays the same and the bests (and ghost) live in memory until the page is closed.
 - **Ghost:** the bike's pose (x, y, angle) is recorded at 20 Hz of game time (every 6 fixed steps, from time 0, plus the pose
   on the line) and, when the run sets a new best time, stored with it: 7 base-36 characters per sample (x and y in half pixels,
@@ -408,11 +487,13 @@ Only a run from cp0 is ranked. It is scored on the step it crosses the line.
 
 Expose `window.__test` only when `import.meta.env.DEV || import.meta.env.MODE === 'test'`:
 - `setInput({ throttle, brake, hop, boost, tiltUp, tiltDown, honk })`
-- `state()` → `{ x, y, vx, vy, v, angle, grounded, boost, crashed, crashes, diyas, finished, checkpoint, timeMs, flips, spin, camX, ghost }`
+- `state()` → `{ x, y, vx, vy, v, angle, grounded, boost, crashed, crashes, diyas, finished, checkpoint, timeMs, bike, flips, spin, camX, ghost }`
   (`ghost` = the pose the ghost is drawn at, or null)
 - `finish()` → the scored run once the line is crossed (medal, next target, bests before it, what was beaten, whether it was saved)
 - `audio()` → `{ created, state, mode, musicPeak, masterPeak }`; never creates audio
-- `startAt(checkpoint)`
+- `startAt(checkpoint, bike?)`; `bike(id?)` → the selected bike (with an id: select it first)
+- `screen()` → `'boot' | 'title' | 'select' | 'game' | 'paused' | 'finish'`; `targets()` (menu click targets);
+  `select()` → the select screen's highlighted index and each card's bike, click target, best time and medal; `leaks()`
 - `setManual(true)` stops rAF-driven stepping; `step(n)` runs n fixed steps and one render synchronously
 - `levelData`
 
@@ -432,16 +513,18 @@ Touch controls, more stages, an online leaderboard, gamepad support, recorded mu
 ```
 src/
   main.ts            config.ts
-  scenes/  Boot.ts  Title.ts  Game.ts  Hud.ts  Finish.ts
+  scenes/  Boot.ts  Title.ts  Select.ts  Game.ts  Hud.ts  Finish.ts
   level/   levelData.ts  terrain.ts (heightfield, surfaceY, slopeAngle)
   bike/    BikePhysics.ts (pure, no Phaser — unit-testable)  BikeView.ts
+           bikes.ts (the roster: overrides, medals, stat bars; pure)  selection.ts  sprites.ts
   entities/ Diya.ts  Obstacle.ts  Monkey.ts  Cow.ts  Checkpoint.ts
-  art/     assets.ts  placeholders.ts  palette.ts  Parallax.ts  Ambience.ts  Fx.ts
+  art/     assets.ts  placeholders.ts  palette.ts  Parallax.ts  Ambience.ts  Fx.ts  pen.ts  bikeArt.ts (the three bikes)
   audio/   sfx.ts  music.ts
   progress.ts        (medals, best run, ghost, storage; pure, no Phaser)
 tests/
-  unit/  physics.test.ts  progress.test.ts
-  e2e/   run.spec.ts  river.spec.ts  reverse.spec.ts  flip.spec.ts  storage.spec.ts  audio.spec.ts
-         bot.ts  helpers.ts  consoleAllowlist.ts
+  unit/  physics.test.ts  progress.test.ts  bikeArt.test.ts
+  shared/ plan.ts (the bot's hop planner, per bike; pure)
+  e2e/   run.spec.ts  river.spec.ts  reverse.spec.ts  flip.spec.ts  storage.spec.ts  audio.spec.ts  menu.spec.ts
+         roster.spec.ts  select.spec.ts  sprites.spec.ts  bot.ts  helpers.ts  flipHelper.ts  consoleAllowlist.ts
 DECISIONS.md
 ```

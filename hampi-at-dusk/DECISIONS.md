@@ -402,3 +402,139 @@ Tests: 75 Vitest and 11 Playwright.
 ### Open questions (v1.5)
 - There are still no touch controls for riding; the click / tap targets only cover the menus.
 - The game does not pause by itself when the tab loses focus.
+
+## v1.6: three bikes (roster, bike select, tribute sprites)
+
+"3-bike roster": Ton-Up (cafe racer), Daybreak (the existing bike), Sundowner (cruiser). The numbers were proposed from a
+headless simulator first (the real physics and level modules plus a port of the Game ride loop and the e2e bot), approved
+as proposed, and are used verbatim. Three decisions the user confirmed: Ton-Up `topSpeed` 288 (the kicker skim at full
+speed is a perk, the hop stays the safe line); Sundowner `topSpeed` 204 (the paired canals' one-hop window is only 91 ms,
+accepted because the two-hop route exists); Ton-Up safe / clean landing 25° / 7°.
+
+### M1: physics and storage
+1. **Overrides only.** `src/bike/bikes.ts` holds each bike as a `Partial<Config>` over `CONFIG`; the Daybreak's is empty
+   and `CONFIG` is untouched (a unit test pins the table and that `daybreak.cfg` equals `CONFIG`). Hitbox, gravity, brake,
+   coast drag, flip award, slope factor, nose drift, stumble, horn range, cow speed, reverse and respawn are shared.
+2. **`this.cfg` everywhere.** The physics already took a config argument; the Game scene now passes the selected bike's
+   to `step`, every `createBikeState` (start, respawn, the after-the-line settle), `bikeAABB`, `hitsObstacle`,
+   `touchesDiya`, the cow push-back, the monkey stumble, the diya bonus, the horn range, the camera look-ahead and the
+   engine pitch (speed / that bike's `topSpeed`, so every bike reaches the same pitch flat out).
+3. **Selection** (`src/bike/selection.ts`): `?bike=` > the remembered pick > Daybreak. `?bike=` is for the page load only
+   and is not saved; a pick made on the select screen (or `__test.bike`) is saved in the prefs.
+4. **Records per bike:** `hampi-at-dusk.best.<id>`. The session copy of the bests is per bike too, so the game still plays
+   the same with storage throwing. **Migration:** `loadBest('daybreak')` falls back to the old `hampi-at-dusk.best` only
+   while the Daybreak has no record of its own, copies it to the new key if storage allows (it simply migrates again next
+   time if it does not), and never touches the old key. Other bikes never read it. A malformed or other-layout old record
+   is ignored.
+5. **Medals per bike:** gold = the bot's clean run + about 2 s, silver + 6 s, bronze + 10 s more, as on the Daybreak:
+   Ton-Up 34 / 40 / 50 s, Daybreak 40 / 46 / 56 s (unchanged), Sundowner 46 / 52 / 62 s.
+6. **Bot.** The planner moved to `tests/shared/plan.ts` (pure) so the unit tests ride the same plan. Hop length and half
+   bike width come from the bike's config. The Ton-Up's 214 px hops chain into each other and the centred planner has no
+   solution, so it falls back to an **interval planner**: each hazard group has a range of take-offs that clear it; a
+   forward pass gives each hop its earliest take-off, a backward pass its latest, and the hop goes in the middle (46 px of
+   slack at the tightest hop). Daybreak and Sundowner still get the centred plan (the Daybreak's is unchanged to the pixel).
+7. **Stat bars** are computed, not typed in: SPEED 204–288 px/s, PULL 140–220 px/s², BOOST 1.39–2.78 s of tank, FLIP
+   360–520 °/s, GRIP 25–45°, each mapped to 1–5 pips. (PULL starts at 140 so the Daybreak's 160 shows 2 pips, not 1.)
+
+### M2: bike select and UI
+8. **Flow:** Title → BIKE SELECT → ride. `?cp=N` still goes straight into a practice run (on the selected / `?bike=` bike).
+9. **Select screen** (`src/scenes/Select.ts`): three 148 × 194 cards, the bike at 3× on a strip of road, name, five 5-pip
+   stat bars, that bike's best and medal or "NO RUN YET"; the tagline of the highlighted bike, RIDE / BACK and the key hint
+   below. Left / Right wrap; Enter rides; Esc goes back. Mouse / touch: a click picks a card, a second click (or RIDE)
+   rides. No hover-select, so a tap and a click behave the same. The pick is saved when the ride starts.
+10. **CHANGE BIKE** is in the pause menu (RESUME / RESTART / CHANGE BIKE / MAIN MENU; the panel is 16 px taller) and on
+    the finish screen (RIDE AGAIN / CHANGE BIKE / MAIN MENU; the frame is 40 px wider so three options fit on one row, and
+    menu options can set their own click width so the targets do not overlap). The select screen always starts a ranked
+    run from cp0; Esc from it goes to the title.
+11. **Names in the UI:** the finish screen's medal line and the title's best line name the bike; the HUD shows the bike
+    name small at the bottom left. While the finish screen is up the HUD hides CRASHES / FLIPS / the name (the wider frame
+    reaches under them and shows the same numbers).
+12. **A key press older than its handler is ignored** (`onKeyPress`): the Enter that opens the select screen must not
+    also press RIDE. (Phaser re-processes its key queue, and the new scene's handlers have not "seen" the event.)
+13. **One rig** (`BikeRig` in `src/bike/sprites.ts`): wheels, flame, body and planted leg in a container, built from a
+    per-bike description. The ridden bike, the ghost (now the selected bike's sprite) and the previews all use it.
+
+### M3: sprites
+14. **Chassis:** body textures are 48 × 32 with the ground at the bottom edge, wheel centres at (11, 26) and (37, 26) and
+    the lean / bob pivot at (24, 26). That is the old 40 × 24 sprite's geometry with 4 px of room either side and the
+    lower 8 px added (so mudguards, forks and pipes can reach down past the axles). The wheel contact points, wheel radius
+    and hitbox are unchanged, so landing, squash and dust line up exactly as before.
+15. **Art as data** (`src/art/bikeArt.ts`): each bike is a list of `[row, column, pixels]` segments over a legend of
+    colours, painted in layers (frame, engine, exhaust, bodywork, rider). `Pen` moved to `src/art/pen.ts` and no longer
+    needs Phaser, so the art can be rendered to a PNG outside the game and unit-tested as pixels.
+16. **Tributes without marks.** Ton-Up: competition green, silver tank stripe, cockpit fairing with a smoked screen
+    around a round headlamp, humped single seat, clip-ons, upswept megaphones, wire wheels, gold forks and shock springs,
+    rider tucked in black leather. Daybreak: red angular tank with shrouds, sharp tail, upright bars and mirror, cast
+    wheels, compact headlamp, stubby silencer, the v1.0 rider (brown jacket, cream helmet, gold band) upright. Sundowner:
+    celestial blue with a cream tank panel, big chrome headlamp, pulled-back bars, feet forward, two-tier seat, deep rear
+    mudguard over a fat tyre, twin long pipes, rider leaning back in a tan jacket and an open-face helmet. No lettering,
+    badges or logos are drawn anywhere.
+17. **Blue, not maroon, for the Sundowner:** against the purple and orange dusk a maroon bike sinks into the silhouettes
+    and sits too close to the Daybreak's red. Celestial blue with cream and chrome is the only cool colour on screen.
+18. **The fairing was redrawn once.** The first version continued the tank line and stripe and read as one long tank.
+    The fix: a rounded shell two rows taller than the tank, a one-column gap at the headstock, no stripe on the shell, a
+    bigger lamp with a chrome bezel, and a pale translucent screen with a bright leading edge (a dark "smoked" one vanished
+    against the dusk).
+19. **Per-bike details:** the boost flame and the smoke come from each bike's exhaust tip (above and behind the rear axle
+    on the Ton-Up, beside the rear tyre on the Daybreak, behind the axle on the Sundowner); the flame is drawn over the
+    wheels and under the body so the Daybreak's is not hidden by its tyre. The planted leg has each rider's trousers and
+    stands under that rider's knee. The Sundowner's rear wheel has a thicker tyre than its front; both are still 12 px
+    across, so the contact points do not move.
+20. **PNG overrides** (section 6.4) are now per bike: `bike_<id>`, `wheel_<...>`, `leg_<id>`; `bike_body` and `wheel` are gone.
+
+### Measured (v1.6; unit tests and e2e, the same numbers as the proposal)
+
+| | Ton-Up | Daybreak | Sundowner |
+|---|---|---|---|
+| Bot run (17 hops, boost only at the river) | **32.058 s**, interval planner | **38.125 s**, centred planner | **43.992 s**, centred planner |
+| Crashes / diyas / medal | 0 / 30 / gold (34 s) | 0 / 30 / gold (40 s) | 0 / 30 / gold (46 s) |
+| Worst landing in the bot run (limit) | 12.2° (25°) | 10.9° (35°) | 23.9° (45°) |
+| Bot plan with every hop ±8 px | all 30, no crash | all 30, no crash | all 30, no crash |
+| Bot plan with no tilt input at all | crashes on landing at x≈1599 (32° off) | finishes, 30/30 | finishes, 30/30 |
+| Flat hop: air / length / apex | 0.74 s / 214 px / 48 px | 0.80 s / 192 px / 56 px | 0.80 s / 163 px / 56 px |
+| Canal hop windows, in column order | 443, 365, 309, 240, (31), 406 ms | 540, 527, 406, 198, 135, 398 ms | 561, 483, 404, 142, 228, 326 ms |
+| Paired canals in one hop | 240 ms | 198 ms | 91 ms |
+| Paired canals in two hops (first-hop window) | not possible | not possible | 142 ms |
+| Any canal rolled at top or boost speed | never | never | never |
+| Pillar / cart / cow hop window | 347 / 172 / 319 ms | 375 / 225 / 375 ms | 321 / 169 / 331 ms |
+| Kicker: rolled at top speed | **clears by 8.4 px** (10 px/s slower: water) | water | water |
+| Kicker: hop window (landing ≥ 16 px clear) | 300 ms (241 ms) | 271 ms (271 ms) | 311 ms (257 ms) |
+| Kicker: air / least landing margin of an on-ramp hop | 1.11–1.18 s / 94.3 px | 1.10–1.17 s / 44.1 px | 1.06–1.13 s / 2.6 px |
+| Kicker: boost alone, no hop | clears by 119.9 px | 62.9 px | 59.3 px |
+| Flip: full turn with the key held / kicker air | 0.82 s of 1.11–1.18 s | 0.93 s of 1.10–1.17 s | 1.12 s: does not fit 1.05–1.13 s |
+| Flip off the kicker (hop 64 / 32 / 1 px before the lip) | lands, clean | lands, clean | lands (safe / clean / clean); held for the whole air it lands 330–357° round, inside the 45° band |
+| Flat-hop flip, any timing, either way | impossible (319° of 335° needed) | impossible (296° of 325°) | impossible (234° of 315°) |
+| River, no boost: lip speed, short by | 288 px/s, 28.8 px | 240 px/s, 64.6 px | 204 px/s, 88.2 px |
+| River, boost from cp6 at rest: lip speed, margin, meter left | 420 px/s, **93.2 px**, 0.09 | 360 px/s, **34.4 px**, 0.08 | 350 px/s, **25.0 px**, 0.55 |
+| River: least meter from rest | 0.82 | 0.90 | 0.60 |
+| Full tank of boost | 1.39 s | 1.67 s | 2.78 s |
+| Camera in the bot run: bike screen x | 146–174 | 150–177 | 150–167 |
+
+Notes on the table:
+- **(31 ms)**: the second of the paired canals has 48 px of run-up, less than the Ton-Up needs to start a 214 px hop there.
+  That bike takes the pair in one hop (240 ms), which is what the bot does. The test asserts exactly this.
+- The Sundowner's two-hop window reads 142 ms here and 137 ms in the proposal: the test sweeps the whole 96 px run-up,
+  the simulator stopped 2 px short. Same physics.
+- The Sundowner's 2.6 px kicker margin is a hop taken at the very foot of the ramp; 257 ms of the 311 ms window lands a
+  full tile clear. The test asserts both (every on-ramp hop clears; ≥ 200 ms lands ≥ 16 px clear).
+- Nothing changed during the build: the tuning table, the medal targets and every measured number match the proposal.
+
+### Tests (v1.6)
+- **Vitest: 176** (physics 150, progress 20, bike art 6). Canal, pair, kicker, flip, pillar / cart / cow, river and
+  bot-plan suites run once per bike (`describe.each`) against floors from the table above. Bike-specific: the Ton-Up
+  kicker roll clears at full speed and is wet 10 px/s slower; the Sundowner's pair by two hops; the Ton-Up's plan crashes
+  without levelling; a flat-hop flip is impossible on all three at any release point. Progress: per-bike keys, medals per
+  bike, migration (used, copied, legacy kept, never for other bikes, own record wins, malformed ignored, read-only and
+  throwing storage). Bike art: one chassis, wheels touch the ground at the contact points, and each bike's features as
+  pixels (the fairing shell above the tank line, the translucent screen, the lamp in its nose, ...).
+- **Playwright: 28.** The full bot run from the title through the select screen on each bike (0 crashes, 30 / 30, gold, the
+  exact measured time, record under that bike's key only, ghost, quick restart); the river pair on each bike; roster
+  (migration in the browser, remembered pick, `?bike=`, each bike's top speed / hop / boost in the game); select (keys,
+  mouse, CHANGE BIKE from pause and finish, separate records, round-trip leaks with `__test.leaks()`); sprites at 4× (every
+  pose of every bike saved to `test-results/shots`).
+
+### Open questions (v1.6)
+- The engine sound is the same for all three bikes (only its pitch range follows the bike's top speed).
+- The select screen has no touch controls beyond tapping a card twice or RIDE; riding still needs a keyboard.
+- The Sundowner's one-hop line over the paired canals (91 ms) is the tightest window in the game; its two-hop line is
+  not hinted anywhere in the stage.

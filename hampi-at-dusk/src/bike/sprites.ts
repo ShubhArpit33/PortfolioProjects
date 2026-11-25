@@ -26,18 +26,23 @@ export interface BikeSprite {
   exhaustY: number;
 }
 
+const BODY = { w: 48, h: 32, pivotX: 24, pivotY: 26 } as const;
+
 export const BIKE_SPRITES: Readonly<Record<BikeId, BikeSprite>> = {
+  // megaphone silencer, upswept: the tip is above and behind the rear axle
   tonup: {
-    body: 'bike_body_tonup', w: 40, h: 24, pivotX: 20, pivotY: 24, rearWheel: 'wheel', frontWheel: 'wheel',
-    leg: 'rider_leg', legX: -1, exhaustX: -19, exhaustY: -9,
+    ...BODY, body: 'bike_tonup', rearWheel: 'wheel_tonup', frontWheel: 'wheel_tonup',
+    leg: 'leg_tonup', legX: -3, exhaustX: -21, exhaustY: -10,
   },
+  // stubby underslung silencer, ending just ahead of the rear axle
   daybreak: {
-    body: 'bike_body', w: 40, h: 24, pivotX: 20, pivotY: 24, rearWheel: 'wheel', frontWheel: 'wheel',
-    leg: 'rider_leg', legX: -1, exhaustX: -19, exhaustY: -9,
+    ...BODY, body: 'bike_daybreak', rearWheel: 'wheel_daybreak', frontWheel: 'wheel_daybreak',
+    leg: 'leg_daybreak', legX: -1, exhaustX: -9, exhaustY: -6,
   },
+  // long low pipes running back past the rear axle; fat rear tyre, slimmer front
   sundowner: {
-    body: 'bike_body_sundowner', w: 40, h: 24, pivotX: 20, pivotY: 24, rearWheel: 'wheel', frontWheel: 'wheel',
-    leg: 'rider_leg', legX: -1, exhaustX: -19, exhaustY: -9,
+    ...BODY, body: 'bike_sundowner', rearWheel: 'wheel_sundowner_rear', frontWheel: 'wheel_sundowner_front',
+    leg: 'leg_sundowner', legX: -2, exhaustX: -23, exhaustY: -6,
   },
 };
 
@@ -61,7 +66,8 @@ export class BikeRig {
     this.body = scene.add.image(0, -WHEEL_R, sp.body).setOrigin(sp.pivotX / sp.w, sp.pivotY / sp.h);
     this.leg = scene.add.image(sp.legX, 0, sp.leg).setOrigin(0.5, 1).setVisible(false);
     this.flame = scene.add.sprite(sp.exhaustX, sp.exhaustY, 'flame', 0).setOrigin(1, 0.5).setVisible(false);
-    this.container = scene.add.container(0, 0, [this.flame, this.rear, this.front, this.body, this.leg]);
+    // the flame sits over the wheels (a low silencer ends beside the rear tyre) and under the body
+    this.container = scene.add.container(0, 0, [this.rear, this.front, this.flame, this.body, this.leg]);
   }
 
   setWheelSpin(rad: number): void {

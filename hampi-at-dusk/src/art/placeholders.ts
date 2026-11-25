@@ -2,72 +2,9 @@
 // fillRects on a Phaser Graphics object and baked with generateTexture, so pixels stay crisp.
 
 import Phaser from 'phaser';
+import { BIKE_TEXTURES } from './bikeArt';
 import { PAL, mix, rng } from './palette';
-
-type G = Phaser.GameObjects.Graphics;
-
-/** Tiny pixel-art pen. With wrapW set, everything drawn across the left/right edge wraps (seamless tiling). */
-class Pen {
-  constructor(private g: G, private wrapW = 0) {}
-
-  r(c: number, x: number, y: number, w: number, h: number, a = 1): this {
-    if (w <= 0 || h <= 0) return this;
-    this.g.fillStyle(c, a);
-    this.g.fillRect(x, y, w, h);
-    if (this.wrapW > 0) {
-      if (x < 0) this.g.fillRect(x + this.wrapW, y, w, h);
-      if (x + w > this.wrapW) this.g.fillRect(x - this.wrapW, y, w, h);
-    }
-    return this;
-  }
-
-  /** Filled disc from scanlines (no anti-aliasing). */
-  disc(c: number, cx: number, cy: number, rad: number, a = 1): this {
-    for (let dy = -rad; dy <= rad; dy++) {
-      const half = Math.floor(Math.sqrt(rad * rad - dy * dy) + 0.5);
-      this.r(c, cx - half, cy + dy, half * 2 + 1, 1, a);
-    }
-    return this;
-  }
-
-  /** Ring between an outer and an inner radius. */
-  ring(c: number, cx: number, cy: number, rad: number, thick: number, a = 1): this {
-    const inner = rad - thick;
-    for (let dy = -rad; dy <= rad; dy++) {
-      const half = Math.floor(Math.sqrt(rad * rad - dy * dy) + 0.5);
-      if (Math.abs(dy) > inner) {
-        this.r(c, cx - half, cy + dy, half * 2 + 1, 1, a);
-      } else {
-        const ih = Math.floor(Math.sqrt(inner * inner - dy * dy) + 0.5);
-        this.r(c, cx - half, cy + dy, half - ih + 1, 1, a);
-        this.r(c, cx + ih, cy + dy, half - ih + 1, 1, a);
-      }
-    }
-    return this;
-  }
-
-  /** Bresenham line of t x t squares. */
-  line(c: number, x0: number, y0: number, x1: number, y1: number, t = 1, a = 1): this {
-    x0 = Math.round(x0); y0 = Math.round(y0); x1 = Math.round(x1); y1 = Math.round(y1);
-    const dx = Math.abs(x1 - x0), dy = -Math.abs(y1 - y0);
-    const sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1;
-    let err = dx + dy;
-    for (;;) {
-      this.r(c, x0, y0, t, t, a);
-      if (x0 === x1 && y0 === y1) break;
-      const e2 = 2 * err;
-      if (e2 >= dy) { err += dy; x0 += sx; }
-      if (e2 <= dx) { err += dx; y0 += sy; }
-    }
-    return this;
-  }
-
-  /** Rows of [x, w] pairs starting at y. */
-  rows(c: number, x: number, y: number, spans: Array<[number, number]>, a = 1): this {
-    spans.forEach(([sx, w], i) => this.r(c, x + sx, y + i, w, 1, a));
-    return this;
-  }
-}
+import { Pen } from './pen';
 
 const TAU = Math.PI * 2;
 const LAYER_W = 960;
@@ -473,73 +410,6 @@ function drawGranite(p: Pen): void {
   p.r(PAL.graniteDark, 10, 12, 4, 1).r(PAL.graniteDark, 10, 13, 1, 1);
 }
 
-// --- Bike ------------------------------------------------------------------------------------------
-
-function drawBikeBody(p: Pen, R: number = PAL.bikeBody): void {
-  const RH = mix(R, PAL.cream, 0.35);
-  const C = PAL.chrome;
-  const CD = mix(PAL.chrome, PAL.ink, 0.45);
-  const K = PAL.tyre;
-  const J = PAL.brown;
-  const JD = mix(PAL.brown, PAL.ink, 0.4);
-  const PN = mix(PAL.skyTop, PAL.chrome, 0.38);
-
-  // Swingarm, rear shock, frame.
-  p.r(K, 7, 22, 11, 1).r(K, 6, 23, 3, 1);
-  p.line(C, 11, 16, 8, 21, 1);
-  p.line(K, 14, 15, 17, 21, 1);
-  p.line(K, 27, 14, 25, 21, 1);
-  // Exhaust (long low pipe to the rear).
-  p.r(C, 3, 20, 14, 1).r(CD, 3, 21, 14, 1).r(K, 2, 20, 1, 2);
-  // Engine.
-  p.r(CD, 17, 16, 9, 6);
-  p.r(C, 18, 16, 3, 2).r(C, 22, 16, 3, 2);
-  p.r(K, 17, 18, 9, 1);
-  p.r(C, 18, 20, 6, 1).r(K, 20, 21, 2, 1);
-  // Front fork + fender.
-  p.line(C, 30, 11, 33, 23, 1);
-  p.line(CD, 31, 11, 34, 23, 1);
-  p.r(R, 29, 16, 8, 1).r(R, 28, 17, 2, 1).r(R, 36, 17, 2, 1);
-  // Rear fender, tail cowl, tail light.
-  p.r(R, 3, 16, 9, 1).r(R, 2, 17, 2, 1);
-  p.r(R, 5, 13, 6, 3).r(RH, 6, 13, 4, 1).r(PAL.gold, 4, 14, 1, 1);
-  // Seat.
-  p.r(K, 9, 13, 10, 2);
-  // Teardrop tank.
-  p.r(R, 20, 10, 7, 1).r(R, 19, 11, 10, 2).r(R, 19, 13, 9, 1).r(R, 20, 14, 7, 1);
-  p.r(RH, 21, 11, 5, 1);
-  // Round headlamp, handlebar.
-  p.r(K, 30, 9, 1, 3);
-  p.r(C, 31, 8, 2, 5).r(C, 33, 9, 1, 3);
-  p.r(PAL.gold, 33, 9, 2, 3).r(PAL.cream, 34, 10, 1, 1);
-  p.r(K, 28, 8, 1, 3).r(K, 27, 7, 4, 1);
-
-  // Rider: legs, torso, arm, helmet.
-  p.r(PN, 13, 11, 7, 2).r(PN, 18, 12, 5, 2);
-  p.r(PN, 21, 14, 2, 3).r(PN, 20, 16, 2, 3);
-  p.r(K, 19, 19, 4, 1).r(K, 19, 18, 2, 1);
-  p.rows(J, 0, 5, [[17, 5], [15, 7], [14, 8], [14, 7], [13, 7], [13, 6], [13, 6]]);
-  p.r(JD, 13, 9, 2, 2).r(JD, 14, 8, 1, 1);
-  p.r(JD, 20, 7, 3, 2).r(JD, 22, 8, 3, 2).r(JD, 25, 8, 2, 1);
-  p.r(K, 27, 7, 1, 2);
-  p.rows(PAL.cream, 0, 0, [[17, 5], [16, 7], [16, 7], [16, 7], [16, 7], [17, 5]]);
-  p.r(PAL.gold, 16, 1, 5, 1);
-  p.r(K, 21, 2, 2, 2);
-  p.r(mix(PAL.cream, PAL.ink, 0.3), 16, 4, 3, 1);
-}
-
-function drawWheel(p: Pen): void {
-  const K = PAL.tyre;
-  const C = PAL.chrome;
-  const CD = mix(PAL.chrome, PAL.ink, 0.45);
-  p.rows(K, 0, 0, [[4, 4], [2, 8], [1, 10], [1, 10], [0, 12], [0, 12], [0, 12], [0, 12], [1, 10], [1, 10], [2, 8], [4, 4]]);
-  p.rows(CD, 2, 2, [[2, 4], [1, 6], [0, 8], [0, 8], [0, 8], [0, 8], [1, 6], [2, 4]]);
-  p.rows(K, 3, 3, [[1, 4], [0, 6], [0, 6], [0, 6], [0, 6], [1, 4]]);
-  p.r(C, 5, 3, 2, 6);       // bright spoke pair (makes the rotation readable)
-  p.r(CD, 3, 5, 6, 2);
-  p.r(C, 5, 5, 2, 2);
-}
-
 // --- Obstacles and characters ----------------------------------------------------------------------
 
 function drawPillar(p: Pen): void {
@@ -763,12 +633,6 @@ function drawGlow(p: Pen): void {
   }
 }
 
-function drawRiderLeg(p: Pen): void {
-  const PN = mix(PAL.skyTop, PAL.chrome, 0.38);
-  p.r(PN, 1, 0, 2, 15).r(mix(PN, PAL.ink, 0.35), 1, 0, 1, 15);
-  p.r(PAL.tyre, 1, 14, 3, 1).r(PAL.tyre, 0, 15, 4, 2);
-}
-
 /** Two 5x3 frames: wings up, wings down. */
 function drawBird(p: Pen): void {
   const c = mix(PAL.skyTop, PAL.ink, 0.6);
@@ -853,8 +717,8 @@ export const MANIFEST: Record<string, Def> = {
   bg_skyline: { w: LAYER_W, h: LAYER_H, draw: drawSkyline, wrap: true },
   bg_mid: { w: LAYER_W, h: LAYER_H, draw: drawMid, wrap: true },
   fg_near: { w: LAYER_W, h: LAYER_H, draw: drawNear, wrap: true },
-  bike_body: { w: 40, h: 24, draw: (p) => drawBikeBody(p) },
-  wheel: { w: 12, h: 12, draw: drawWheel },
+  // the three bikes: body + rider (48 x 32), wheels (12 x 12), planted leg (bikeArt.ts)
+  ...BIKE_TEXTURES,
   tile_granite: { w: 16, h: 16, draw: drawGranite },
   pillar: { w: 48, h: 16, draw: drawPillar },
   cart: { w: 48, h: 32, draw: drawCart },
@@ -884,9 +748,6 @@ const EXTRAS: Record<string, Def> = {
   p_smoke: { w: 3, h: 3, draw: (p) => p.r(PAL.cream, 0, 0, 3, 3, 0.3).r(PAL.cream, 0, 1, 2, 2, 0.25) },
   p_spark: { w: 2, h: 2, draw: (p) => p.r(PAL.gold, 0, 0, 2, 2).r(PAL.cream, 0, 0, 1, 1) },
   p_splash: { w: 2, h: 2, draw: (p) => p.r(mix(PAL.water, PAL.cream, 0.65), 0, 0, 2, 2) },
-  rider_leg: { w: 4, h: 17, draw: drawRiderLeg },
-  bike_body_tonup: { w: 40, h: 24, draw: (p) => drawBikeBody(p, 0x1f5a3c) },
-  bike_body_sundowner: { w: 40, h: 24, draw: (p) => drawBikeBody(p, 0x2f4f86) },
   bird: { w: 10, h: 3, draw: drawBird, frameW: 5 },
   bat: { w: 18, h: 5, draw: drawBat, frameW: 9 },
   p_firefly: { w: 3, h: 3, draw: drawFirefly },
