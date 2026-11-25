@@ -503,6 +503,47 @@ function drawBoulder(p: Pen): void {
 }
 
 /**
+ * The same rock an eighth of a turn on (anticlockwise, the way it rolls). The outline stays the clean
+ * disc; only the marks inside it move. With the first texture turned by quarter turns this gives eight
+ * crisp frames per revolution, with no rotated-sprite fringes.
+ */
+function drawBoulderTurned(p: Pen): void {
+  const N = 22;
+  const grid: number[][] = Array.from({ length: N }, () => new Array<number>(N).fill(-1));
+  // Paint the rock into a 22 x 22 grid of colours first (-1 = nothing there).
+  let colour = 0;
+  drawBoulder(new Pen({
+    fillStyle: (c: number) => { colour = c; },
+    fillRect: (x: number, y: number, w: number, h: number) => {
+      for (let yy = Math.max(0, y); yy < Math.min(N, y + h); yy++) {
+        for (let xx = Math.max(0, x); xx < Math.min(N, x + w); xx++) grid[yy]![xx] = colour;
+      }
+    },
+  }));
+  const cos = Math.SQRT1_2;
+  const sin = Math.SQRT1_2;
+  for (let y = 0; y < N; y++) {
+    for (let x = 0; x < N; x++) {
+      const own = grid[y]![x]!;
+      if (own < 0) continue; // outside the disc
+      const dx = x - 11;
+      const dy = y - 11;
+      let c = own;
+      if (dx * dx + dy * dy <= 8.6 * 8.6) {
+        // inside the rim: take the pixel that an anticlockwise eighth of a turn brings here
+        const sx = Math.round(11 + dx * cos - dy * sin);
+        const sy = Math.round(11 + dx * sin + dy * cos);
+        const from = grid[sy]?.[sx];
+        if (from !== undefined && from >= 0 && from !== PAL.ink) c = from;
+      } else if (own !== PAL.ink) {
+        c = PAL.graniteLight; // the ring just inside the outline: plain stone
+      }
+      p.r(c, x, y, 1, 1);
+    }
+  }
+}
+
+/**
  * The temple doorway on the terrace (v1.7, decoration): 96 x 80, in the colonnade's dark, low-contrast tone.
  * Two heavy jambs under a stepped lintel, a black opening (the boulder comes out of it), two worn steps.
  */
@@ -517,7 +558,7 @@ function drawTempleDoor(p: Pen): void {
   for (let y = 32; y < 76; y += 8) p.r(SH, 6, y, 84, 1, 0.5);
   for (let x = 14; x < 88; x += 16) for (let y = 32; y < 72; y += 16) p.r(SH, x, y, 1, 8, 0.4);
   // stepped lintel and cornice
-  p.r(C, 18, 12, 60, 10).r(HI, 18, 12, 60, 1);
+  p.r(C, 18, 12, 60, 14).r(HI, 18, 12, 60, 1);
   p.r(C, 14, 8, 68, 4).r(HI, 14, 8, 68, 1);
   p.r(C, 24, 3, 48, 5).r(HI, 24, 3, 48, 1);
   p.r(C, 38, 0, 20, 3).r(HI, 38, 0, 20, 1);
@@ -865,6 +906,7 @@ export const MANIFEST: Record<string, Def> = {
   coracle: { w: 24, h: 10, draw: drawCoracle },
   log: { w: 20, h: 10, draw: drawLog },
   boulder: { w: 22, h: 22, draw: drawBoulder },
+  boulder_turned: { w: 22, h: 22, draw: drawBoulderTurned },
 };
 
 /** Extra code-only textures (effects and UI icons); not part of the PNG manifest. */

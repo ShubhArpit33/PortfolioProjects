@@ -21,7 +21,7 @@ export interface Gap {
   x0: number; x1: number;   // [x0, x1) has no surface
   col0: number; cols: number;
   river: boolean;
-  /** the tank under the kicker (section 6): cleared by a hop on the ramp, or by boost */
+  /** the tank under the kicker (Hemakuta Rocks): cleared by a hop on the ramp, or by boost */
   kicker: boolean;
   /** a dry slot at the foot of a riser (the Temple Steps): the same rules as a canal, drawn as stone */
   step: boolean;

@@ -11,7 +11,10 @@ import { pixelText } from '../ui/text';
 
 /** The drawn rock is 22 px across (the hitbox is 16 x 14, centred under it). */
 const RADIUS = 11;
-/** The rock turns in steps, so its pixels stay crisp. */
+/**
+ * The rock turns an eighth of a turn at a time, and every frame is crisp: even eighths are the 'boulder'
+ * texture turned by whole quarter turns, odd ones the 'boulder_turned' texture (the rock drawn 45 deg on).
+ */
 const TURN_STEP = Math.PI / 4;
 /** Fixed steps between two puffs of dust. */
 const DUST_EVERY = 5;
@@ -70,7 +73,9 @@ export class Boulder {
     // A one-pixel hop every half turn: the rock is not perfectly round.
     const bounce = Math.floor(turned / (Math.PI / 2)) % 2 === 0 ? 0 : 1;
     this.sprite.setPosition(cx, BOULDER_GROUND_Y - RADIUS - bounce);
-    this.sprite.rotation = -Math.round(turned / TURN_STEP) * TURN_STEP;
+    const eighth = Math.round(turned / TURN_STEP);
+    this.sprite.setTexture(eighth % 2 === 0 ? 'boulder' : 'boulder_turned');
+    this.sprite.setAngle(-Math.floor(eighth / 2) * 90);
     this.shadow.setPosition(cx, BOULDER_GROUND_Y + 1);
 
     // The "!": at the right edge of the screen while the rock is still off it, then over the rock.

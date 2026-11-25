@@ -3,11 +3,17 @@
 
 import Phaser from 'phaser';
 import { PAL, css, mix, rng } from '../art/palette';
-import { BASELINE_Y, BONUS, BOULDER, STAGE_WIDTH, TILE, WATER_LINE_Y } from './levelData';
+import { BASELINE_Y, BONUS, BOULDER, PROMPTS, STAGE_WIDTH, TILE, WATER_LINE_Y } from './levelData';
 import { TERRAIN, type Terrain } from './terrain';
 
 export const CHUNK_W = 960;
 const H = 270;
+
+/** The stretch of road under the "HOLD SHIFT - BOOST" prompt, in world px. */
+const BOOST_STRIP = ((): { x0: number; x1: number } => {
+  const p = PROMPTS.find((q) => q.text.includes('BOOST'));
+  return p ? { x0: (p.fromCol + 2) * TILE, x1: (p.toCol - 2) * TILE } : { x0: 0, x1: 0 };
+})();
 
 /**
  * The drawn top of the ground at a world x, or null over water. A riser's slot (v1.7) is dry: it is drawn
@@ -108,6 +114,17 @@ function bakeChunk(scene: Phaser.Scene, key: string, x0: number, terrain: Terrai
     rect(PAL.mossDark, 1, x, sy + 1, 1, 1);
     if (rand() < 0.14) rect(PAL.mossDark, 1, x, sy + 2, 1, 1 + Math.floor(rand() * 3));
     if (rand() < 0.05) rect(PAL.mossLight, 1, x, sy - 1, 1, 1);
+  }
+
+  // The boost strip on the Warm-up Road (v1.7): chevrons painted on the road, pointing the way.
+  for (let cx = Math.ceil(BOOST_STRIP.x0 / 16) * 16; cx < BOOST_STRIP.x1; cx += 16) {
+    for (const off of [0, 4]) {
+      for (let i = 0; i < 5; i++) {
+        const px = cx + off + (i < 3 ? i : 4 - i) - x0;
+        const sy = px >= 0 && px < CHUNK_W ? rows[px] : null;
+        if (sy !== null && sy !== undefined) rect(PAL.glint, off === 0 ? 0.55 : 0.9, px, sy + 4 + i, 1, 1);
+      }
+    }
   }
 
   // Random stone speckles and a few set stones.

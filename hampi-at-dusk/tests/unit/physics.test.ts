@@ -785,7 +785,7 @@ describe.each(ROSTER)('%s: canal gaps (criterion 5)', (_name, bike: BikeDef) => 
   });
 });
 
-describe('kicker layout (section 6)', () => {
+describe('kicker layout (Hemakuta Rocks)', () => {
   it('the ramp ends at the tank: lip at h2, 8 columns of water, far bank h0', () => {
     expect(KICKER_GAP.x0).toBe(KICKER.lipCol * TILE);
     expect(KICKER_GAP.cols).toBe(8);
@@ -794,7 +794,7 @@ describe('kicker layout (section 6)', () => {
   });
 });
 
-describe.each(ROSTER)('%s: kicker (section 6)', (_name, bike: BikeDef) => {
+describe.each(ROSTER)('%s: kicker (Hemakuta Rocks)', (_name, bike: BikeDef) => {
   const cfg = bike.cfg;
   const V = cfg.topSpeed;
   const floors = FLOORS[bike.id];
@@ -1114,10 +1114,10 @@ describe.each(ROSTER)('%s: pillar, cart and cow hop windows (criterion 6)', (_na
 describe.each(ROSTER)('%s: river (criterion 4)', (_name, bike: BikeDef) => {
   const cfg = bike.cfg;
   const floors = FLOORS[bike.id];
-  const cp6 = checkpointX(CHECKPOINTS[RIVER_CP]!); // the river checkpoint (cp11 since v1.7)
+  const riverCp = checkpointX(CHECKPOINTS[RIVER_CP]!); // the river checkpoint (cp11 since v1.7)
 
   const ride = (input: BikeInput, startBoost = 1) => {
-    let s = createBikeState(cp6, TERRAIN, cfg);
+    let s = createBikeState(riverCp, TERRAIN, cfg);
     s.boost = startBoost;
     let lipSpeed = 0;
     let lipX = 0;
@@ -1135,11 +1135,11 @@ describe.each(ROSTER)('%s: river (criterion 4)', (_name, bike: BikeDef) => {
 
   it('starts at cp11 = 16*842 + 8', () => {
     expect(RIVER_CP).toBe(11);
-    expect(cp6).toBe(16 * 842 + 8);
+    expect(riverCp).toBe(16 * 842 + 8);
     expect(RIVER.x0).toBe(13888);
     expect(RIVER.x1).toBe(14080);
     // the same run-up as before v1.7: 18 columns of flat less half a tile, then the 8-column ramp
-    expect(RIVER_RAMP.x0 - cp6).toBe(18 * 16 - 8);
+    expect(RIVER_RAMP.x0 - riverCp).toBe(18 * 16 - 8);
   });
 
   it('holds top speed up the river ramp without boost', () => {

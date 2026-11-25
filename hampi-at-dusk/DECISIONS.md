@@ -1,6 +1,6 @@
 # DECISIONS
 
-These are the judgement calls made where `GAME_SPEC.md` (v1.1 to v1.3) left room for interpretation.
+These are the judgement calls made where `GAME_SPEC.md` (v1.1 to v1.7) left room for interpretation.
 Fable, the advisor and builder, makes each call; Opus, the coordinator, writes it down here.
 
 ## Spec process
@@ -613,6 +613,176 @@ Notes on the table:
 - The select screen has no touch controls beyond tapping a card twice or RIDE; riding still needs a keyboard.
 - The Sundowner's one-hop line over the paired canals (91 ms) is the tightest window in the game; its two-hop line is
   not hinted anywhere in the stage.
+
+## v1.7: the one-minute stage (900 columns, tutorial, Temple Steps, records version 2)
+
+Asked for: a stage of about a minute, an opening that teaches the controls, a breather, and something new before the
+river. The layout was designed and measured in a headless simulator first (the real physics and level modules, a port
+of the Game ride loop and of the e2e bot), approved with six decisions, and built exactly as measured. Nothing moved
+during the build: every number below is the proposal's.
+
+The six approved decisions: (1) the warm-up is a no-crash zone; (2) risers are 1-column dry slots with a higher far
+bank, with no change to the physics; (3) the boulder is announced by a rumble and a "!"; (4) ghosts are kept up to
+180 s; (5) bronze is the bot's time × 2.2 (gold × 1.05, silver × 1.25, rounded up to whole seconds); (6) the incidental
+flip spots stay. Decided earlier: the tutorial prompts show until one full run is finished; records are version 2 and
+the old ones are archived, not migrated.
+
+### Level
+1. **Three new sections, the old ones untouched.** Warm-up Road (0–119) in front, Ruins Road (420–503) after the
+   Boulder Field, Temple Steps (724–839) before the river. Bazaar Street to the Boulder Field moved right by 120
+   columns, the Mandapa Run and the Hemakuta Rocks by 204, the river by 320, column for column: every v1.6 number for
+   those sections (canal, pillar, cart, cow, kicker, flip and river windows) is the same, and the unit tests still
+   assert the same floors. Section ids are now 0–9.
+2. **Risers are gaps.** `riser hK` is a 1-column gap with `step: true` whose far bank is one tile up. `BikePhysics.ts`
+   is unchanged: a hop that lands on the upper step clears it, anything else meets the far wall. The terrain view
+   draws the slot as stone (no water), the scene skips its water glints, and a crash there throws sparks, not a splash.
+3. **The slot has a floor (scene rule, same outcomes).** Rolled into slowly, a bike used to drop through the drawn
+   stone to the kill plane (40 px on the third riser) before crashing. The Game scene now crashes it as `wall` as soon
+   as it is more than `wallTolerance` below the near bank while over a slot. This cannot change who crashes: a bike in
+   that state is falling (a hop or a coyote hop starts at most 2.2 px below the bank), and can only leave the slot
+   through the far wall, 16 px higher, or the kill plane. The unit tests keep the two apart: the riser windows and
+   roll-fails are measured on the bare physics, the "never sinks" test on the full ride loop.
+4. **Twelve checkpoints.** New: cp3 inside the canal run (104 px before the widest canal; 72 px before the paired
+   canals was tried in the simulator and rejected, the Ton-Up has no window from rest there), cp6 on Ruins Road, cp9 at
+   the foot of the steps, cp10 on the terrace 7 columns before the boulder's trigger. The longest leg between two
+   checkpoints is 9.9 s (the Sundowner's warm-up). A checkpoint without a hint now clears the hint showing, so
+   "HOP UP THE STEPS!" is gone by the terrace, where the thing to read is the boulder's "!".
+5. **56 diyas:** the old 30, 10 on the Warm-up Road, 10 on Ruins Road, 6 on the Temple Steps. All 20 of the first two
+   groups are on the plain riding line (throttle only collects them, bar the one over the log).
+6. **`?cp=N` goes to 11**, clamped to the last checkpoint whatever the number.
+
+### Entities and rules
+7. **Boulder: a pure state machine** (`src/level/boulder.ts`): hidden → roll → gone. It starts on the step the bike's
+   x reaches 16·781, moves `80/120` px per fixed step from x = 16·811, and is gone when its left edge reaches 16·771
+   (960 or 961 steps, by the rounding of ⅔ px). Nothing in it reads a clock or a random number. The scene checks the
+   collision before it steps the boulder (as in the simulator). While the bike is crashed it cannot start, but one
+   already rolling rolls on; a respawn at a checkpoint before the trigger puts it back in its doorway. The view
+   (`src/entities/Boulder.ts`) adds the turning rock, a puff of dust every 5 steps, chips and dust at the break-up, and
+   the "!": at the right edge of the screen while the rock is off it, then above the rock for half a second.
+8. **The hitbox is smaller than the rock** (16 × 14 under a 22 px disc), as approved: a near miss is a miss.
+9. **Log: one stumble per contact.** The scene stumbles the bike (speed × 0.4, as a monkey does) on the step its box
+   first touches the log's, and not again until it has left it. `Obstacle.solid` is false for a log, so it is not in the
+   list of boxes that crash. Its art (20 × 10) is a little wider than its 16 × 8 box.
+10. **Warm-up no-crash rule, by take-off.** `wobbleLanding` (pure, in `BikePhysics.ts`) turns a landing that `step` has
+    just judged a crash into an upright bike with 40% of its forward speed, when the last grounded x was left of
+    column 120. So the last hop of the warm-up is covered even though it comes down in Bazaar Street, and the first hop
+    past the line is not. There is no gap and nothing solid in the zone, so a landing is the only crash it could have:
+    1000 runs of random input per bike never crash (without the rule, all of them do). C still works.
+11. **Tutorial.** Four prompts by bike column (0–23, 24–39, 46–75, 78–99), drawn by the HUD as steady cream text on a
+    dim ink plate with a yellow rule under it, below the blinking checkpoint hint. Shown while `tutorialDone` is false;
+    set on the first ranked finish (a practice finish does not count), saved in the prefs, with a copy in memory for
+    the session (the same pattern as the bests), so a browser that blocks storage shows the prompts on every visit but
+    not twice in one. The warm-up's rules do not depend on the prompts.
+12. **Medals from a formula.** `bikes.ts` holds the measured bot runs (`BOT_RUN_MS`) and `medalsFor(bot)`: gold ×1.05,
+    silver ×1.25, bronze ×2.2, each rounded up to a whole second. The e2e bot run asserts `BOT_RUN_MS` to the
+    millisecond, so the table cannot drift from the game.
+13. **Records version 2, no migration.** Keys are `hampi-at-dusk.best.v2.<bike>`; a record also carries `v: 2` and
+    `stage: 900` and is ignored if either differs. The four old keys are never read, written or removed
+    (`ARCHIVED_BEST_KEYS` exists only so tests can check that). The v1.6 Daybreak migration is deleted: those runs were
+    on another stage.
+14. **Ghost cap 180 s** (3600 samples, about 25 kB at most), so every bronze run (up to 153 s) keeps its ghost.
+
+### Bot and tests
+15. **Planner** (`tests/shared/plan.ts`): the kicker's tank is found by its flag (it used to be "the last gap"); risers
+    and the log are hazards like canals and pillars; the boulder is one more hazard standing where a bike at top speed
+    meets it (`trigger + 488·v/(v + 80)`). 22 hops on every bike; the Ton-Up still needs the interval planner.
+16. **A headless port of the ride loop** (`tests/shared/sim.ts`) built from the same pure modules the scene uses. The
+    unit tests ride the bot's plan in it and get 49.908 / 59.517 / 69.150 s; the e2e bot gets the same in the real
+    game, which is what keeps the port honest.
+17. **Milestones as committed:** M1 the stage, the entities, the rules and the tutorial (they share `Game.ts`); M2
+    records version 2 and the ghost cap; M3 art, screenshots and docs.
+18. **Existing specs that had to change:** the audio spec rode into the cow for its crash sound, which is now 11 s of
+    throttle away behind a no-crash zone, so it rides until it has crashed; the roster spec's hop and boost measurement
+    was moved clear of the log; checkpoint numbers (river cp6 → cp11, rocks cp5 → cp8, pavilion cp2 → cp4).
+
+### Art (all in the 6.1 palette; the background is unchanged)
+19. **Temple Steps in dressed stone:** from two columns before the first riser to two past the last drop the terrain is
+    courses of cut blocks with a pale worn lip, no moss. A riser's slot is the lower step's stone in shadow.
+20. **Boulder frames:** a rotated 22 px sprite grew fringes at 45°, so the rock is two textures (as drawn, and an
+    eighth of a turn on, made by turning only the marks inside a clean outline) shown at quarter turns: eight crisp
+    frames per revolution.
+21. **Boost strip:** orange chevrons on the road under the "HOLD SHIFT - BOOST" prompt (the meter's colour).
+22. **Decoration** in the colonnade's dark tone, behind everything: two kinds of ruins along Ruins Road, and the temple
+    doorway on the terrace where the boulder starts. The birds-to-bats change and the firefly zones moved with their
+    sections.
+
+### Measured (v1.7; unit tests and e2e)
+
+| | Ton-Up | Daybreak | Sundowner |
+|---|---|---|---|
+| Bot run (22 hops, boost only at the river) | **49.908 s**, interval planner | **59.517 s**, centred planner | **69.150 s**, centred planner |
+| Crashes / diyas / medal | 0 / 56 / gold (53 s) | 0 / 56 / gold (63 s) | 0 / 56 / gold (73 s) |
+| Legs between checkpoints (s) | 7.5 3.3 2.8 1.7 4.4 4.6 4.7 6.1 6.3 2.7 3.8 2.0 | 8.8 4.0 3.3 2.0 5.3 5.5 5.6 7.3 7.6 3.2 4.5 2.4 | 9.9 4.7 3.9 2.4 6.3 6.4 6.6 8.7 8.8 3.8 5.3 2.5 |
+| Worst landing in the bot run (limit) | 12.2° (25°) | 10.9° (35°) | 23.9° (45°) |
+| Bot plan with every hop ±8 px | all 56, no crash | all 56, no crash | all 56, no crash |
+| Bot plan with no tilt input at all | crashes on landing at x≈3520 | finishes, 56/56 | finishes, 56/56 |
+| Boost meter at the line | 0.50 | 0.35 | 0.57 |
+| Canal hop windows, in column order | 443, 365, 309, 240, (31), 406 ms | 540, 527, 406, 198, 135, 398 ms | 561, 483, 404, 145, 228, 326 ms |
+| Paired canals in one hop / in two | 240 ms / not possible | 198 ms / not possible | 91 ms / 145 ms |
+| Any canal or riser rolled, 10 px/s to boost speed | never | never | never |
+| Log / pillar / cart / cow hop window | 542 / 347 / 172 / 321 ms | 575 / 375 / 225 / 375 ms | 542 / 321 / 169 / 331 ms |
+| **Riser** hop windows (1, 2, 3) | 615, 615, 625 ms | 673, 673, 673 ms | 659, 659, 659 ms |
+| Riser 1 at 40 / 80 / 120 / 160 px/s | 288 / 488 / 554 / 584 ms | 350 / 544 / 608 / 644 ms | 363 / 550 / 613 / 647 ms |
+| Chained risers: least window left for the next | 242 ms | 358 ms | 558 ms |
+| **Boulder** hop window: standing / from 60 px/s / top speed / boost | 125 / 367 / 517 / 550 ms | 192 / 408 / 567 / 600 ms | 192 / 400 / 550 / 600 ms |
+| Boulder: from its start to the bike reaching it, flat out | 1.30 s | 1.50 s | 1.69 s |
+| From rest, one hop: cp3 canal / cp9 riser / cp10 boulder | 233 / 483 / 517 ms | 258 / 533 / 567 ms | 292 / 600 / 550 ms |
+| Kicker: rolled at top speed | clears by 8.4 px | water | water |
+| Kicker: hop window (landing ≥ 16 px clear) | 300 ms (241 ms) | 271 ms (271 ms) | 311 ms (257 ms) |
+| River, no boost: short by | 28.8 px | 64.6 px | 88.2 px |
+| River, boost from cp11 at rest: margin, meter left | **93.2 px**, 0.09 | **34.4 px**, 0.08 | **25.0 px**, 0.55 |
+| Bonus ramp: backflip lands from (of 220 px of take-off) / longest stretch | 204 px / 556 ms | 216 px / 650 ms | 108 px / 520 ms |
+| Bonus ramp rolled at every speed: crashes / worst landing | 0 / 13.8° | 0 / 14.6° | 0 / 15.3° |
+| Bonus ramp: one hop anywhere, no tilt | 53 of 125 crash (see below) | 0 of 125 | 0 of 125 |
+| Stairs down: rolled at every speed / one hop anywhere, no tilt | 0 crashes, 5.7° / 0 of 104 | 0 crashes, 8.2° / 0 of 104 | 0 crashes, 4.0° / 0 of 104 |
+| Warm-up to column 120: throttle only / the bot | 7.63 / 7.34 s | 8.86 / 8.59 s | 9.86 / 9.69 s |
+| Warm-up, 1000 runs of random input: crashes / wobbles / log stumbles | 0 / 6691 / 646 | 0 / 6448 / 659 | 0 / 4338 / 621 |
+| The same without the rule (200 runs) | 200 crash | 200 crash | 199 crash |
+| Camera in the bot run: bike screen x | 146–174 | 150–177 | 150–167 |
+| Stored ghost of the bot run | 7.0 kB | 8.3 kB | 9.7 kB |
+
+Medals (seconds, inclusive):
+
+| | Bot run | Gold (×1.05) | Silver (×1.25) | Bronze (×2.2) |
+|---|---|---|---|---|
+| Ton-Up | 49.908 | 53 | 63 | 110 |
+| Daybreak | 59.517 | 63 | 75 | 131 |
+| Sundowner | 69.150 | 73 | 87 | 153 |
+
+Notes on the table:
+- **Under 120 ms:** only the two windows accepted in v1.6, both unchanged: the Ton-Up's own hop over the second paired
+  canal ((31 ms): it takes the pair in one hop, 240 ms) and the Sundowner's one-hop line over the pair (91 ms; its
+  two-hop line is 145 ms). The tightest new window is the Ton-Up hopping the boulder from a standstill, 125 ms; from any
+  rolling start it is 367 ms or more.
+- **145, not 142:** the Sundowner's fourth canal and two-hop windows read 142 ms in v1.6. The sweep is in 0.5 px
+  samples (2.5 ms at 204 px/s) and the canals are 1920 px further right, where the step positions round differently:
+  one sample. Same physics.
+- **53 of 125 on the Ton-Up:** all of them are a flat-ground hop taken before the bonus ramp that comes down on its
+  18° up-slope without levelling: more than the Ton-Up's 25° band, exactly as on the Boulder Field's ramps. A hop
+  taken on the ramp or its top never crashes on any bike, and rolling over it never does.
+- **Flip spots** (decision 6, kept): besides the kicker and the bonus ramp, a hop with a held tilt can come round on
+  the Boulder Field's ramps and the rollers as before, and now on the warm-up roller on the Ton-Up and the Daybreak.
+  None is needed, none is hinted, and none happens without holding the key.
+
+### Tests (v1.7)
+- **Vitest: 263** (physics 228, progress 22, bike art 13). New suites, each once per bike: Warm-up Road (log, throttle
+  only, roller rolled at every speed, the fuzz, the rule by take-off), Ruins Road (rolled at every speed, diyas on the
+  rolling line, hop anywhere), the risers (windows, roll-fails at every speed, low-speed windows, chains, the slot's
+  floor, the stairs down), the boulder (windows, warning time, the plan's meeting point, no trigger short of the line),
+  standing starts at cp3 / cp9 / cp10, the bonus-ramp flip; once: the stage size and layout, the prompts, the boulder's
+  state machine, `stumble` and `wobbleLanding`, the medal formula. Progress: version 2 keys, the archive (a store that
+  records every access), `tutorialDone`, the ghost cap.
+- **Playwright: 34.** The bot run per bike (exact time, 56 / 56, 0 crashes, gold, the prompts on the first run and none
+  after, a v1.6 player's storage in place and unchanged); tutorial (2); boulder (3); the archive; the bonus-ramp flip;
+  and the v1.6 specs on the new checkpoint numbers.
+
+### Open questions (v1.7)
+- At boost speed the boulder's warning is shorter than at top speed (0.96 s on the Ton-Up, boosting from the trigger);
+  the hop window there is still 550 ms.
+- The Ton-Up from a standstill has 125 ms to hop the boulder; a rider who stops on the terrace to wait for it is
+  better off rolling.
+- The tutorial has no prompt for H (the horn), C or R; the title's key hint still lists them.
+- The engine sound and the touch controls are as in v1.6.
 
 ## Working agreement (from v1.6.3)
 - Fable is used only for Fable-level work: level design, physics/tuning, large builds, hard bugs. Effort per task: medium for small follow-ups, high for design and big builds (user-approved).
