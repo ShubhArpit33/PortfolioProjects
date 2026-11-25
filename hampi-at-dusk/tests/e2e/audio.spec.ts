@@ -1,7 +1,7 @@
 // Audio (v1.3): no AudioContext until a real key press; music runs after it; M cycles
 // all sound -> music off -> muted, and the choice is remembered. Console must stay clean throughout.
 
-import { boot, expect, test } from './helpers';
+import { boot, expect, rideFromTitle, test } from './helpers';
 
 test('music starts only after a real key press; M cycles the sound modes and is remembered', async ({ page }) => {
   await boot(page);
@@ -11,9 +11,7 @@ test('music starts only after a real key press; M cycles the sound modes and is 
   await page.evaluate(() => { const t = window.__test!; t.setInput({ throttle: true, honk: true }); t.step(60); });
   expect((await audio()).created).toBe(false);
 
-  await page.keyboard.press('Enter'); // a trusted key press: creates the context and starts the run
-  await page.evaluate(() => window.__test!.step(0));
-  await page.waitForFunction(() => window.__test!.state().x > 0);
+  await rideFromTitle(page); // trusted key presses (Enter, Enter): create the context and start the run
   let a = await audio();
   expect(a.created).toBe(true);
   expect(a.mode).toBe(0);

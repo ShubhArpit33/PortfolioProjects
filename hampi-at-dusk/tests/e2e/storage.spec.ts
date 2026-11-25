@@ -1,8 +1,9 @@
 // The game must play the same when localStorage is unavailable (v1.3): here every access to it throws.
 // A full run still gets its medal; best time and ghost live on in memory for the session.
 
+import { BIKES } from '../../src/bike/bikes';
 import { advance, planFor, resetBot } from './bot';
-import { boot, expect, getLevel, getState, shot, test } from './helpers';
+import { boot, expect, getLevel, getState, rideFromTitle, shot, test } from './helpers';
 
 test('with localStorage throwing: full run, medal, in-memory best and ghost, no console errors', async ({ page }) => {
   test.setTimeout(120_000);
@@ -18,13 +19,12 @@ test('with localStorage throwing: full run, medal, in-memory best and ghost, no 
   })).toBe('throws');
 
   const level = await getLevel(page);
-  const { plan, lay } = planFor(level);
+  const { plan, lay } = planFor(level, BIKES.sundowner.cfg);
 
   // Real key presses: Enter starts; M and G both try to save a preference.
   await page.evaluate(() => window.__test!.step(30));
-  await page.keyboard.press('Enter');
-  await page.evaluate(() => window.__test!.step(0));
-  await page.waitForFunction(() => window.__test!.state().x > 0);
+  await rideFromTitle(page, 'sundowner'); // picking a bike tries to save a preference too
+  expect((await getState(page)).bike).toBe('sundowner');
   for (const key of ['m', 'm', 'm', 'g', 'g']) {
     await page.keyboard.press(key);
     await page.evaluate(() => window.__test!.step(1));

@@ -1,11 +1,12 @@
 // Finish screen: a yellow pixel frame over the stopped game. This run next to the best, the medal
-// earned and the next target, three stars, and the way out: RIDE AGAIN (Enter or R) or MAIN MENU.
+// earned and the next target, three stars, and the way out: RIDE AGAIN (Enter or R), CHANGE BIKE or MAIN MENU.
+// Medal targets and bests are the ridden bike's own.
 import Phaser from 'phaser';
 import { PAL } from '../art/palette';
 import { tickMusic } from '../audio/music';
 import { onKeyPress } from '../input';
 import { DIYAS } from '../level/levelData';
-import type { BikeId } from '../bike/bikes';
+import { BIKES, type BikeId } from '../bike/bikes';
 import type { Medal } from '../progress';
 import { Menu } from '../ui/Menu';
 import { formatTime, pixelFrame, pixelText } from '../ui/text';
@@ -47,25 +48,26 @@ export class FinishScene extends Phaser.Scene {
     this.blink = [];
     const total = DIYAS.length;
     this.add.rectangle(0, 0, 480, 270, PAL.ink, 0.45).setOrigin(0, 0);
-    const x = 80, y = 18, w = 320, h = 236;
+    const x = 60, y = 18, w = 360, h = 236;
     pixelFrame(this.add.graphics(), x, y, w, h);
 
     pixelText(this, 240, y + 12, 'STAGE CLEAR', PAL.uiYellow, 16).setOrigin(0.5, 0);
 
     // Medal line.
     const my = y + 40;
+    const bikeName = BIKES[data.bike].name;
     if (!data.ranked) {
       pixelText(this, 240, my, 'PRACTICE RUN - NO MEDAL', PAL.graniteLight).setOrigin(0.5, 0);
     } else if (data.medal) {
       // The medal itself hangs on either side of the heading.
-      for (const mx of [x + 36, x + w - 36]) this.add.image(mx, y + 32, `medal_${data.medal}`).setScale(2);
-      pixelText(this, 240, my, `${MEDAL_NAME[data.medal]} MEDAL`, PAL.uiYellow).setOrigin(0.5, 0);
+      for (const mx of [x + 44, x + w - 44]) this.add.image(mx, y + 32, `medal_${data.medal}`).setScale(2);
+      pixelText(this, 240, my, `${bikeName} - ${MEDAL_NAME[data.medal]} MEDAL`, PAL.uiYellow).setOrigin(0.5, 0);
     } else {
-      pixelText(this, 240, my, 'NO MEDAL YET', PAL.graniteLight).setOrigin(0.5, 0);
+      pixelText(this, 240, my, `${bikeName} - NO MEDAL YET`, PAL.graniteLight).setOrigin(0.5, 0);
     }
 
     // This run next to the best before it. A beaten best blinks "NEW BEST!".
-    const colRun = x + 192, colBest = x + w - 20;
+    const colRun = x + 212, colBest = x + w - 24;
     const hy = y + 60;
     pixelText(this, colRun, hy, 'RUN', PAL.graniteLight).setOrigin(1, 0);
     pixelText(this, colBest, hy, 'BEST', PAL.graniteLight).setOrigin(1, 0);
@@ -78,7 +80,7 @@ export class FinishScene extends Phaser.Scene {
     ];
     rows.forEach(([label, value, bestText, isNew], i) => {
       const ry = hy + 13 + i * 13;
-      pixelText(this, x + 20, ry, label, PAL.cream);
+      pixelText(this, x + 24, ry, label, PAL.cream);
       pixelText(this, colRun, ry, value, PAL.uiYellow).setOrigin(1, 0);
       if (!data.ranked) {
         if (bestText) pixelText(this, colBest, ry, bestText, PAL.graniteLight).setOrigin(1, 0);
@@ -112,8 +114,9 @@ export class FinishScene extends Phaser.Scene {
     // (it restarts the run from any state).
     const game = this.scene.get('Game') as GameScene;
     this.menu = new Menu(this, [
-      { label: 'RIDE AGAIN', x: 240 - 72, y: y + 200, action: () => game.restartRun() },
-      { label: 'MAIN MENU', x: 240 + 72, y: y + 200, action: () => game.toTitle() },
+      { label: 'RIDE AGAIN', x: 240 - 112, y: y + 200, hitW: 104, action: () => game.restartRun() },
+      { label: 'CHANGE BIKE', x: 240, y: y + 200, hitW: 112, action: () => game.toSelect() },
+      { label: 'MAIN MENU', x: 240 + 112, y: y + 200, hitW: 96, action: () => game.toTitle() },
     ]);
     pixelText(this, 240, y + 216, 'LEFT/RIGHT + ENTER  R AGAIN', PAL.graniteLight).setOrigin(0.5, 0);
     for (const key of ['LEFT', 'UP']) onKeyPress(this, key, () => this.menu.move(-1));

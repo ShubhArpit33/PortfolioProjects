@@ -475,9 +475,8 @@ function drawGranite(p: Pen): void {
 
 // --- Bike ------------------------------------------------------------------------------------------
 
-function drawBikeBody(p: Pen): void {
-  const R = PAL.bikeBody;
-  const RH = mix(PAL.bikeBody, PAL.cream, 0.35);
+function drawBikeBody(p: Pen, R: number = PAL.bikeBody): void {
+  const RH = mix(R, PAL.cream, 0.35);
   const C = PAL.chrome;
   const CD = mix(PAL.chrome, PAL.ink, 0.45);
   const K = PAL.tyre;
@@ -854,7 +853,7 @@ export const MANIFEST: Record<string, Def> = {
   bg_skyline: { w: LAYER_W, h: LAYER_H, draw: drawSkyline, wrap: true },
   bg_mid: { w: LAYER_W, h: LAYER_H, draw: drawMid, wrap: true },
   fg_near: { w: LAYER_W, h: LAYER_H, draw: drawNear, wrap: true },
-  bike_body: { w: 40, h: 24, draw: drawBikeBody },
+  bike_body: { w: 40, h: 24, draw: (p) => drawBikeBody(p) },
   wheel: { w: 12, h: 12, draw: drawWheel },
   tile_granite: { w: 16, h: 16, draw: drawGranite },
   pillar: { w: 48, h: 16, draw: drawPillar },
@@ -886,6 +885,8 @@ const EXTRAS: Record<string, Def> = {
   p_spark: { w: 2, h: 2, draw: (p) => p.r(PAL.gold, 0, 0, 2, 2).r(PAL.cream, 0, 0, 1, 1) },
   p_splash: { w: 2, h: 2, draw: (p) => p.r(mix(PAL.water, PAL.cream, 0.65), 0, 0, 2, 2) },
   rider_leg: { w: 4, h: 17, draw: drawRiderLeg },
+  bike_body_tonup: { w: 40, h: 24, draw: (p) => drawBikeBody(p, 0x1f5a3c) },
+  bike_body_sundowner: { w: 40, h: 24, draw: (p) => drawBikeBody(p, 0x2f4f86) },
   bird: { w: 10, h: 3, draw: drawBird, frameW: 5 },
   bat: { w: 18, h: 5, draw: drawBat, frameW: 9 },
   p_firefly: { w: 3, h: 3, draw: drawFirefly },

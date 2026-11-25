@@ -6,7 +6,7 @@ import type { Page } from '@playwright/test';
 import { DEFAULT_BIKE } from '../../src/bike/bikes';
 import { bestKey } from '../../src/progress';
 import { advance, planFor, resetBot } from './bot';
-import { boot, expect, getState, getLevel, shot, test } from './helpers';
+import { boot, expect, getState, getLevel, rideFromTitle, shot, test } from './helpers';
 
 const BEST_KEY = bestKey(DEFAULT_BIKE);
 
@@ -34,8 +34,7 @@ async function click(page: Page, r: Rect): Promise<void> {
 /** From the title: Enter, and wait for the run to exist. */
 async function startFromTitle(page: Page): Promise<void> {
   expect(await screen(page)).toBe('title');
-  await press(page, 'Enter');
-  await page.waitForFunction(() => window.__test!.screen() === 'game' && window.__test!.state().x > 0);
+  await rideFromTitle(page);
 }
 
 async function expectTitle(page: Page): Promise<void> {
@@ -73,7 +72,7 @@ test('pause menu: freezes the game; resume, restart and main menu by keyboard an
   await press(page, 'Escape');
   expect(await screen(page)).toBe('paused');
   let t = await targets(page);
-  expect(t.menu.length).toBe(3);
+  expect(t.menu.length).toBe(4);
   expect(t.index).toBe(0);
   expect(t.pause).toBeNull();
   const frozen = await getState(page);
@@ -105,9 +104,11 @@ test('pause menu: freezes the game; resume, restart and main menu by keyboard an
   await press(page, 'ArrowDown');
   expect((await targets(page)).index).toBe(2);
   await press(page, 'ArrowDown');
+  expect((await targets(page)).index).toBe(3);
+  await press(page, 'ArrowDown');
   expect((await targets(page)).index).toBe(0);
   await press(page, 'ArrowUp');
-  expect((await targets(page)).index).toBe(2);
+  expect((await targets(page)).index).toBe(3);
   await press(page, 'p');
   expect(await screen(page)).toBe('game');
   await step(page, 60);
@@ -137,7 +138,7 @@ test('pause menu: freezes the game; resume, restart and main menu by keyboard an
 
   // MAIN MENU by mouse.
   await press(page, 'Escape');
-  await click(page, (await targets(page)).menu[2]!);
+  await click(page, (await targets(page)).menu[3]!);
   await page.evaluate(() => window.__test!.setInput({}));
   await expectTitle(page);
   await step(page, 30);
@@ -170,10 +171,10 @@ test('three round trips title -> game -> title: nothing leaks, no stuck keys, ev
     expect(await screen(page)).toBe('paused');
     paused.push(await leaks(page));
     if (trip === 1) {
-      await click(page, (await targets(page)).menu[2]!);
+      await click(page, (await targets(page)).menu[3]!);
     } else {
       await press(page, 'ArrowUp'); // wraps to MAIN MENU
-      expect((await targets(page)).index).toBe(2);
+      expect((await targets(page)).index).toBe(3);
       await press(page, 'Enter');
     }
     await expectTitle(page);
@@ -193,9 +194,9 @@ test('three round trips title -> game -> title: nothing leaks, no stuck keys, ev
   expect(paused[2]).toEqual(paused[0]);
   // Only the title is running; Game, Hud and Finish hold nothing.
   const end = atTitle[3]!;
-  expect(end.scenes).toBe(5);
+  expect(end.scenes).toBe(6);
   expect(end.running).toBe(1);
-  for (const key of ['Game', 'Hud', 'Finish']) {
+  for (const key of ['Select', 'Game', 'Hud', 'Finish']) {
     for (const what of ['objects', 'updating', 'interactive', 'keyEvents', 'inputEvents', 'tweens', 'timers']) {
       expect(end[`${key}.${what}`], `${key}.${what} after returning to the title`).toBe(0);
     }
@@ -224,7 +225,7 @@ test('finish screen: Enter rides again, MAIN MENU by keyboard and mouse; best, m
   const stored = await page.evaluate((k) => window.localStorage.getItem(k), BEST_KEY);
   expect(JSON.parse(stored!).timeMs).toBe(s.timeMs);
   let t = await targets(page);
-  expect(t.menu.length).toBe(2);
+  expect(t.menu.length).toBe(3);
   expect(t.index, 'RIDE AGAIN is selected').toBe(0);
   expect(t.pause).toBeNull();
   await shot(page, 'finish-menu');
@@ -233,10 +234,14 @@ test('finish screen: Enter rides again, MAIN MENU by keyboard and mouse; best, m
   await press(page, 'Escape');
   expect(await screen(page)).toBe('finish');
 
-  // Right selects MAIN MENU, Left goes back; Enter on RIDE AGAIN starts a fresh run with the ghost.
+  // Right moves along to CHANGE BIKE and MAIN MENU, Left goes back; Enter on RIDE AGAIN starts a fresh run with the ghost.
   await press(page, 'ArrowRight');
   expect((await targets(page)).index).toBe(1);
+  await shot(page, 'finish-menu-change-bike-selected');
+  await press(page, 'ArrowRight');
+  expect((await targets(page)).index).toBe(2);
   await shot(page, 'finish-menu-main-selected');
+  await press(page, 'ArrowLeft');
   await press(page, 'ArrowLeft');
   expect((await targets(page)).index).toBe(0);
   await press(page, 'Enter');
@@ -251,6 +256,7 @@ test('finish screen: Enter rides again, MAIN MENU by keyboard and mouse; best, m
   await press(page, 'Escape');
   await press(page, 'ArrowDown');
   await press(page, 'ArrowDown');
+  await press(page, 'ArrowDown');
   await press(page, 'Enter');
   await expectTitle(page);
   await step(page, 40);
@@ -260,12 +266,13 @@ test('finish screen: Enter rides again, MAIN MENU by keyboard and mouse; best, m
   // Finish (practice) -> MAIN MENU with the mouse.
   await practiceFinish(page);
   t = await targets(page);
-  await click(page, t.menu[1]!);
+  await click(page, t.menu[2]!);
   await expectTitle(page);
 
-  // Finish (practice) -> MAIN MENU with Right + Enter.
+  // Finish (practice) -> MAIN MENU with Left (wraps) + Enter.
   await practiceFinish(page);
-  await press(page, 'ArrowRight');
+  await press(page, 'ArrowLeft');
+  expect((await targets(page)).index).toBe(2);
   await press(page, 'Enter');
   await expectTitle(page);
   expect(await page.evaluate((k) => window.localStorage.getItem(k), BEST_KEY)).toBe(stored);
@@ -292,6 +299,7 @@ test('finish screen: Enter rides again, MAIN MENU by keyboard and mouse; best, m
   await press(page, 'ArrowUp');
   await press(page, 'Enter');
   await expectTitle(page);
+  // The title's "PRESS ENTER" is a click target as well: it opens the bike select.
   await click(page, { x: 172, y: 122, w: 136, h: 20 });
-  await page.waitForFunction(() => window.__test!.screen() === 'game' && window.__test!.state().x > 0);
+  await page.waitForFunction(() => window.__test!.screen() === 'select');
 });

@@ -8,7 +8,7 @@ import { test as base, expect, type Page } from '@playwright/test';
 import type { GameSnapshot } from '../../src/scenes/Game';
 import type { LevelData } from '../../src/level/levelData';
 import type {} from '../../src/testHooks'; // window.__test typing
-import type { BikeId } from '../../src/bike/bikes';
+import { BIKE_ORDER, type BikeId } from '../../src/bike/bikes';
 import { isAllowedWarning } from './consoleAllowlist';
 
 export { expect };
@@ -46,7 +46,26 @@ export async function boot(page: Page): Promise<void> {
  * is selected). Leaves the game in manual stepping with the run at time 0.
  */
 export async function rideFromTitle(page: Page, bike?: BikeId): Promise<void> {
-  if (bike) await page.evaluate((id) => { window.__test!.bike(id); }, bike);
+  await page.keyboard.press('Enter');
+  await page.evaluate(() => window.__test!.step(1));
+  await page.waitForFunction(() => window.__test!.screen() === 'select');
+  await rideFromSelect(page, bike);
+}
+
+/** On the bike select screen: Left / Right to the bike (if given), then Enter. */
+export async function rideFromSelect(page: Page, bike?: BikeId): Promise<void> {
+  if (bike) {
+    const from = await page.evaluate(() => window.__test!.select()!.index);
+    const to = BIKE_ORDER.indexOf(bike);
+    const right = (to - from + BIKE_ORDER.length) % BIKE_ORDER.length;
+    // the shorter way round
+    const [key, n] = right <= BIKE_ORDER.length / 2 ? ['ArrowRight', right] as const : ['ArrowLeft', BIKE_ORDER.length - right] as const;
+    for (let i = 0; i < n; i++) {
+      await page.keyboard.press(key);
+      await page.evaluate(() => window.__test!.step(1));
+    }
+    expect(await page.evaluate(() => window.__test!.select()!.cards[window.__test!.select()!.index]!.bike)).toBe(bike);
+  }
   await page.keyboard.press('Enter');
   await page.evaluate(() => window.__test!.step(0));
   await page.waitForFunction(() => window.__test!.screen() === 'game' && window.__test!.state().x > 0);

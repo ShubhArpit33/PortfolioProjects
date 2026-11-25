@@ -9,6 +9,7 @@ import type { FinishData } from './scenes/Finish';
 import type { FinishScene } from './scenes/Finish';
 import type { GameScene, GameSnapshot } from './scenes/Game';
 import type { HudScene } from './scenes/Hud';
+import type { SelectCard, SelectScene } from './scenes/Select';
 
 const STEP_MS = 1000 / 120;
 
@@ -26,10 +27,12 @@ export interface TestHooks {
   finish(): FinishData | null;
   /** audio state and output levels (never creates audio) */
   audio(): AudioDebug;
-  /** what is on screen: 'title' | 'game' | 'paused' | 'finish' */
-  screen(): 'boot' | 'title' | 'game' | 'paused' | 'finish';
-  /** click targets in game pixels (480x270): the shown menu's options, and the HUD pause button */
+  /** what is on screen */
+  screen(): 'boot' | 'title' | 'select' | 'game' | 'paused' | 'finish';
+  /** click targets in game pixels (480x270): the shown menu's options (on the select screen: RIDE / BACK), and the HUD pause button */
   targets(): { menu: Array<{ x: number; y: number; w: number; h: number }>; index: number; pause: { x: number; y: number; w: number; h: number } | null };
+  /** the bike select screen: the highlighted card, each card's click target and what it shows; null on any other screen */
+  select(): { index: number; cards: Array<SelectCard & { rect: { x: number; y: number; w: number; h: number } }> } | null;
   /** counts that must not grow from one title -> game -> title round trip to the next */
   leaks(): Record<string, number>;
   levelData: typeof LEVEL;
@@ -51,6 +54,9 @@ export function installTestHooks(game: Phaser.Game): void {
   const gameScene = (): GameScene | null =>
     game.scene.isActive('Game') ? (game.scene.getScene('Game') as GameScene) : null;
 
+  const selectScene = (): SelectScene | null =>
+    game.scene.isActive('Select') ? (game.scene.getScene('Select') as SelectScene) : null;
+
   window.__test = {
     ready: () => runtime.ready,
 
@@ -64,7 +70,7 @@ export function installTestHooks(game: Phaser.Game): void {
 
     /** Start a fresh run at a checkpoint, from any screen. */
     startAt(checkpoint, bike) {
-      for (const key of ['Title', 'Finish', 'Hud']) {
+      for (const key of ['Title', 'Select', 'Finish', 'Hud']) {
         if (game.scene.getScene(key) && (game.scene.isActive(key) || game.scene.isPaused(key))) game.scene.stop(key);
       }
       game.scene.start('Game', { cp: checkpoint, bike });
@@ -104,18 +110,25 @@ export function installTestHooks(game: Phaser.Game): void {
       if (game.scene.isActive('Finish')) return 'finish';
       const g = gameScene();
       if (g) return g.paused ? 'paused' : 'game';
+      if (game.scene.isActive('Select')) return 'select';
       return game.scene.isActive('Title') ? 'title' : 'boot';
     },
 
     targets() {
       const finish = game.scene.isActive('Finish') ? (game.scene.getScene('Finish') as FinishScene) : null;
       const hud = game.scene.isActive('Hud') ? (game.scene.getScene('Hud') as HudScene) : null;
-      const menu = finish?.menu ?? (hud?.menu.shown ? hud.menu : null);
+      const select = selectScene();
+      const menu = finish?.menu ?? (hud?.menu.shown ? hud.menu : null) ?? select?.menu ?? null;
       return {
         menu: menu ? Array.from({ length: menu.length }, (_, i) => menu.hitRect(i)) : [],
         index: menu ? menu.index : -1,
         pause: hud && !finish && !hud.menu.shown ? hud.pauseHit : null,
       };
+    },
+
+    select() {
+      const s = selectScene();
+      return s ? { index: s.index, cards: s.cards.map((c, i) => ({ ...c, rect: s.cardRect(i) })) } : null;
     },
 
     leaks() {

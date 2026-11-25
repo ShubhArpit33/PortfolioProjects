@@ -239,8 +239,8 @@ export class GameScene extends Phaser.Scene {
     this.cow = new Cow(this, DEPTH.animal);
     this.troop = new MonkeyTroop(this, DEPTH.animal);
     this.diyas = DIYAS.map((def, i) => new Diya(this, def, i, DEPTH.diya));
-    this.ghost = new GhostBike(this, DEPTH.bike - 1);
-    this.view = new BikeView(this, DEPTH.bike, DEPTH.fx);
+    this.ghost = new GhostBike(this, DEPTH.bike - 1, this.bikeDef.id);
+    this.view = new BikeView(this, DEPTH.bike, DEPTH.fx, this.bikeDef.id);
     this.fx = new Fx(this, DEPTH.fx);
     this.streaks = new BoostStreaks(this, DEPTH.terrain - 1);
     this.popups = new Popups(this, DEPTH.popup);
@@ -338,6 +338,13 @@ export class GameScene extends Phaser.Scene {
     this.scene.stop('Finish');
     this.scene.stop('Hud');
     this.scene.start('Title');
+  }
+
+  /** Leave the run for the bike select (from the pause menu or the finish screen). */
+  toSelect(): void {
+    this.scene.stop('Finish');
+    this.scene.stop('Hud');
+    this.scene.start('Select');
   }
 
   /** Best time so far (ms), or null. Practice runs show it too. */

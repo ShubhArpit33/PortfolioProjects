@@ -39,8 +39,11 @@ export const URL_BIKE = ((): BikeId | null => {
  */
 export function onKeyPress(scene: Phaser.Scene, key: string, fn: () => void): void {
   const seen = new WeakSet<KeyboardEvent>();
+  // A press that happened before this handler existed belongs to the screen that was showing then
+  // (the Enter that opened this scene must not also press its button).
+  const born = typeof performance !== 'undefined' ? performance.now() : 0;
   scene.input.keyboard?.on(`keydown-${key}`, (e: KeyboardEvent) => {
-    if (e.repeat || seen.has(e)) return;
+    if (e.repeat || seen.has(e) || e.timeStamp < born) return;
     seen.add(e);
     fn();
   });

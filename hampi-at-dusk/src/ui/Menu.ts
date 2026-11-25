@@ -10,6 +10,8 @@ export interface MenuItem {
   x: number;
   y: number;
   action: () => void;
+  /** width of the click target (default: the label plus room for the markers and a margin) */
+  hitW?: number;
 }
 
 export class Menu {
@@ -22,7 +24,7 @@ export class Menu {
     this.texts = items.map((it) => pixelText(scene, it.x, it.y, it.label, PAL.cream).setOrigin(0.5, 0).setDepth(depth));
     this.zones = items.map((it, i) => {
       // The target is wider and taller than the text (easy to tap), and does not move with the markers.
-      const zone = scene.add.zone(it.x, it.y + 4, (it.label.length + 6) * 8, 14).setDepth(depth)
+      const zone = scene.add.zone(it.x, it.y + 4, it.hitW ?? (it.label.length + 6) * 8, 14).setDepth(depth)
         .setInteractive({ useHandCursor: true });
       zone.on('pointerover', () => this.select(i));
       zone.on('pointerdown', () => { this.select(i); this.activate(); });

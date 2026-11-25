@@ -1,5 +1,5 @@
 // HUD: a separate UI scene that never scrolls. Timer, diyas, boost bar, crash count, the cp4 hint,
-// the mute tag, the pause button and the pause menu (RESUME / RESTART / MAIN MENU).
+// the mute tag, the bike's name, the pause button and the pause menu (RESUME / RESTART / CHANGE BIKE / MAIN MENU).
 import Phaser from 'phaser';
 import { PAL, mix } from '../art/palette';
 import { soundLabel } from '../audio/sfx';
@@ -12,7 +12,7 @@ import type { GameScene } from './Game';
 const BAR = { x: 412, y: 6, w: 62, h: 9 };
 /** Pause button: top centre, clear of the timer (left) and BOOST / CRASHES (right). */
 const PAUSE_BTN = { x: 240, y: 11, w: 15, h: 11, hitW: 30, hitH: 22 };
-const PANEL = { x: 128, y: 76, w: 224, h: 118 };
+const PANEL = { x: 128, y: 68, w: 224, h: 134 };
 
 export class HudScene extends Phaser.Scene {
   private timer!: Phaser.GameObjects.Text;
@@ -22,6 +22,7 @@ export class HudScene extends Phaser.Scene {
   private best!: Phaser.GameObjects.Text;
   private hint!: Phaser.GameObjects.Text;
   private mute!: Phaser.GameObjects.Text;
+  private bikeName!: Phaser.GameObjects.Text;
   private bar!: Phaser.GameObjects.Graphics;
   private pause!: Phaser.GameObjects.Container;
   private pauseBtn!: Phaser.GameObjects.Graphics;
@@ -48,6 +49,8 @@ export class HudScene extends Phaser.Scene {
     this.mute = pixelText(this, 474, 256, '', PAL.cream).setOrigin(1, 0).setVisible(false);
 
     const game = this.scene.get('Game') as GameScene;
+    // Which bike this is: small, bottom left, out of the way of the road.
+    this.bikeName = pixelText(this, 6, 256, game.bikeDef.name, PAL.graniteLight);
 
     // Pause button (click / tap): a small framed "II".
     const b = PAUSE_BTN;
@@ -71,7 +74,8 @@ export class HudScene extends Phaser.Scene {
     this.menu = new Menu(this, [
       { label: 'RESUME', x: 240, y: p.y + 42, action: () => game.setPaused(false) },
       { label: 'RESTART', x: 240, y: p.y + 58, action: () => game.restartRun() },
-      { label: 'MAIN MENU', x: 240, y: p.y + 74, action: () => game.toTitle() },
+      { label: 'CHANGE BIKE', x: 240, y: p.y + 74, action: () => game.toSelect() },
+      { label: 'MAIN MENU', x: 240, y: p.y + 90, action: () => game.toTitle() },
     ]);
     this.menu.setVisible(false);
     this.wasPaused = false;
@@ -100,8 +104,12 @@ export class HudScene extends Phaser.Scene {
     if (time !== l.time) { l.time = time; this.timer.setText(time); }
     if (game.diyaCount !== l.diyas) { l.diyas = game.diyaCount; this.diyas.setText(`${game.diyaCount}/${DIYAS.length}`); }
     if (game.crashes !== l.crashes) { l.crashes = game.crashes; this.crashes.setText(`CRASHES ${game.crashes}`); }
-
-    if (game.flips !== l.flips) { l.flips = game.flips; this.flips.setText(`FLIPS ${game.flips}`).setVisible(game.flips > 0); }
+    if (game.flips !== l.flips) { l.flips = game.flips; this.flips.setText(`FLIPS ${game.flips}`); }
+    // The finish screen's frame reaches under these, and shows the same numbers itself.
+    const clear = !this.scene.isActive('Finish');
+    this.crashes.setVisible(clear);
+    this.flips.setVisible(clear && game.flips > 0);
+    this.bikeName.setVisible(clear);
 
     const fill = Math.round(game.bike.boost * (BAR.w - 4));
     if (fill !== l.boost || game.boosting !== l.boosting) {

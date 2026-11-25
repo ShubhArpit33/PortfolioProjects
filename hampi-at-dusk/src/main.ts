@@ -5,6 +5,7 @@ import { BootScene } from './scenes/Boot';
 import { FinishScene } from './scenes/Finish';
 import { GameScene } from './scenes/Game';
 import { HudScene } from './scenes/Hud';
+import { SelectScene } from './scenes/Select';
 import { TitleScene } from './scenes/Title';
 import { installTestHooks } from './testHooks';
 
@@ -24,7 +25,7 @@ const game = new Phaser.Game({
     mode: Phaser.Scale.FIT,
     autoCenter: Phaser.Scale.CENTER_BOTH,
   },
-  scene: [BootScene, TitleScene, GameScene, HudScene, FinishScene],
+  scene: [BootScene, TitleScene, SelectScene, GameScene, HudScene, FinishScene],
 });
 
 installAudio();
