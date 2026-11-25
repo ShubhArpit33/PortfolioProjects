@@ -1,43 +1,65 @@
-// The roster (v1.6): each bike keeps its own best / medal / ghost, the pre-roster record moves to the
-// Daybreak, the last pick is remembered, and ?bike= picks a bike for one page load.
+// The roster (v1.6): each bike keeps its own best / medal / ghost, the last pick is remembered, and ?bike=
+// picks a bike for one page load. v1.7: records are version 2 (the 900-column stage); everything stored
+// before is an archive that is never used, changed or removed.
 
 import { BIKE_ORDER } from '../../src/bike/bikes';
-import { STAGE_COLS } from '../../src/level/levelData';
-import { LEGACY_BEST_KEY, PREFS_KEY, bestKey, encodeGhost } from '../../src/progress';
+import { ARCHIVED_BEST_KEYS, PREFS_KEY, bestKey, encodeGhost } from '../../src/progress';
 import { GAME_URL, boot, expect, getState, rideFromTitle, startAt, test } from './helpers';
 
 const storage = (page: Parameters<typeof boot>[0], keys: string[]): Promise<Array<string | null>> =>
   page.evaluate((ks) => ks.map((k) => window.localStorage.getItem(k)), keys);
 
-test('a record from before the roster becomes the Daybreak record; the other bikes start clean', async ({ page }) => {
-  // A plausible old ghost: 12 s of riding at 200 px/s.
+test('records from before v1.7 are an archive: no best, no medal, no ghost comes from them, and they are left exactly as they were', async ({ page }) => {
+  // A plausible old ghost: 12 s of riding at 200 px/s. One record under the pre-roster key and one per bike.
   const ghost = encodeGhost(Array.from({ length: 240 }, (_, i) => ({ x: 40 + i * 10, y: 222, angle: 0 })));
-  const legacy = JSON.stringify({ v: 1, stage: STAGE_COLS, timeMs: 39_500, diyas: 27, flips: 3, ghost });
+  const old = ARCHIVED_BEST_KEYS.map((_, i) => JSON.stringify({ v: 1, stage: 580, timeMs: 32_000 + i * 2000, diyas: 30, flips: 3, ghost }));
+  expect(ARCHIVED_BEST_KEYS).toEqual([
+    'hampi-at-dusk.best', 'hampi-at-dusk.best.tonup', 'hampi-at-dusk.best.daybreak', 'hampi-at-dusk.best.sundowner',
+  ]);
+  expect(BIKE_ORDER.map(bestKey)).toEqual([
+    'hampi-at-dusk.best.v2.tonup', 'hampi-at-dusk.best.v2.daybreak', 'hampi-at-dusk.best.v2.sundowner',
+  ]);
   await boot(page);
-  await page.evaluate(({ k, v }) => window.localStorage.setItem(k, v), { k: LEGACY_BEST_KEY, v: legacy });
-  await boot(page); // reload with the old record in place
+  await page.evaluate(({ keys, values }) => keys.forEach((k, i) => window.localStorage.setItem(k, values[i]!)), { keys: [...ARCHIVED_BEST_KEYS], values: old });
+  await boot(page); // reload with the old records in place
 
-  // Riding the Daybreak: the old best is the time to beat, with its ghost.
-  await rideFromTitle(page);
-  await page.evaluate(() => window.__test!.step(60));
-  let s = await getState(page);
-  expect(s.bike).toBe('daybreak');
-  expect(s.ghost, 'the pre-roster ghost rides with the Daybreak').not.toBeNull();
-  expect(s.ghost!.x).toBeGreaterThan(s.x + 50);
-  const [oldKey, daybreak, tonup, sundowner] = await storage(page, [LEGACY_BEST_KEY, bestKey('daybreak'), bestKey('tonup'), bestKey('sundowner')]);
-  expect(oldKey, 'the legacy key is kept as it was').toBe(legacy);
-  expect(JSON.parse(daybreak!)).toEqual(JSON.parse(legacy));
-  expect([tonup, sundowner]).toEqual([null, null]);
+  // The select screen shows "NO RUN YET" on every card.
+  await page.keyboard.press('Enter');
+  await page.evaluate(() => window.__test!.step(1));
+  await page.waitForFunction(() => window.__test!.screen() === 'select');
+  const cards = (await page.evaluate(() => window.__test!.select()))!.cards;
+  expect(cards.map((c) => [c.bike, c.bestMs, c.medal])).toEqual(BIKE_ORDER.map((b) => [b, null, null]));
 
-  // The other bikes have no best and no ghost.
-  for (const bike of ['tonup', 'sundowner'] as const) {
+  // No bike has a ghost to race.
+  for (const bike of BIKE_ORDER) {
     await startAt(page, 0, bike);
     await page.evaluate(() => window.__test!.step(60));
-    s = await getState(page);
+    const s = await getState(page);
     expect(s.bike).toBe(bike);
     expect(s.ghost, `${bike} has no ghost`).toBeNull();
   }
-  expect(await storage(page, [bestKey('tonup'), bestKey('sundowner')])).toEqual([null, null]);
+
+  // Everything that writes to storage short of a ranked finish: the bike pick (above), G, M, and a practice run to the line.
+  for (const key of ['g', 'g', 'm', 'm', 'm']) {
+    await page.keyboard.press(key);
+    await page.evaluate(() => window.__test!.step(1));
+  }
+  await startAt(page, 11, 'daybreak');
+  const fin = await page.evaluate(() => {
+    const t = window.__test!;
+    t.setInput({ throttle: true, boost: true });
+    for (let i = 0; i < 120 * 30 && !t.state().finished; i++) t.step(1);
+    t.setInput({});
+    t.step(240);
+    return t.finish();
+  });
+  expect(fin!.prevBest).toEqual({ timeMs: null, diyas: null, flips: null });
+
+  // The archive is byte for byte what it was, nothing new sits beside it but the prefs, and no v2 record exists yet.
+  expect(await storage(page, [...ARCHIVED_BEST_KEYS])).toEqual(old);
+  expect(await storage(page, BIKE_ORDER.map(bestKey))).toEqual([null, null, null]);
+  const keys = await page.evaluate(() => Object.keys(window.localStorage).sort());
+  expect(keys).toEqual([...ARCHIVED_BEST_KEYS, PREFS_KEY].sort());
 });
 
 test('the last pick is remembered; ?bike= overrides it for one page load without saving', async ({ page }) => {

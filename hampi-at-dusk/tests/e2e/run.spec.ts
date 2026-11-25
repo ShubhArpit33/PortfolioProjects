@@ -5,13 +5,21 @@
 
 import { BIKES, BIKE_ORDER, BOT_RUN_MS, DEFAULT_BIKE } from '../../src/bike/bikes';
 import { TERRAIN } from '../../src/level/terrain';
-import { GHOST_SAMPLE_STEPS, LEGACY_BEST_KEY, PREFS_KEY, bestKey } from '../../src/progress';
+import { ARCHIVED_BEST_KEYS, GHOST_SAMPLE_STEPS, PREFS_KEY, bestKey, encodeGhost } from '../../src/progress';
 import { boulderMeetX } from '../shared/plan';
 import { advance, planFor, resetBot } from './bot';
 import { boot, expect, getLevel, getState, rideFromTitle, shot as saveShot, test } from './helpers';
 
 /** The bot's measured clean run per bike (ms): a change in feel shows up here first. */
 const EXPECTED_MS = BOT_RUN_MS;
+
+/**
+ * What a v1.6 player has in storage: the pre-roster record and one per bike, from the 580-column stage, all
+ * faster than anything on the new one. v1.7 must neither use nor touch them (records are version 2 now).
+ */
+const OLD_GHOST = encodeGhost(Array.from({ length: 240 }, (_, i) => ({ x: 40 + i * 10, y: 222, angle: 0 })));
+const ARCHIVE: Record<string, string> = Object.fromEntries(ARCHIVED_BEST_KEYS.map((k, i) =>
+  [k, JSON.stringify({ v: 1, stage: 580, timeMs: 32_058 + i * 1000, diyas: 30, flips: i, ghost: OLD_GHOST })]));
 
 for (const bike of BIKE_ORDER) test(`bot on the ${BIKES[bike].name}: full run from the title - 0 crashes, all 56 diyas, gold; then best, ghost and quick restart`, async ({ page }) => {
   test.setTimeout(300_000);
@@ -22,6 +30,10 @@ for (const bike of BIKE_ORDER) test(`bot on the ${BIKES[bike].name}: full run fr
   // The default bike keeps the plain screenshot names; the others get a suffix.
   const shot = (p: typeof page, name: string): Promise<void> => saveShot(p, bike === DEFAULT_BIKE ? name : `${name}-${bike}`);
   await boot(page);
+  await page.evaluate((old) => { for (const [k, v] of Object.entries(old)) window.localStorage.setItem(k, v); }, ARCHIVE);
+  await boot(page); // reload with the old records in place
+  const readArchive = (): Promise<Record<string, string | null>> =>
+    page.evaluate((keys) => Object.fromEntries(keys.map((k) => [k, window.localStorage.getItem(k)])), [...ARCHIVED_BEST_KEYS]);
   const level = await getLevel(page);
   const { plan, lay, riverCp, kickerGap, planner } = planFor(level, CONFIG);
   console.log(`[bot ${bike}] ${planner} planner`);
@@ -51,6 +63,11 @@ for (const bike of BIKE_ORDER) test(`bot on the ${BIKES[bike].name}: full run fr
     s = await advance(page, plan, x);
     await shot(page, name);
   };
+
+  // The old records are not this stage's: there is no best to beat and no ghost to race.
+  await page.evaluate(() => window.__test!.step(0)); // one frame drawn, no game time: a ghost would be at its first pose
+  expect((await getState(page)).ghost, 'no ghost from an archived record').toBeNull();
+  s = await getState(page);
 
   // Warm-up Road: no full run has been finished yet, so the four tutorial prompts show in turn.
   expect(s.prompt).toBe('HOLD RIGHT TO RIDE');
@@ -160,12 +177,15 @@ for (const bike of BIKE_ORDER) test(`bot on the ${BIKES[bike].name}: full run fr
   expect(stored.timeMs).toBe(s.timeMs);
   expect(stored.diyas).toBe(level.diyas.length);
   expect(stored.flips).toBe(0);
-  // This bike's record only: nothing under the other bikes' keys or the pre-roster key.
+  expect(stored.v).toBe(2);
+  expect(stored.stage).toBe(900);
+  // This bike's record only: nothing under the other bikes' keys, and the archive exactly as it was.
   const others = await page.evaluate(
     (keys) => keys.map((k) => window.localStorage.getItem(k)),
-    [LEGACY_BEST_KEY, ...BIKE_ORDER.filter((b) => b !== bike).map(bestKey)],
+    BIKE_ORDER.filter((b) => b !== bike).map(bestKey),
   );
-  expect(others).toEqual([null, null, null]);
+  expect(others).toEqual([null, null]);
+  expect(await readArchive()).toEqual(ARCHIVE);
   // one 7-character sample every 6 steps from time 0, plus the pose on the line
   const runSteps = Math.round((s.timeMs * 120) / 1000);
   expect(stored.ghost.length).toBe((Math.ceil(runSteps / GHOST_SAMPLE_STEPS) + 1) * 7);
@@ -232,8 +252,10 @@ for (const bike of BIKE_ORDER) test(`bot on the ${BIKES[bike].name}: full run fr
   expect(r.x).toBeLessThan(100);
   expect(r.crashes).toBe(0);
 
-  // Back on the title after a reload: the best time and its medal are shown.
+  // Back on the title after a reload: the best time and its medal are shown. The archive is still untouched.
+  expect(await readArchive()).toEqual(ARCHIVE);
   await boot(page);
+  expect(await readArchive()).toEqual(ARCHIVE);
   await page.evaluate(() => window.__test!.step(40));
   await shot(page, 'title-best');
   // ... and the tutorial stays done on the next visit.

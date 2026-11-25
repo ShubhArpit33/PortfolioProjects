@@ -2,7 +2,7 @@
 
 import { BIKES, BIKE_ORDER, DEFAULT_BIKE } from '../../src/bike/bikes';
 import { CHECKPOINTS } from '../../src/level/levelData';
-import { LEGACY_BEST_KEY, bestKey } from '../../src/progress';
+import { ARCHIVED_BEST_KEYS, bestKey } from '../../src/progress';
 import { boot, expect, getLevel, layout, shot as saveShot, startAt, test } from './helpers';
 
 /** The river checkpoint: the last one (cp11 since v1.7). */
@@ -128,12 +128,12 @@ for (const bike of BIKE_ORDER) test.describe(`river jump on the ${BIKES[bike].na
       t.setInput({});
       t.step(240);
       return { data: t.finish(), stored: keys.map((k) => window.localStorage.getItem(k)) };
-    }, [LEGACY_BEST_KEY, ...BIKE_ORDER.map(bestKey)]);
+    }, [...ARCHIVED_BEST_KEYS, ...BIKE_ORDER.map(bestKey)]);
     expect(fin.data).not.toBeNull();
     expect(fin.data!.ranked).toBe(false);
     expect(fin.data!.medal).toBeNull();
     expect([fin.data!.newTime, fin.data!.saved]).toEqual([false, false]);
-    expect(fin.stored).toEqual([null, null, null, null]);
+    expect(fin.stored).toEqual([null, null, null, null, null, null, null]);
     await shot(page, 'finish-practice');
   });
 });

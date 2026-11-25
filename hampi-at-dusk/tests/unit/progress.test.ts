@@ -5,8 +5,9 @@ import {
 import { BIKES, BIKE_ORDER, BOT_RUN_MS } from '../../src/bike/bikes';
 import { STAGE_COLS } from '../../src/level/levelData';
 import {
-  DEFAULT_PREFS, EMPTY_BEST, GHOST_HZ, LEGACY_BEST_KEY, MEDAL_TIMES_MS, PREFS_KEY, bestKey, decodeGhost, encodeGhost, ghostPoseAt,
-  loadBest, loadPrefs, medalFor, nextMedal, saveBest, savePrefs, submitRun,
+  ARCHIVED_BEST_KEYS, DEFAULT_PREFS, EMPTY_BEST, GHOST_HZ, GHOST_MAX_SAMPLES, GHOST_MAX_SECONDS, MEDAL_TIMES_MS, PREFS_KEY,
+  RECORD_VERSION, bestKey, decodeGhost, encodeGhost, ghostPoseAt, loadBest, loadPrefs, medalFor, nextMedal, saveBest, savePrefs,
+  submitRun,
   type Best, type GhostPose, type KeyValueStore, type StoreProvider,
 } from '../../src/progress';
 
@@ -65,6 +66,8 @@ describe('medals', () => {
       expect(m.gold - BOT_RUN_MS[b], b).toBeLessThan(BOT_RUN_MS[b] * 0.05 + 1000);
       expect(m.bronze, b).toBeGreaterThan(2 * BOT_RUN_MS[b]);
       expect(m.gold < m.silver && m.silver < m.bronze, b).toBe(true);
+      // a run with a ghost (up to 180 s) can still be a bronze on every bike
+      expect(m.bronze, b).toBeLessThan(GHOST_MAX_SECONDS * 1000);
     }
     expect(medalFor(53_000, BIKES.tonup.medalsMs)).toBe('gold');
     expect(medalFor(53_001, BIKES.tonup.medalsMs)).toBe('silver');
@@ -107,14 +110,19 @@ describe('best run', () => {
 
   it('ignores malformed records and records from another stage layout', () => {
     const { provider, data } = memoryStore();
-    for (const raw of ['', 'not json', '42', 'null', '[]', '{"v":1}', '{"v":99,"stage":900,"timeMs":1}']) {
+    for (const raw of ['', 'not json', '42', 'null', '[]', '{"v":2}', '{"v":99,"stage":900,"timeMs":1}']) {
       data.set(BEST_KEY, raw);
       expect(loadBest('daybreak', provider), raw).toEqual(EMPTY_BEST);
     }
-    data.set(BEST_KEY, JSON.stringify({ v: 1, stage: STAGE_COLS - 1, timeMs: 30_000, diyas: 5, flips: 0, ghost: '' }));
+    data.set(BEST_KEY, JSON.stringify({ v: RECORD_VERSION, stage: STAGE_COLS - 1, timeMs: 30_000, diyas: 5, flips: 0, ghost: '' }));
     expect(loadBest('daybreak', provider)).toEqual(EMPTY_BEST);
+    // a v1 record (the 580-column stage) under the new key is not a record either, whatever stage it claims
+    for (const stage of [580, STAGE_COLS]) {
+      data.set(BEST_KEY, JSON.stringify({ v: 1, stage, timeMs: 30_000, diyas: 5, flips: 0, ghost: '' }));
+      expect(loadBest('daybreak', provider)).toEqual(EMPTY_BEST);
+    }
     // bad fields are dropped one by one; a broken ghost is dropped but the time is kept
-    data.set(BEST_KEY, JSON.stringify({ v: 1, stage: STAGE_COLS, timeMs: 30_000, diyas: 'many', flips: -3, ghost: 'x!' }));
+    data.set(BEST_KEY, JSON.stringify({ v: RECORD_VERSION, stage: STAGE_COLS, timeMs: 30_000, diyas: 'many', flips: -3, ghost: 'x!' }));
     expect(loadBest('daybreak', provider)).toEqual({ timeMs: 30_000, diyas: null, flips: null, ghost: '' });
   });
 
@@ -169,77 +177,102 @@ describe('best run', () => {
   });
 });
 
-describe('per-bike records (v1.6)', () => {
+describe('per-bike records, version 2 (v1.7)', () => {
   const ghost = encodeGhost([{ x: 40, y: 222, angle: 0 }, { x: 52.5, y: 210, angle: 12 }]);
-  const record = (best: Best): string => JSON.stringify({ v: 1, stage: STAGE_COLS, ...best });
+  /** a record as v1.6 stored it (the 580-column stage) */
+  const oldRecord = (best: Best): string => JSON.stringify({ v: 1, stage: 580, ...best });
 
-  it('each bike has its own key, and a save touches only that key', () => {
+  it('each bike has its own v2 key, and a save touches only that key', () => {
+    expect(RECORD_VERSION).toBe(2);
     expect(BIKE_ORDER.map(bestKey)).toEqual([
-      'hampi-at-dusk.best.tonup', 'hampi-at-dusk.best.daybreak', 'hampi-at-dusk.best.sundowner',
+      'hampi-at-dusk.best.v2.tonup', 'hampi-at-dusk.best.v2.daybreak', 'hampi-at-dusk.best.v2.sundowner',
     ]);
-    expect(LEGACY_BEST_KEY).toBe('hampi-at-dusk.best');
     const { provider, data } = memoryStore();
     const bests: Record<string, Best> = {
-      tonup: { timeMs: 33_000, diyas: 28, flips: 4, ghost },
-      daybreak: { timeMs: 39_000, diyas: 30, flips: 1, ghost: '' },
-      sundowner: { timeMs: 45_500, diyas: 12, flips: 0, ghost },
+      tonup: { timeMs: 51_000, diyas: 50, flips: 4, ghost },
+      daybreak: { timeMs: 61_000, diyas: 56, flips: 1, ghost: '' },
+      sundowner: { timeMs: 71_500, diyas: 12, flips: 0, ghost },
     };
     expect(saveBest('tonup', bests.tonup!, provider)).toBe(true);
-    expect([...data.keys()]).toEqual(['hampi-at-dusk.best.tonup']);
+    expect([...data.keys()]).toEqual(['hampi-at-dusk.best.v2.tonup']);
+    expect(JSON.parse(data.get('hampi-at-dusk.best.v2.tonup')!)).toEqual({ v: 2, stage: 900, ...bests.tonup });
     expect(loadBest('tonup', provider)).toEqual(bests.tonup);
     expect(loadBest('daybreak', provider)).toEqual(EMPTY_BEST);
     expect(loadBest('sundowner', provider)).toEqual(EMPTY_BEST);
     expect(saveBest('daybreak', bests.daybreak!, provider)).toBe(true);
     expect(saveBest('sundowner', bests.sundowner!, provider)).toBe(true);
     for (const b of BIKE_ORDER) expect(loadBest(b, provider), b).toEqual(bests[b]);
-    expect(data.has(LEGACY_BEST_KEY)).toBe(false);
+    expect([...data.keys()].sort()).toEqual(BIKE_ORDER.map(bestKey).sort());
     // a broken record on one bike does not disturb the others
     data.set(bestKey('tonup'), 'not json');
     expect(loadBest('tonup', provider)).toEqual(EMPTY_BEST);
     expect(loadBest('sundowner', provider)).toEqual(bests.sundowner);
   });
 
-  it('migration: a pre-roster record becomes the Daybreak record; the legacy key is kept', () => {
-    const { provider, data } = memoryStore();
-    const old: Best = { timeMs: 38_125, diyas: 30, flips: 2, ghost };
-    data.set(LEGACY_BEST_KEY, record(old));
-    // not for the other bikes, and reading them migrates nothing
-    expect(loadBest('tonup', provider)).toEqual(EMPTY_BEST);
-    expect(loadBest('sundowner', provider)).toEqual(EMPTY_BEST);
-    expect([...data.keys()]).toEqual([LEGACY_BEST_KEY]);
-    // the Daybreak gets it, copied to its own key
-    expect(loadBest('daybreak', provider)).toEqual(old);
-    expect(JSON.parse(data.get(bestKey('daybreak'))!)).toEqual({ v: 1, stage: STAGE_COLS, ...old });
-    expect(data.get(LEGACY_BEST_KEY)).toBe(record(old));
-    expect([...data.keys()].sort()).toEqual([LEGACY_BEST_KEY, bestKey('daybreak')]);
-    // from then on the Daybreak's own record wins, whatever the legacy key says
-    const better: Best = { timeMs: 37_000, diyas: 30, flips: 2, ghost };
-    expect(saveBest('daybreak', better, provider)).toBe(true);
-    data.set(LEGACY_BEST_KEY, record({ ...old, timeMs: 20_000 }));
-    expect(loadBest('daybreak', provider)).toEqual(better);
-    // a worse own record is not "improved" from the legacy key either
-    expect(saveBest('daybreak', { ...old, timeMs: 55_000 }, provider)).toBe(true);
-    expect(loadBest('daybreak', provider).timeMs).toBe(55_000);
-  });
+  it('the old records are an archive: never read, never written, never removed', () => {
+    expect(ARCHIVED_BEST_KEYS).toEqual([
+      'hampi-at-dusk.best', 'hampi-at-dusk.best.tonup', 'hampi-at-dusk.best.daybreak', 'hampi-at-dusk.best.sundowner',
+    ]);
+    // none of them is a key this version uses
+    for (const b of BIKE_ORDER) expect(ARCHIVED_BEST_KEYS).not.toContain(bestKey(b));
 
-  it('migration ignores a malformed or other-layout legacy record', () => {
-    const { provider, data } = memoryStore();
-    for (const raw of ['', 'not json', '42', '{"v":1}', record({ ...EMPTY_BEST, timeMs: 1 }).replace(`"stage":${STAGE_COLS}`, '"stage":1')]) {
-      data.set(LEGACY_BEST_KEY, raw);
-      expect(loadBest('daybreak', provider), raw).toEqual(EMPTY_BEST);
-      expect(data.has(bestKey('daybreak')), raw).toBe(false);
+    // A store that records every access.
+    const data = new Map<string, string>();
+    const reads: string[] = [];
+    const writes: string[] = [];
+    const provider: StoreProvider = () => ({
+      getItem: (k) => { reads.push(k); return data.get(k) ?? null; },
+      setItem: (k, v) => { writes.push(k); data.set(k, v); },
+    });
+    // A v1.6 player's storage: the pre-roster record and one per bike, all better than anything below.
+    const old: Record<string, string> = {
+      'hampi-at-dusk.best': oldRecord({ timeMs: 38_125, diyas: 30, flips: 2, ghost }),
+      'hampi-at-dusk.best.tonup': oldRecord({ timeMs: 32_058, diyas: 30, flips: 0, ghost }),
+      'hampi-at-dusk.best.daybreak': oldRecord({ timeMs: 38_125, diyas: 30, flips: 1, ghost }),
+      'hampi-at-dusk.best.sundowner': oldRecord({ timeMs: 43_992, diyas: 30, flips: 0, ghost }),
+    };
+    for (const [k, v] of Object.entries(old)) data.set(k, v);
+
+    // No bike has a record: the old ones are not migrated, whatever they say.
+    for (const b of BIKE_ORDER) expect(loadBest(b, provider), b).toEqual(EMPTY_BEST);
+    // A first run on each bike is a new best, and is saved under the v2 key.
+    for (const b of BIKE_ORDER) {
+      const u = submitRun(loadBest(b, provider), { timeMs: 80_000, diyas: 40, flips: 0 }, ghost);
+      expect([u.newTime, u.newDiyas, u.newFlips], b).toEqual([true, true, true]);
+      expect(saveBest(b, u.best, provider)).toBe(true);
+      expect(loadBest(b, provider).timeMs, b).toBe(80_000);
     }
+    loadPrefs(provider);
+    savePrefs({ ...loadPrefs(provider), tutorialDone: true }, provider);
+
+    // Every access was to a v2 key or the prefs; the archive was never touched and is byte for byte as it was.
+    const allowed = new Set([...BIKE_ORDER.map(bestKey), PREFS_KEY]);
+    expect(reads.length).toBeGreaterThan(0);
+    expect(writes.length).toBeGreaterThan(0);
+    for (const k of [...reads, ...writes]) expect(allowed.has(k), k).toBe(true);
+    for (const k of ARCHIVED_BEST_KEYS) expect(data.get(k), k).toBe(old[k]);
+    expect([...data.keys()].sort()).toEqual([...ARCHIVED_BEST_KEYS, ...BIKE_ORDER.map(bestKey), PREFS_KEY].sort());
   });
 
-  it('migration works with read-only or throwing storage: the record is still used, nothing escapes', () => {
-    const old: Best = { timeMs: 41_000, diyas: 25, flips: 0, ghost };
+  it('an old record copied to a new key by hand is still not a record (wrong version, wrong stage)', () => {
+    const { provider, data } = memoryStore();
+    data.set(bestKey('daybreak'), oldRecord({ timeMs: 38_125, diyas: 30, flips: 2, ghost }));
+    expect(loadBest('daybreak', provider)).toEqual(EMPTY_BEST);
+    data.set(bestKey('daybreak'), JSON.stringify({ v: 2, stage: 580, timeMs: 38_125, diyas: 30, flips: 2, ghost }));
+    expect(loadBest('daybreak', provider)).toEqual(EMPTY_BEST);
+  });
+
+  it('works with read-only or throwing storage: nothing is loaded, nothing escapes, the archive is not consulted', () => {
+    const reads: string[] = [];
     const readOnly: StoreProvider = () => ({
-      getItem: (k) => (k === LEGACY_BEST_KEY ? record(old) : null),
+      getItem: (k) => { reads.push(k); return ARCHIVED_BEST_KEYS.includes(k) ? oldRecord({ timeMs: 41_000, diyas: 25, flips: 0, ghost }) : null; },
       setItem: () => { throw new Error('QuotaExceededError'); },
     });
-    expect(loadBest('daybreak', readOnly)).toEqual(old);
-    expect(loadBest('daybreak', readOnly)).toEqual(old); // and again: it simply migrates every time
-    expect(loadBest('tonup', readOnly)).toEqual(EMPTY_BEST);
+    for (const b of BIKE_ORDER) {
+      expect(loadBest(b, readOnly)).toEqual(EMPTY_BEST);
+      expect(saveBest(b, { timeMs: 70_000, diyas: 1, flips: 0, ghost: '' }, readOnly)).toBe(false);
+    }
+    expect(reads.sort()).toEqual(BIKE_ORDER.map(bestKey).sort());
     for (const provider of [throwingAccess, throwingMethods]) {
       for (const b of BIKE_ORDER) expect(loadBest(b, provider)).toEqual(EMPTY_BEST);
     }
@@ -268,6 +301,19 @@ describe('ghost', () => {
   it('survives positions above the screen and at the end of the 900-column stage', () => {
     const [p] = decodeGhost(encodeGhost([{ x: 14384, y: -40.5, angle: -179 }]));
     expect(p).toEqual({ x: 14384, y: -40.5, angle: -179 });
+    expect(STAGE_COLS * 16).toBeLessThan(36 ** 3 / 2); // three base-36 digits of half pixels cover the stage
+  });
+
+  it('is kept for runs up to 180 s (v1.7): long enough for a bronze on every bike, about 25 kB at most', () => {
+    expect(GHOST_MAX_SECONDS).toBe(180);
+    expect(GHOST_MAX_SAMPLES).toBe(3600);
+    expect(GHOST_MAX_SAMPLES * 7).toBeLessThan(26_000);
+    // the slowest bronze (the Sundowner's, 153 s) still has a ghost
+    expect((BIKES.sundowner.medalsMs.bronze / 1000) * GHOST_HZ).toBeLessThan(GHOST_MAX_SAMPLES);
+    // a full-length recording round-trips
+    const long: GhostPose[] = Array.from({ length: GHOST_MAX_SAMPLES }, (_, i) => ({ x: 40 + i * 3.98, y: 222, angle: 0 }));
+    expect(decodeGhost(encodeGhost(long))).toHaveLength(GHOST_MAX_SAMPLES);
+    expect(ghostPoseAt(decodeGhost(encodeGhost(long)), 179.9)).not.toBeNull();
   });
 
   it('rejects malformed data', () => {

@@ -3,7 +3,7 @@
 // Everything that touches storage goes through try/catch: localStorage can be missing, full, or throw
 // on access (private windows, blocked site data, sandboxed frames). The game must play the same without it.
 
-import { BIKES, DEFAULT_BIKE, isBikeId, type BikeId, type MedalTimes } from './bike/bikes';
+import { BIKES, BIKE_ORDER, DEFAULT_BIKE, isBikeId, type BikeId, type MedalTimes } from './bike/bikes';
 import { STAGE_COLS } from './level/levelData';
 
 // ---------------------------------------------------------------------------------------------
@@ -44,8 +44,9 @@ export function nextMedal(timeMs: number, targets: MedalTimes = MEDAL_TIMES_MS):
 export const GHOST_HZ = 20;
 /** Fixed steps (1/120 s) between two ghost samples. */
 export const GHOST_SAMPLE_STEPS = 120 / GHOST_HZ;
-/** Runs longer than this are not kept as a ghost (keeps the stored string under about 17 kB). */
-export const GHOST_MAX_SAMPLES = GHOST_HZ * 120;
+/** Runs longer than this (180 s, v1.7) are not kept as a ghost: the stored string stays under about 25 kB. */
+export const GHOST_MAX_SECONDS = 180;
+export const GHOST_MAX_SAMPLES = GHOST_HZ * GHOST_MAX_SECONDS;
 
 export interface GhostPose { x: number; y: number; angle: number }
 
@@ -155,13 +156,17 @@ export interface KeyValueStore {
 /** Returns the store, or throws / returns null when there is none. */
 export type StoreProvider = () => KeyValueStore | null | undefined;
 
-/** The single record of v1.3 - v1.5 (one bike). Read once to seed the Daybreak's record; never written or removed. */
-export const LEGACY_BEST_KEY = 'hampi-at-dusk.best';
-/** Each bike keeps its own best run and ghost (v1.6). */
-export const bestKey = (bike: BikeId): string => `${LEGACY_BEST_KEY}.${bike}`;
+/** Bumped whenever old records stop being comparable. v2 = the 900-column stage of v1.7. */
+export const RECORD_VERSION = 2;
+const KEY_ROOT = 'hampi-at-dusk.best';
+/** Each bike keeps its own best run and ghost, under a key that carries the record version. */
+export const bestKey = (bike: BikeId): string => `${KEY_ROOT}.v${RECORD_VERSION}.${bike}`;
+/**
+ * The records of the 580-column stage (v1.3 - v1.6): the single pre-roster key and one per bike. They are
+ * an archive: this version never reads, writes or removes them. (The name is only here so tests can check that.)
+ */
+export const ARCHIVED_BEST_KEYS: readonly string[] = [KEY_ROOT, ...BIKE_ORDER.map((b) => `${KEY_ROOT}.${b}`)];
 export const PREFS_KEY = 'hampi-at-dusk.prefs';
-/** Bumped (with the stage length) whenever old records stop being comparable. */
-const RECORD_VERSION = 1;
 
 /** The browser's localStorage. Even reading the property can throw, so callers wrap this. */
 export const browserStore: StoreProvider = () =>
@@ -200,20 +205,12 @@ function parseBest(raw: unknown): Best | null {
 }
 
 /**
- * Load a bike's bests. Anything missing, malformed or from another stage layout comes back as "no run yet".
- *
- * Migration (v1.6): records from before the roster were all ridden on the Daybreak. While the Daybreak has
- * no record of its own, the legacy record is used and copied to the Daybreak's key (if storage allows).
- * The legacy key is left alone, and it is never read for another bike or once the Daybreak has a record.
+ * Load a bike's bests. Anything missing, malformed, from another record version or from another stage
+ * layout comes back as "no run yet". Only the bike's own v2 key is read: records from before v1.7 are
+ * left where they are and never looked at (there is no migration; the old stage was a different one).
  */
 export function loadBest(bike: BikeId = DEFAULT_BIKE, store: StoreProvider = browserStore): Best {
-  const own = read(bestKey(bike), store);
-  if (own !== null) return parseBest(own) ?? { ...EMPTY_BEST };
-  if (bike !== DEFAULT_BIKE) return { ...EMPTY_BEST };
-  const legacy = parseBest(read(LEGACY_BEST_KEY, store));
-  if (legacy === null) return { ...EMPTY_BEST };
-  saveBest(bike, legacy, store);
-  return legacy;
+  return parseBest(read(bestKey(bike), store)) ?? { ...EMPTY_BEST };
 }
 
 /** Save a bike's bests. Returns false (and changes nothing else) when storage is unavailable or throws. */
