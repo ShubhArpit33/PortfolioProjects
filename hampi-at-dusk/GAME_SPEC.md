@@ -338,11 +338,16 @@ Animated details are a pure function of game time and camera scroll (no tweens, 
     a short smoked screen) around a round headlamp; a long flat tank with a silver stripe and knee recesses; a single seat
     with a humped cowl; low clip-ons; upswept megaphone silencers; wire wheels; gold fork legs and shock springs; an exposed
     finned twin with polished covers. The rider is tucked in behind the screen: black leathers, silver helmet.
-  - `bike_daybreak`: a modern naked twin in red and black. An angular, peaked tank with shrouds; a short, sharp, upswept
-    tail; upright tubular bars and a mirror; exposed engine and frame; cast wheels; a compact headlamp low in a dark housing;
-    a stubby underslung silencer. The rider sits upright: brown jacket, cream helmet with a gold band (the v1.0 rider).
+  - `bike_daybreak` (redrawn in v1.6.1): a retro roadster in deep metallic red and chrome. A rounded teardrop tank (full
+    at the front, tapering to the seat) with a highlight and a thin cream pinstripe; a long flat ribbed seat with a red
+    side panel under it; an upright air-cooled single with rows of cooling fins and a round polished case cover; deep
+    chrome mudguards wrapping both tyres; one long low chrome silencer running back past the rear axle; a round chrome
+    headlamp with twin clocks above it; a wide upright bar and a round mirror on a stalk; twin rear shocks; wire-spoke
+    wheels with chrome rims. No fairing or screen. The rider sits bolt upright: brown jacket, cream helmet with a gold
+    band (the v1.0 rider).
   - `bike_sundowner`: a long, low cruiser in celestial blue with a cream tank panel and a lot of chrome. A big teardrop
-    tank; a large round chrome headlamp; wide pulled-back bars; forward foot controls; a stepped two-tier seat; a chunky
+    tank; a large round chrome headlamp; wide pulled-back bars; forward foot controls set just ahead of the engine (knee
+    bent, not a straight leg; v1.6.1); a stepped two-tier seat; a chunky
     raked fork; a fat rear tyre under a deep mudguard and a slimmer front; twin long pipes running back past the rear axle.
     The rider leans back with feet forward: tan jacket, open-face helmet, dark glasses.
 - Per bike as well: the planted leg (`leg_<id>`), the exhaust tip (where the boost flame and the smoke puffs come from),

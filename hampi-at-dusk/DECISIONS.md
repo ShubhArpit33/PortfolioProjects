@@ -482,6 +482,29 @@ accepted because the two-hop route exists); Ton-Up safe / clean landing 25° / 7
     across, so the contact points do not move.
 20. **PNG overrides** (section 6.4) are now per bike: `bike_<id>`, `wheel_<...>`, `leg_<id>`; `bike_body` and `wheel` are gone.
 
+### v1.6.1: art pass after the first play (sprites only; no physics, stats, medals or level change)
+21. **Daybreak redrawn as a retro roadster.** The v1.6 sprite was a sharp modern naked bike (angular tank and shrouds,
+    pointed tail, cast wheels, stubby silencer). The tribute wanted is the retro single-cylinder roadster, so the body and
+    wheel were redrawn: a rounded teardrop tank in deep metallic red (highlight on top, thin cream pinstripe), a long flat
+    ribbed seat, a red side panel, an upright air-cooled single (chrome fins with dark gaps, a round case cover, the
+    header down the front of the cylinder), deep chrome mudguards on both wheels, one long low chrome silencer ending
+    behind the rear axle, a round chrome headlamp with twin clocks, a wide upright bar with a round mirror, twin shocks,
+    wire-spoke wheels with a chrome rim inside a full tyre. Same rider (brown jacket, cream helmet, gold band), bolt
+    upright; the forearm now runs level to the bar so the whole tank shows. Still no lettering, badges or logos.
+22. **Told apart from the Ton-Up** (which also has spokes): upright with no fairing or screen, red not green, a round
+    tank not a long flat one, a flat seat not a hump, chrome mudguards, one fat low silencer not upswept megaphones, a
+    single column of fins not a wide twin. From the Sundowner: one short fat silencer from mid-bike, not two thin pipes
+    the length of the bike; mid-set pegs; chrome guards, not painted ones.
+23. **Daybreak exhaust tip** moved with the silencer: `exhaustX` -9 to -22 (the flame and smoke now come out behind the
+    rear axle). Sprite description only. Tagline: "THE ALL-ROUNDER. A CLASSIC ROADSTER."
+24. **Sundowner pegs back 2 px.** The boot was at columns 28-32, over the front tyre, with the shin raked far forward.
+    It is now at 26-30, just ahead of the engine and the frame's downtube, with the knee one pixel further back and a
+    steeper shin: still feet-forward, knee bent near a right angle. (3 px was tried: the boot then hid the engine cover.)
+25. **Tests:** the Daybreak's pixel test was rewritten for the new bike (tank, pinstripe, side panel, flat seat, fins and
+    gaps, both mudguards, silencer, lamp, mirror, open wire wheel). Counts unchanged: Vitest 176, Playwright 28. All
+    previews in `test-results/shots` were re-rendered and checked by eye (riding, standing, reverse, boost, hop, flip,
+    landing, crash, respawn, finish, select).
+
 ### Measured (v1.6; unit tests and e2e, the same numbers as the proposal)
 
 | | Ton-Up | Daybreak | Sundowner |

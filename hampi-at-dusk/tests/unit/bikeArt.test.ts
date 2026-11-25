@@ -114,18 +114,37 @@ describe('bike sprites: each is its own bike', () => {
     expect(count(tonup, 26, 10, 42, 16, isBlue) + count(tonup, 26, 10, 42, 16, isRed)).toBe(0);
   });
 
-  it('Daybreak: a red naked bike, rider upright, sharp tail, stubby low exhaust, no fairing', () => {
-    expect(count(daybreak, 22, 10, 34, 18, isRed), 'tank and shrouds').toBeGreaterThanOrEqual(45);
-    expect(count(daybreak, 4, 12, 15, 16, isRed), 'tail').toBeGreaterThanOrEqual(14);
-    expect(count(daybreak, 4, 12, 6, 13, () => true), 'the tail ends in a raised point').toBeGreaterThanOrEqual(3);
+  it('Daybreak: a red retro roadster, rider upright: teardrop tank, flat seat, finned single, chrome mudguards, one long low silencer', () => {
+    // the tank: a full red teardrop with a highlight and a cream pinstripe, fuller at the front than at the seat
+    const isTank = (p: Px): boolean => { const [r, g, b] = rgb(p.c); return r > 90 && r > g + 50 && r > b + 40; }; // red, its highlight and its shadow
+    expect(count(daybreak, 21, 10, 32, 16, isTank), 'tank').toBeGreaterThanOrEqual(40);
+    expect(count(daybreak, 25, 14, 31, 14, isBright) + count(daybreak, 31, 13, 31, 13, isBright), 'pinstripe').toBeGreaterThanOrEqual(6);
+    expect(count(daybreak, 27, 10, 32, 16, isTank), 'front half of the tank').toBeGreaterThan(count(daybreak, 21, 10, 26, 16, isTank));
+    expect(count(daybreak, 16, 18, 20, 19, isRed), 'side panel under the seat').toBeGreaterThanOrEqual(8);
+    // a long flat seat: two rows of black from the tail to the tank, nothing humped or kicked up behind the rider
+    for (const row of [15, 16]) expect(count(daybreak, 7, row, 16, row, (p) => !isRed(p) && !isBright(p)), `seat row ${row}`).toBeGreaterThanOrEqual(9);
+    expect(count(daybreak, 0, 0, 16, 14, () => true), 'nothing above the seat behind the rider').toBe(0);
     // upright: the helmet is over the seat, well above the tank, and behind the Ton-Up's
     expect(count(daybreak, 20, 1, 26, 6, () => true)).toBeGreaterThanOrEqual(30);
-    expect(count(daybreak, 28, 0, 47, 3, () => true), 'no screen or fairing ahead of the rider').toBe(0);
+    expect(count(daybreak, 28, 0, 47, 2, () => true), 'no screen or fairing ahead of the rider').toBe(0);
     expect(count(daybreak, 0, 0, 47, 31, (p) => p.a < 1), 'no glass').toBe(0);
-    // the exhaust stays low: no bright pipe above the axle line behind the engine
-    expect(count(daybreak, 3, 18, 13, 23, isBright)).toBe(0);
-    expect(count(daybreak, 14, 24, 21, 27, () => true), 'silencer by the rear wheel').toBeGreaterThanOrEqual(20);
-    expect(count(daybreak, 38, 13, 39, 14, isLamp), 'small headlamp').toBeGreaterThanOrEqual(2);
+    // an upright single: bright cooling fins with dark gaps between them, in one narrow column under the tank
+    for (const row of [18, 20]) expect(count(daybreak, 24, row, 29, row, isBright), `fin on row ${row}`).toBe(6);
+    for (const row of [17, 19, 21]) expect(count(daybreak, 24, row, 28, row, isBright), `gap on row ${row}`).toBe(0);
+    // chrome mudguards wrapping both tyres
+    expect(count(daybreak, 2, 18, 12, 23, isBright), 'rear mudguard').toBeGreaterThanOrEqual(14);
+    expect(count(daybreak, 31, 19, 43, 23, isBright), 'front mudguard').toBeGreaterThanOrEqual(14);
+    // one long low silencer running back past the rear axle (column 11), not upswept
+    expect(count(daybreak, 3, 25, 20, 25, isBright), 'silencer').toBe(18);
+    expect(count(daybreak, 3, 24, 10, 25, isBright), 'it ends behind the axle').toBeGreaterThanOrEqual(12);
+    // round headlamp with a bright bezel, a round mirror on a stalk
+    expect(count(daybreak, 37, 12, 38, 13, isLamp), 'headlamp').toBeGreaterThanOrEqual(3);
+    expect(count(daybreak, 35, 11, 36, 14, isBright), 'lamp shell and bezel').toBeGreaterThanOrEqual(6);
+    expect(count(daybreak, 32, 3, 35, 5, isBright), 'mirror').toBeGreaterThanOrEqual(8);
+    // wire wheels: a chrome rim inside a full tyre, mostly open between the spokes
+    const wheel = render('wheel_daybreak');
+    expect(count(wheel, 2, 2, 9, 9, isBright), 'rim and hub').toBeGreaterThanOrEqual(20);
+    expect(count(wheel, 3, 3, 8, 8, () => true), 'open between the spokes').toBeLessThanOrEqual(22);
     expect(count(daybreak, 0, 0, 47, 31, isGreen) + count(daybreak, 0, 9, 47, 31, isBlue)).toBe(0);
   });
 

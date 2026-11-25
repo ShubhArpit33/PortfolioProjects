@@ -34,10 +34,10 @@ export const BIKE_SPRITES: Readonly<Record<BikeId, BikeSprite>> = {
     ...BODY, body: 'bike_tonup', rearWheel: 'wheel_tonup', frontWheel: 'wheel_tonup',
     leg: 'leg_tonup', legX: -3, exhaustX: -21, exhaustY: -10,
   },
-  // stubby underslung silencer, ending just ahead of the rear axle
+  // one long low silencer, ending behind the rear axle
   daybreak: {
     ...BODY, body: 'bike_daybreak', rearWheel: 'wheel_daybreak', frontWheel: 'wheel_daybreak',
-    leg: 'leg_daybreak', legX: -1, exhaustX: -9, exhaustY: -6,
+    leg: 'leg_daybreak', legX: -1, exhaustX: -22, exhaustY: -6,
   },
   // long low pipes running back past the rear axle; fat rear tyre, slimmer front
   sundowner: {

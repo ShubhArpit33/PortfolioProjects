@@ -1,4 +1,4 @@
-// The three bikes, drawn in code (v1.6). Each is a tribute to a real kind of motorcycle, in the same
+// The three bikes, drawn in code (v1.6; the Daybreak redrawn as a retro roadster in v1.6.1). Each is a tribute to a real kind of motorcycle, in the same
 // pixel scale as the rest of the game (wheels 12 px across). No logos, badges or lettering anywhere.
 //
 // A body texture is 48 x 32: its bottom edge is the ground, the wheel centres are at (11, 26) and
@@ -137,14 +137,18 @@ const TONUP_WHEEL: readonly string[] = [
 ];
 
 // ---------------------------------------------------------------------------------------------------
-// DAYBREAK: a modern naked twin. Angular tank with shrouds, a short sharp tail, upright bars, exposed
-// engine and frame, cast wheels, a compact headlamp and a stubby underslung exhaust. Rider upright.
+// DAYBREAK: a retro roadster (v1.6.1). A rounded teardrop tank in deep metallic red, a long flat ribbed
+// seat, an upright air-cooled single with cooling fins, deep chrome mudguards front and rear, one long
+// low chrome silencer, a round chrome headlamp, twin clocks, a wide upright bar with a round mirror,
+// twin rear shocks and wire-spoke wheels. No fairing, no screen. Rider bolt upright.
 // ---------------------------------------------------------------------------------------------------
 
-const RED = 0xa3231f;
+const RED = 0xa81c24;
 const DAYBREAK: Legend = {
-  R: RED, r: mix(RED, PAL.cream, 0.22), d: mix(RED, PAL.ink, 0.45),
-  C: CHROME, c: STEEL, E: IRON, K: BLACK, k: FRAME, N: 0x18131a,
+  R: RED, r: mix(RED, PAL.cream, 0.3), w: mix(RED, PAL.cream, 0.62), d: mix(RED, PAL.ink, 0.45),
+  S: 0xf0e2bf,                       // cream pinstripe
+  C: CHROME, c: STEEL, E: IRON, K: BLACK, k: FRAME, L: 0xf6f3ea,
+  n: 0x5e5666,                       // seat ribs
   Y: LAMP, W: PAL.cream, T: TAIL,
   J: PAL.brown, j: mix(PAL.brown, PAL.cream, 0.3), q: mix(PAL.brown, PAL.ink, 0.4),
   P: mix(PAL.skyTop, PAL.chrome, 0.38), p: mix(mix(PAL.skyTop, PAL.chrome, 0.38), PAL.ink, 0.35),
@@ -153,69 +157,74 @@ const DAYBREAK: Legend = {
 };
 
 const DAYBREAK_BODY: readonly Seg[] = [
-  // frame: main spar from the headstock to the swingarm pivot, subframe, plate hanger
-  [13, 32, 'kk'], [14, 31, 'kk'], [15, 30, 'kk'], [16, 29, 'kk'], [17, 27, 'kkk'], [18, 21, 'kk'], [19, 20, 'kk'],
-  [20, 20, 'k'], [21, 20, 'k'], [22, 20, 'k'], [23, 20, 'kk'],
-  [17, 11, 'kkkkkkkkkkk'], [16, 9, 'kkk'],
-  [17, 8, 'kk'], [18, 7, 'k'], [19, 6, 'k'], [20, 5, 'kk'],
+  // frame: single downtube from the headstock, rail under the seat
+  [13, 32, 'k'], [14, 32, 'k'], [15, 32, 'k'], [16, 32, 'k'], [17, 32, 'k'], [18, 31, 'kk'], [19, 31, 'k'], [20, 31, 'k'],
+  [21, 31, 'k'], [22, 31, 'k'], [23, 31, 'k'], [24, 30, 'kk'],
+  [17, 9, 'kkkkkkkkkkkkk'],
   // swingarm
-  [23, 17, 'cccc'], [24, 13, 'ccccccccc'], [25, 10, 'ccccccc'], [26, 10, 'cCc'],
-  // radiator
-  [17, 31, 'N'], [18, 30, 'Nc'], [19, 30, 'Nc'], [20, 30, 'Nc'], [21, 30, 'Nc'], [22, 30, 'N'],
-  // engine: compact water-cooled twin
-  [18, 23, 'cccccc'], [19, 22, 'EEEEEEEE'], [20, 22, 'EcEEEEcE'], [21, 21, 'EEEEEEEEE'],
-  [22, 21, 'EEcccccEE'], [23, 22, 'EcCCCcEE'], [24, 22, 'EcCCCcEE'], [25, 22, 'EEcccEE'],
-  // exhaust: header under the engine, stubby silencer by the rear wheel
-  [21, 30, 'c'], [22, 29, 'cc'], [23, 30, 'c'], [24, 30, 'c'], [25, 29, 'cc'], [26, 22, 'cccccccc'],
-  [24, 16, 'ccccc'], [25, 15, 'CEEEEEE'], [26, 15, 'CEEEEEE'], [27, 16, 'EEEE'],
-  // fork (upside-down: dark tube, bright leg) and front mudguard
-  [16, 34, 'Ec'], [17, 34, 'Ec'], [18, 34, 'Ec'], [19, 35, 'Ec'], [20, 35, 'Ec'], [21, 35, 'Ec'],
+  [24, 15, 'ccccc'], [25, 10, 'ccccccc'], [26, 10, 'cCc'],
+  // deep chrome rear mudguard, tail light on its end
+  [18, 6, 'CLLLLLL'], [19, 4, 'CCCccccc'], [20, 3, 'CC'], [21, 2, 'Cc'], [22, 2, 'Cc'], [23, 2, 'c'],
+  [18, 4, 'TT'],
+  // twin rear shocks (chrome spring over a dark body)
+  [17, 14, 'Cc'], [18, 14, 'CE'], [19, 13, 'CE'], [20, 13, 'CE'], [21, 12, 'CE'], [22, 12, 'CE'], [23, 11, 'Cc'],
+  // side panel under the seat
+  [18, 16, 'rRRRR'], [19, 16, 'RRRRR'], [20, 17, 'dddd'],
+  // engine: an upright single. Rocker cover, five rows of cooling fins, a round polished case cover
+  [16, 24, 'cCCCCc'],
+  [17, 24, 'EEEEE'], [18, 24, 'CCCCCC'], [19, 25, 'EEEE'], [20, 24, 'CCCCCC'], [21, 25, 'EEEE'],
+  [22, 22, 'ccccccc'], [23, 21, 'ccCCCCCcc'], [24, 21, 'ccCLLCCcc'], [25, 22, 'cCCCCCc'],
+  // exhaust: header down the front of the cylinder, under the engine, one long low silencer
+  [17, 29, 'CC'], [18, 30, 'C'], [19, 30, 'C'], [20, 30, 'C'], [21, 30, 'C'], [22, 30, 'C'], [23, 30, 'C'], [24, 30, 'C'],
+  [25, 29, 'CC'], [26, 20, 'cCCCCCCCCC'],
+  [24, 6, 'LLLLLLLLLLLLLL'], [25, 3, 'CCCCCCCCCCCCCCCCCC'], [26, 5, 'ccccccccccccccc'], [25, 2, 'K'],
+  // deep chrome front mudguard
+  [19, 34, 'LLLLLL'], [20, 32, 'CCC'], [20, 39, 'CCC'], [21, 31, 'cC'], [21, 41, 'CC'], [22, 42, 'Cc'], [23, 43, 'c'],
+  // fork: shrouded top, bright stanchion, lower leg
+  [15, 34, 'EE'], [16, 34, 'EE'], [17, 34, 'EE'], [18, 35, 'cC'], [19, 35, 'cC'], [20, 35, 'cC'], [21, 35, 'cC'],
   [22, 36, 'cC'], [23, 36, 'cC'], [24, 36, 'cC'], [25, 36, 'cC'],
-  [19, 33, 'RR'], [19, 37, 'RRRR'], [20, 32, 'd'], [20, 41, 'd'],
-  // tail: pillion pad, sharp upswept cowl, tail light
-  [13, 9, 'KKKKKKK'], [14, 9, 'KKKKKKK'],
-  [12, 5, 'rr'], [13, 5, 'RRRR'], [14, 6, 'RRR'], [15, 7, 'RRRRRRRRR'], [16, 10, 'dddddd'], [13, 4, 'T'],
-  // rider seat
-  [15, 15, 'KKKKKKKK'], [16, 16, 'KKKKKK'],
-  // tank: angular, peaked, with a black shroud reaching forward
-  [10, 26, 'rrrr'], [11, 24, 'rrRRRRRR'], [12, 22, 'RRrrrrRRRRR'], [13, 22, 'RRRRRRRRRRRR'], [14, 22, 'RRRRRRRRRRRRR'],
-  [15, 22, 'dRRRRRRRdRRRR'], [16, 23, 'ddddddRdNNRR'], [17, 28, 'ddNNRd'], [18, 30, 'dd'],
-  // headlamp: small and low, in a dark angular housing; instruments above
-  [12, 35, 'EEE'], [13, 35, 'EEEYW'], [14, 35, 'NEEYY'], [15, 36, 'NN'],
-  [10, 34, 'EE'], [11, 33, 'EEE'],
-  // upright bar, grip, mirror
-  [9, 32, 'E'], [10, 32, 'E'], [8, 30, 'KKE'], [7, 33, 'E'], [6, 33, 'E'], [5, 33, 'EE'], [4, 33, 'EE'],
+  // long flat seat, the ribs catching the light along its top
+  [15, 7, 'nnKnnKnnKnnKnnKn'], [16, 8, 'KKKKKKKKKKKKKKK'],
+  // teardrop tank: full and round at the front, tapering to the seat; highlight, cream pinstripe
+  [10, 25, 'rrrrrr'], [11, 23, 'rrwwwrRRR'], [12, 22, 'rRRRRRRRRR'], [13, 21, 'RRRRRRRRRRSR'], [14, 21, 'RRRRSSSSSSRR'],
+  [15, 24, 'RRRRRRRR'], [16, 26, 'ddddd'],
+  // round headlamp, chrome shell and bezel; twin clocks above it
+  [11, 35, 'cCL'], [12, 34, 'cCLYY'], [13, 34, 'cCLWY'], [14, 35, 'cCL'],
+  [9, 34, 'LC'], [10, 34, 'EE'],
+  // wide upright bar, grip, round mirror on a stalk
+  [11, 33, 'c'], [10, 32, 'C'], [9, 32, 'C'], [8, 30, 'KKC'],
+  [7, 33, 'c'], [6, 33, 'c'], [5, 33, 'CC'], [4, 32, 'CLLC'], [3, 33, 'CC'],
   // rider: leg down to the mid-set peg
-  [14, 17, 'PPPPPPPP'], [15, 19, 'PPPPPPP'], [16, 23, 'ppP'], [17, 23, 'pP'], [18, 22, 'pP'], [19, 22, 'pP'],
-  [20, 22, 'pP'], [21, 22, 'pP'], [22, 21, 'BBBB'], [23, 21, 'BB'],
+  [14, 17, 'PPPPPPPP'], [15, 19, 'PPPPPP'], [16, 22, 'pP'], [17, 22, 'pP'], [18, 22, 'pP'], [19, 21, 'pP'],
+  [20, 21, 'pP'], [21, 21, 'pP'], [22, 20, 'BBBB'], [23, 20, 'BB'],
   // torso, upright
   [7, 20, 'jJJJJJ'], [8, 19, 'jJJJJJJ'], [9, 18, 'jJJJJJJJ'], [10, 18, 'qJJJJJJ'], [11, 17, 'qJJJJJJJ'],
   [12, 17, 'qJJJJJJ'], [13, 17, 'qqJJJJJ'], [14, 17, 'qq'],
   // arm out to the bar, glove
-  [8, 24, 'qq'], [9, 24, 'qqqqq'], [10, 26, 'qqqq'], [9, 29, 'q'], [8, 30, 'BB'], [9, 30, 'B'],
+  [8, 24, 'qqqqqq'], [9, 25, 'qqqq'], [8, 30, 'BB'], [7, 30, 'B'],
   // helmet
   [1, 21, 'HHHHH'], [2, 20, 'GGGGGGG'], [3, 20, 'HHHHHKK'], [4, 20, 'HHHHHKK'], [5, 20, 'hHHHHHH'], [6, 21, 'hhhHH'],
 ];
 
-/** Cast wheel: dark rim, three broad spokes, a brake disc at the hub. */
+/** Wire-spoke wheel: a full tyre, a bright chrome rim, laced spokes. */
 const DAYBREAK_WHEEL: readonly string[] = [
   '....KKKK....',
   '..KKKKKKKK..',
-  '.KKEEccEEKK.',
-  '.KE..cc..EK.',
-  'KKE..cc..EKK',
-  'KKE.cCCc.EKK',
-  'KKEccCCccEKK',
-  'KKEc.cc.cEKK',
-  '.KEc....cEK.',
-  '.KKEE..EEKK.',
+  '.KKcCCCCcKK.',
+  '.KKC.c..CKK.',
+  'KKC.c..c.CKK',
+  'KKCc.CC..CKK',
+  'KKC..CC.cCKK',
+  'KKC.c..c.CKK',
+  '.KKC..c.CKK.',
+  '.KKcCCCCcKK.',
   '..KKKKKKKK..',
   '....KKKK....',
 ];
 
 // ---------------------------------------------------------------------------------------------------
 // SUNDOWNER: a long, low cruiser. Big teardrop tank, a large round chrome headlamp, wide pulled-back
-// bars, feet forward, a stepped two-tier seat, a chunky fork, a fat rear tyre under a deep mudguard,
+// bars, feet forward (pegs just ahead of the engine, knees bent), a stepped two-tier seat, a chunky fork, a fat rear tyre under a deep mudguard,
 // twin long chrome pipes. Rider laid back.
 // ---------------------------------------------------------------------------------------------------
 
@@ -270,9 +279,9 @@ const SUNDOWNER_BODY: readonly Seg[] = [
   [9, 32, 'Kc'],
   // wide pulled-back bar, grip, mirror
   [10, 31, 'C'], [9, 27, 'CCCCC'], [8, 29, 'c'], [7, 29, 'c'], [6, 28, 'CC'], [5, 28, 'CC'],
-  // rider: leg stretched out to the forward peg
-  [15, 16, 'PPPPPPPP'], [16, 18, 'PPPPPPPPP'], [17, 25, 'pPP'], [18, 26, 'pPP'], [19, 27, 'pPP'], [20, 27, 'pPP'],
-  [21, 28, 'pP'], [22, 28, 'BBBBB'], [23, 28, 'BBB'],
+  // rider: knee bent, shin down to the forward peg just ahead of the engine
+  [15, 16, 'PPPPPPPP'], [16, 18, 'PPPPPPPP'], [17, 24, 'pPP'], [18, 24, 'pPP'], [19, 25, 'pPP'], [20, 25, 'pPP'],
+  [21, 26, 'pP'], [22, 26, 'BBBBB'], [23, 26, 'BBB'],
   // torso, leaning back
   [7, 15, 'jjjjj'], [8, 14, 'qJJJJJJ'], [9, 14, 'qJJJJJJ'], [10, 14, 'qJJJJJJ'], [11, 14, 'qJJJJJJ'], [12, 15, 'qJJJJJ'],
   [13, 15, 'qJJJJJJ'], [14, 15, 'qqJJJJJ'], [15, 16, 'q'],
