@@ -1071,3 +1071,6 @@ so the times are comparable; a run with crashes costs more now than it did with 
 - `MAX_HELMETS` is 10 (was 5; the user's call). +1 per new stage is still capped at the maximum; game over still restarts the stage on a full set.
 - The journey finish shows helmets left as one icon and `n/10` (ten icons do not fit beside GAME OVERS). The HUD, game over and stage card rows show all ten.
 - Tests now read `MAX_HELMETS` instead of a literal 5 where they can, so the next change is one line.
+
+## v1.9.2 — seven helmets
+- `MAX_HELMETS` is 7 (the user's call after trying 10). Everything else as v1.9.1; the finish screen keeps the icon + `n/7` count.
