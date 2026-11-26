@@ -884,3 +884,185 @@ fills this in, and calls `setTheme`.
 ## v1.8.1 — diyas pop, bobber mirror
 - Diyas get their own halo (`glow_diya`: radius 13, strength glow x 1.9, flicker alpha 0.85..1) so they pop more; the rest of the stage's lights stay at the subtle level (user's call).
 - Sundowner mirror sits 2 px lower on a shorter stalk (user: "a bit lower").
+
+## v1.9 — the Journey (stage framework, lives, four checkpoints)
+
+Asked for: Goa and Ladakh are coming, so the game becomes a journey. The bike is picked once. Lives decide when it is
+over. Checkpoints get rarer, so a crash matters. This round builds the framework and the journey around Hampi alone;
+no Goa or Ladakh content. Nothing about the road changed: the bot's three runs are still 49 908, 59 517 and 69 150 ms.
+
+### The user's rules (built as given)
+1. **Two ways in from the title:** JOURNEY (highlighted) and STAGES.
+2. **Journey:** title → bike select (once) → the stages in order → the journey finish. The order is a list
+   (`JOURNEY_ORDER` in `src/stages/index.ts`); it is `['hampi']` until Goa exists, so today the journey is
+   Hampi → journey finish.
+3. **5 helmets.** A crash costs one. Helmets carry over; entering the next stage gives one back, up to 5. A bad landing
+   in the warm-up zone is a wobble, not a crash, so it costs nothing.
+4. **Game over** (no helmets): a short GAME OVER screen, then the stage being ridden starts again with 5 helmets. The
+   bike and the stages already cleared are kept.
+5. **RESTART STAGE** in a journey's pause menu costs a helmet. With one left it is the last one: game over, then the
+   stage with 5.
+6. **Checkpoints: 4** (12 before): the start, the middle, before the Temple Steps, before the river.
+7. **STAGES:** a list of the stages; one a journey has reached can be ridden on its own, exactly as the game was until
+   now (no lives, medals, ghost, retry, best times); the others are shown locked. Hampi is always open.
+8. **Journey finish:** the total time; each stage's time, medal and collectibles; the bike's best journey time.
+9. **Stage card** between two stages ("NEXT: STAGE 2 OF 3", the stage's name).
+10. **Pause menu:** RESUME / RESTART STAGE / QUIT JOURNEY in a journey; RESUME / RESTART / CHANGE BIKE / MAIN MENU in
+    a single run.
+11. **HUD:** a row of helmets in a journey; the stage's name top centre in both modes.
+12. **Music on the menus only**, and the stage card and the journey finish are menus.
+
+### Decisions made while building
+1. **Hampi's four checkpoints** are columns 2, 422, 726 and 842: the start, the Ruins Road breather (47% of the way,
+   where nothing can hurt), the foot of the Temple Steps and the river's run-up. All four were checkpoints before, so
+   every respawn spot is one already measured. The middle one is the user's "around the middle"; it could as well be
+   342 (the Boulder Field) or 506 (the Mandapa Run).
+2. **Hints left the checkpoints.** "HOP ON THE RAMP!", "HOP UP THE STEPS!" and "HOLD SHIFT - BOOST!" are a list of
+   their own (`stage.hints`: a column and a text), at the columns they always came up at; the empty hint at 774
+   clears the steps' hint on the terrace as before. A hint standing on a checkpoint shows again on a respawn there.
+   The tutorial prompts (`stage.prompts`) are unchanged.
+3. **C costs a helmet** in a journey, like a crash. If it were free it would be the way out of every crash about to
+   happen. **R does nothing** in a journey (a hint says the restart is in the pause menu): one stray key press must
+   not cost a helmet and the stage.
+4. **A journey's time** is the sum of the runs that cleared each stage. The time of an attempt that ended in a game
+   over goes with it; the cost of a game over is riding the stage again.
+5. **A journey does not touch the single-run records.** No best, medal or ghost is written by a journey stage, and no
+   ghost rides in a journey (G says so). The medal on the stage card and the journey finish is what that time would
+   earn on that stage and bike. The journey keeps its own record: the best total per bike and route.
+6. **A journey is not saved.** Closing the page ends it. Unlocks and bests are saved as they happen.
+7. **The journey best belongs to a route** (the stage ids, joined). When Goa is added the journey becomes
+   `hampi+goa`, a new record; the Hampi-only bests stay in storage under their own keys and are not compared with it.
+8. **Reaching** a stage unlocks it (the moment the journey gets there), not clearing it.
+9. **The stage card is not shown before the first stage** or after a game over: only between two stages.
+10. **GAME OVER** comes up over the wreck when the tumble ends (1 s), without the fade a respawn has. The clock stops.
+    It stays for 3 s of game time; Enter skips it after its first half second (a held key cannot skip it unseen).
+11. **"CHECKPOINT" stays on the screen.** The popup stood in the world over the lamp, so at riding speed it slid off
+    the left edge while still fully lit (216 px in its 0.9 s at 240 px/s). It is now pinned to the screen where it
+    appeared, never closer than 6 px to an edge, for 1.2 s. Other popups are as they were.
+12. **Tests start anywhere.** Eight of the twelve old checkpoints are gone, and tests started at them, so there is a
+    test hook to start a practice run at rest at any column (`__test.startAtCol`; the checkpoint is the last one at
+    or before it). The same columns are used, by name (`SPOT` in `tests/e2e/helpers.ts`).
+13. **A second stage for the tests only.** `__test.addTestStage(id, name)` registers a copy of Hampi under another
+    id, so the e2e suite rides a real two-stage journey: the stage card, the helmet given back, the unlock, the locked
+    row in the list, a stage's own storage key and its own terrain textures. The shipped registry is Hampi alone.
+
+### The stage framework
+- **`src/level/level.ts`** (new): what every stage shares. The tile, the baseline, the water lines, the screen, the
+  start wall, and the shapes stage data is written in (`Section`, `Segment`, `Checkpoint`, `DiyaDef`, `ObstacleDef`,
+  `CowDef`, `MonkeysDef`, `BoulderDef`, `PromptDef`, `HintDef`, `DecorDef`).
+- **`src/stages/stage.ts`** (new): `StageDef`, `defineStage` (checks a stage and builds its terrain and medal targets),
+  `medalsFor`, and `levelOf` (the stage as plain data, for the bot).
+- **`src/stages/hampi.ts`**: `levelData.ts`, moved. The same numbers, as one `StageDef` (`HAMPI`).
+- **`src/stages/index.ts`** (new): the registry (`registerStage`, `stages()`, `stageDef(id)`, `stageNumber`,
+  `FIRST_STAGE`) and `JOURNEY_ORDER`.
+- **Nothing reads a stage's data any other way.** The Game scene, the HUD, the entities, the terrain bake, the
+  parallax, the records, the headless simulator and the bot's planner all take a `StageDef` (or a piece of one). The
+  physics takes the stage's terrain as an argument and has no default; the world's end comes from the terrain's width.
+- **Bikes are physics only.** `BOT_RUN_MS` and the medal targets moved from `bikes.ts` to the stage
+  (`stage.botRunMs`, `stage.medalsMs[bike]`).
+- **The look per stage:** `useStageLook(scene, stage)` sets the stage's theme, bakes its layers the first time, bakes
+  the shared light and mist textures again when the theme changes, and bakes the stage's terrain under its own keys
+  (`terrain_<stage>_<n>`). The menus use the first stage's look. (With one theme the swap has never run with two
+  different themes: round 2 is its first real use.)
+
+**`StageDef`:**
+
+| Field | What it is |
+|---|---|
+| `id`, `name` | `'hampi'`, `'HAMPI AT DUSK'` (the id is in storage keys and in the journey's order) |
+| `theme` | its `StageTheme` (v1.8) |
+| `collectible` | `{ texture, glow, label }`: `diya`, `glow_diya`, `DIYAS` |
+| `cols`, `sections` | the road; the sections must add up to `cols` |
+| `checkpoints` | 3 or 4, ids 0..n-1 in column order, each on solid ground |
+| `collectibles` | where the pickups are (`{ col, h }`) |
+| `hazards` | `{ obstacles, cow, monkeys, boulder }`; `null` for what a stage does not have |
+| `safeZone` | the no-crash warm-up, or `null` |
+| `prompts`, `hints` | tutorial prompts (first run only) and hints (every run) |
+| `finish` | `{ col, art }`: the line and the texture standing on it |
+| `kicker`, `bonus` | the flip ramps, or `null` |
+| `decor`, `boats` | decoration on the road; the boats on the river, or `null` |
+| `botRunMs` | the measured bot run per bike |
+| `width`, `terrain`, `medalsMs` | built by `defineStage` |
+
+**What a new stage needs:** a theme (`src/art/themes/<stage>.ts`), a data file that ends in `defineStage({...})`, one
+`registerStage` line and one entry in `JOURNEY_ORDER`. New hazard kinds (Goa's sand and crabs, Ladakh's ice) need
+their own entry in `hazards`, an entity, and a line in the Game scene, the simulator and the bot's planner. The bot's
+planner still expects a river and a kicker; it has to learn stages without them.
+
+### The journey (`src/journey.ts`, pure; `src/journeyRun.ts`, the session's one journey and its records)
+- A `Journey` is `{ bike, route, index, helmets, results, gameOvers, status }`, and never changes: `startJourney`,
+  `loseHelmet`, `restartAfterGameOver`, `clearStage` each return a new one. `status` is `riding`, `gameover` or `done`.
+- `journeyRun.ts` holds the journey being ridden and keeps a copy of the unlocks and the journey bests in memory, so
+  both work when storage is blocked (the same pattern as the single-run bests).
+
+### Storage
+| Key | Holds |
+|---|---|
+| `hampi-at-dusk.best.v3.<stage>.<bike>` | a single run's bests and ghost: `{ v: 3, stage, cols, timeMs, diyas, flips, ghost }` |
+| `hampi-at-dusk.journey.v1.<route>.<bike>` | the best journey time: `{ v: 1, route, timeMs }`; `<route>` is the stage ids joined with `+` |
+| `hampi-at-dusk.unlocks` | `{ v: 1, stages: [...] }`: the stages a journey has reached |
+| `hampi-at-dusk.prefs` | unchanged |
+| `hampi-at-dusk.best.v2.<bike>` | v1.7 – v1.8 records: read for the migration, never written or removed |
+| `hampi-at-dusk.best`, `hampi-at-dusk.best.<bike>` | the 580-column stage's records: still an archive, never read |
+
+**Migration:** when a bike has no v3 record on Hampi, its v2 record (`v: 2`, `stage: 900`) is used: best, medal and
+ghost. It is copied to the v3 key when storage allows, and the v2 key is left exactly as it was. Once the v3 record
+exists the v2 key is not read again. Only into Hampi, and only while Hampi is 900 columns. The stage is the same road,
+so the times are comparable; a run with crashes costs more now than it did with twelve checkpoints.
+
+### Screens
+- **Title:** JOURNEY / STAGES on a dim plate, with one line about the highlighted one (JOURNEY's line becomes the
+  picked bike's best journey time once there is one).
+- **Stages** (`src/scenes/Stages.ts`): one row per registered stage. An open one shows its fastest single run of any
+  bike, that bike and its medal; a locked one a padlock and "REACH IT ON A JOURNEY". Up / Down go through the rows
+  and then BACK, so what Enter does is always what is highlighted.
+- **Bike select:** opened for a journey (cards show each bike's best journey time; BACK is the title) or for a single
+  run of a stage (cards show that stage's best and medal; BACK is the list). A small tag top left says which.
+- **Stage card** and **Journey finish** (`StageCard.ts`, `JourneyFinish.ts`): overlays on the stopped game, like the
+  single run's finish screen. The journey finish offers NEW JOURNEY, STAGES and MAIN MENU.
+- **HUD:** the stage's name under the pause button. In a journey, five helmets where a single run shows its best time;
+  the one just lost blinks. The GAME OVER panel is the HUD's. The helmet icon is 17 × 15 (a first one at 13 × 11
+  read as a yellow blob): a yellow full-face helmet, red stripe, dark visor with a glint; a spent one is hollow.
+  Under the stage card and the journey finish the HUD's corners (timer, diyas, boost) are hidden, as the frames are
+  wider than a single run's finish screen.
+
+### Measured
+| | Ton-Up | Daybreak | Sundowner |
+|---|---|---|---|
+| Bot run (unit simulator and the real game, single run and journey) | 49.908 s | 59.517 s | 69.150 s |
+| Legs between the four checkpoints (s) | 24.3 / 17.2 / 6.4 / 2.0 | 28.9 / 20.6 / 7.7 / 2.4 | 33.5 / 24.1 / 9.1 / 2.5 |
+| Longest leg, as a share of the run | 49% | 49% | 48% |
+
+### Tests
+- **Existing tests that changed, and why.**
+  - `tests/unit/physics.test.ts`: imports (the level data is `src/stages/hampi`; the physics helpers are bound to
+    Hampi's terrain at the top of the file); the layout test (4 checkpoints, the hints list); the "legs" test (every
+    leg under 10.5 s became: four legs, the first under 34 s and under half the run, each shorter than the one
+    before); the standing starts (cp9 → cp2; cp3 and cp10 are columns 232 and 774 now); cp numbers in the
+    Ruins Road, riser and boulder suites.
+  - `tests/unit/progress.test.ts`: version 3 keys and record shape; a stage's own records; the v2 → v3 migration
+    (3 tests); the journey's records (2 tests); medal targets come from the stage. 22 → 28 tests.
+  - e2e: `rideFromTitle` goes title → STAGES → Hampi → bike select. Checkpoint numbers and starts in `boulder`,
+    `flip`, `menu`, `reverse`, `river`, `roster`, `run`, `select`, `sprites`, `storage`, `tutorial` and the look shots
+    (`startAtCol` where the checkpoint is gone; a crash on the terrace now respawns at the foot of the steps, one in
+    the pavilion at the start). Storage keys (`best.v3.hampi.<bike>`) in `menu`, `river`, `roster`, `run`, `select`.
+    The select screen's Esc and BACK go to the STAGES list. The scene count in the leak tests is 9 (was 6). The
+    title's click target is its menu. `?cp=11` is `?cp=3`.
+- **New.** `tests/unit/journey.test.ts` (15: start, helmets, game over, +1 capped at 5, the total, unlocks),
+  `tests/unit/stages.test.ts` (10: the registry, Hampi's definition, the decoration's positions, `defineStage`'s
+  checks), `tests/e2e/journey.spec.ts` (5: the journey from the title with the bot to the journey finish and its
+  records; crashes to game over and the restart with 5; both pause menus; the STAGES list, its lock, the stage card
+  and the unlock over a two-stage test route; the music on the stage card and the journey finish), and a v2 → v3
+  migration test in `roster.spec.ts`.
+- **Counts.** Vitest 276 → **307** (physics 228, progress 28, journey 15, stages 10, bike art 13, look 13).
+  Playwright 34 → **40**. The bot's runs in the real game: 49 908, 59 517 and 69 150 ms, as a single run and as a
+  journey stage.
+
+### Open questions (v1.9)
+- The first leg is half the stage (29 s on the Daybreak). That is what four checkpoints with one "around the middle"
+  gives; moving the middle one earlier (342 or 262) would even the legs out.
+- Should a cleared journey stage count for the single-run best and ghost? Today it does not.
+- A journey is lost when the page is closed.
+- The title's subtitle is "STAGE 1: HAMPI AT DUSK" while the journey has one stage, and "A ROAD TRIP IN n STAGES" after.
+- The ambience's firefly zones and the birds-to-bats change are still Hampi's constants (as in v1.8).
+- Switching between two different themes has not run yet (there is one theme).

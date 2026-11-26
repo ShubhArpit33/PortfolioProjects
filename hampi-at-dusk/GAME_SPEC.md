@@ -1,4 +1,4 @@
-# OPEN ROADS: INDIA — Game Spec (v1.8, one stage, three bikes)
+# OPEN ROADS: INDIA — Game Spec (v1.9, the journey; one stage so far, three bikes)
 
 The game was renamed from "Hampi at Dusk" (v1.6.5); Hampi at Dusk is now the name of Stage 1.
 
@@ -29,6 +29,11 @@ simplest option and write it down in `DECISIONS.md`.
 >
 > v1.8 (HD look, round 1): art only. The background, the road's texture, the glows and the mist come from a shared
 > look system with one theme per stage (sections 6.1, 6.2, 6.5). Physics, level, timings and medals are unchanged.
+>
+> v1.9 (the journey): the game is a journey through the stages on one bike and 5 helmets, with single runs of a stage
+> beside it (sections 8, 8.2). A stage is one object (`StageDef`, section 5.4) in a registry, so Goa and Ladakh plug
+> in; only Hampi exists so far. Hampi has 4 checkpoints instead of 12 (section 5.2). Records are version 3, per stage
+> and bike, and the version 2 records carry over (section 8.1). The road, the physics and the bot's runs are unchanged.
 
 ---
 
@@ -60,17 +65,17 @@ Commands that must work: `npm run dev`, `npm run build`, `npm test`.
 | Shift | Boost: while held, meter > 0 and grounded, acceleration is `boostAccel` (replaces `accel`, no throttle needed) and the cap is `boostSpeed`. No regen while held. When boost ends, speed above `topSpeed` decays at `brake` rate. The meter starts full. No effect in the air. The meter drains only while boost is actually applied (held, grounded, meter > 0); in the air it neither drains nor regenerates. |
 | H | Honk (two-tone "pom-pom") |
 | M | Sound: cycles all sound -> music off -> everything muted (remembered) |
-| P / Esc | Pause menu (Resume / Restart / Main menu) |
-| R | Restart the run from the start, at once (also on the finish screen). Timer, diyas, crashes and flips reset |
-| C | Back to the last checkpoint (counts as a crash; the timer keeps running) |
-| G | Show / hide the ghost of the best run (remembered) |
-| Enter | Start (title screen), ride again (finish screen) |
+| P / Esc | Pause menu. A single run: Resume / Restart / Change bike / Main menu. A journey: Resume / Restart stage (costs a helmet) / Quit journey |
+| R | A single run: restart it from the start, at once (also on the finish screen). Timer, diyas, crashes and flips reset. In a journey R does nothing (a hint points to the pause menu): a restart there costs a helmet |
+| C | Back to the last checkpoint (counts as a crash, so in a journey it costs a helmet; the timer keeps running) |
+| G | Show / hide the ghost of the best run (remembered). Single runs only: no ghost rides in a journey |
+| Enter | Pick the highlighted option on every menu; ride again (a single run's finish screen); ride on (the stage card); skip the GAME OVER screen |
 
 Speed along the slope is clamped to ≥ 0 (no rolling back).
 
 The game captures Space and the arrow keys so they never scroll the page.
 
-URL params: `?debug=1` (hitboxes, FPS, bike state readout, terrain line), `?cp=N` (start at checkpoint N, 0–11; a practice run: no medal, best or ghost), `?renderer=canvas` (Canvas renderer, used by tests).
+URL params: `?debug=1` (hitboxes, FPS, bike state readout, terrain line), `?cp=N` (start a single run at checkpoint N, 0–3 on Hampi; a practice run: no medal, best or ghost), `?stage=<id>` (the stage of that practice run; default the first), `?renderer=canvas` (Canvas renderer, used by tests).
 
 ---
 
@@ -258,7 +263,7 @@ in a crash-free run.
 - Stage length 900 tiles = 14 400 px (v1.7; was 580, and 360 before v1.3).
 - Column `c` covers x = 16c … 16c+15.
 
-### 5.1 Terrain segments (authoritative; implement as data in `src/level/levelData.ts`)
+### 5.1 Terrain segments (authoritative; Hampi's are data in `src/stages/hampi.ts`)
 
 `flat N` = N columns at the current height. `ramp N +R` / `ramp N −R` = rise or fall R tiles in a straight line over N columns.
 `gap N` = N columns of water (no surface). `cliff hK` = instant drop to height K (vertical wall).
@@ -298,12 +303,12 @@ longer beat (19 columns). A hop at top speed covers 12 columns, so there are 5 c
 
 **Section 7, Hemakuta Rocks:** two rollers, then the kicker. The kicker ramp ends over a stepped tank: rolling off it at top
 speed falls in the water; a hop taken anywhere on the ramp clears it with big air (the flip spot), and so does boost alone.
-The tank is the one gap that boost can cross without a hop. The hint "HOP ON THE RAMP!" shows at the section's checkpoint.
+The tank is the one gap that boost can cross without a hop. The hint "HOP ON THE RAMP!" shows at column 616 (section 5.2).
 
 **Section 8, Temple Steps (v1.7):** three risers 16 columns apart (hop, land, hop: each hop leaves a wide window for the
 next), then a 46-column terrace at h3. When the bike reaches column 781 a boulder starts rolling toward it from the temple
 doorway at column 811 (section 5.2): one hop clears it. Then three one-tile drops back to h0, which are simply rolled.
-The hint "HOP UP THE STEPS!" shows at the section's checkpoint and is cleared at the terrace checkpoint.
+The hint "HOP UP THE STEPS!" shows at the section's checkpoint and is cleared on the terrace (column 774).
 
 ### 5.2 Entities (x = column, h = height above baseline in tiles)
 
@@ -312,7 +317,8 @@ Pickup: a circle of `diyaRadius` overlapping the bike AABB.
 
 | Type | Positions | Notes |
 |---|---|---|
-| Checkpoint (deepastambha, a stone lamp pillar) | cp0 x2 · cp1 x122 · cp2 x182 · **cp3 x232** · cp4 x262 · cp5 x342 · **cp6 x422** · cp7 x506 · cp8 x616 · **cp9 x726** · **cp10 x774** · cp11 x842 | 12 (v1.7; bold = new). Lamp lights up with a glow when passed. cp3 is inside the canal run, 104 px before the widest canal; cp10 is on the terrace, 7 columns before the boulder's trigger. Hints: cp8 "HOP ON THE RAMP!", cp9 "HOP UP THE STEPS!", cp11 "HOLD SHIFT - BOOST!". A checkpoint without a hint clears the one showing. No leg between two checkpoints is longer than about 10 s on any bike. |
+| Checkpoint (deepastambha, a stone lamp pillar) | cp0 x2 · cp1 x422 · cp2 x726 · cp3 x842 | **4** (v1.9; 12 in v1.7): the start, the Ruins Road breather in the middle of the stage, the foot of the Temple Steps, the river's run-up. Lamp lights up with a glow when passed; a crash goes back to the last one passed. Legs between them on a clean run: 24 / 17 / 6 / 2 s (Ton-Up), 29 / 21 / 8 / 2 s (Daybreak), 34 / 24 / 9 / 3 s (Sundowner). "CHECKPOINT" pops up over the lamp and keeps its place on the screen. |
+| Hint (v1.9: its own list, not a checkpoint's) | x616 "HOP ON THE RAMP!" · x726 "HOP UP THE STEPS!" · x774 (clears it) · x842 "HOLD SHIFT - BOOST!" | Blinking HUD text for 5 s when the bike reaches the column (x = 16·col + 8), on every run. A hint replaces the one showing; the empty one clears it. One that stands on a checkpoint (x726, x842) shows again when the bike respawns there. |
 | Diya (brass oil lamp, collectible) | Warm-up: x10 h1, x14 h1, x18 h1 · x36 h3 (over the log) · x54 h1, x60 h1, x66 h1, x72 h1 (the boost strip) · x88 h2, x89 h2 (the roller's crest) — Bazaar to Boulder Field: x138 h1, x142 h1, x146 h1 · x189 h3, x200 h3, x213 h3, x223 h3, x229 h3, x241 h3 · x277 h3, x319 h4, x333 h3 · x354 h3, x378 h4, x384 h3, x396 h3 — Ruins Road: x428 h1, x432 h1, x436 h1 · x446 h2, x450 h4 (up the bonus ramp) · x458 h3 (under its drop) · x470 h1, x476 h1, x482 h1, x488 h1 — Mandapa: x529 h4, x537 h2, x546 h4, x554 h2, x563 h4, x582 h5 — Rocks: x629 h2, x641 h4, x647 h7, x672 h7, x675 h8, x678 h7, x714 h2 — Temple Steps: x738 h3, x754 h4, x770 h5 (one over each riser) · x803 h6 (over the spot where the boulder is met) · x819 h3, x824 h2 (under the first two drops) — x872 h5 (over the river) | **56 total** (v1.7; the 30 of v1.6 moved with their sections). Flame flickers. Pick-up radius `diyaRadius`. x396 needs a hop on the up-ramp; x384 is collected by rolling off the cliff without hopping. Mandapa: one over each pillar and the cart, two on the plinth between hops. Rocks: x629 and x714 on roller crests (free), x641 and x647 on the arc of a hop taken on the second roller's up-ramp, x672–x678 on the arc of a hop taken mid-way up the kicker (an early or late hop misses the last one). The warm-up's and the breather's are all on the plain riding line (only x36, over the log, needs its hop). |
 | Log (v1.7) | x36 | 1 wide × 0.5 tall (16 × 8 px). **Not solid**: the bike box touching it is one stumble per contact (speed × `monkeyStumbleFactor`, "BUMP!"), never a crash. |
 | Fallen pillar | x276, x304, x332 · x528, x545, x562 (on the plinth) | 3 wide × 1 tall, solid → crash |
@@ -321,13 +327,13 @@ Pickup: a circle of `diyaRadius` overlapping the bike AABB.
 | Colonnade | behind the plinth, columns 520–598 | Decoration only (v1.3): standing pillars and lintels in a dark, low-contrast tone, behind every entity |
 | Ruins and the temple doorway (v1.7) | ruins at columns 426, 462, 478, 493; doorway at 808–813 | Decoration only, in the colonnade's tone and behind every entity: broken halls and a small shrine along Ruins Road; the doorway the boulder rolls out of, on the terrace |
 | Monkey troop | trigger x288 | When bike x ≥ 16·288, two monkeys (12×12 hitboxes) spawn at x = 16·298 and 16·300, run left at 40 px/s to x = 16·292 and 16·294, and sit. A honk with \|bike x − monkey x\| ≤ `honkRange` makes them leap away and become non-collidable at once. Contact = one stumble (speed × `monkeyStumbleFactor`, wobble), no crash; then that monkey leaps away. |
-| Cow | x164 | Left column 164, box 32×24 (2 wide × 1.5 tall), standing on the road. Honk only shows a "..." bubble (the cow doesn't care). Wait within 3 tiles at under 20 px/s for 1.5 s and it walks right at 20 px/s for 2 s, fades out and becomes non-solid. Hopping over it also works. Resets on respawn at cp0 or cp1. She is the first thing in the stage that can crash the bike. |
+| Cow | x164 | Left column 164, box 32×24 (2 wide × 1.5 tall), standing on the road. Honk only shows a "..." bubble (the cow doesn't care). Wait within 3 tiles at under 20 px/s for 1.5 s and it walks right at 20 px/s for 2 s, fades out and becomes non-solid. Hopping over it also works. Resets on a respawn at cp0. She is the first thing in the stage that can crash the bike. |
 | Coracles | river, below the jump | Decoration, bobbing slowly |
 | Finish (ruined temple gateway) | x892 | Triggers at bike x ≥ 16·892 while not crashed: the timer stops, the run is scored (section 8.1), input is ignored, the bike auto-brakes, and the finish screen shows. The world ends in an invisible wall at x = 14 384. |
 
 ### 5.3 Tutorial (v1.7)
 
-Until the player has finished **one full run** (a ranked run from cp0, on any bike), the HUD shows a prompt for where
+Until the player has finished **one full run** (a ranked single run from cp0, or a stage of a journey, on any bike), the HUD shows a prompt for where
 the bike is on the Warm-up Road. Prompts are steady text in the UI font on a dim plate at the top centre, below the
 checkpoint hint; ASCII only.
 
@@ -339,9 +345,38 @@ checkpoint hint; ASCII only.
 | 78–99 | IN THE AIR: UP / DOWN TO TILT |
 
 "Done" is `tutorialDone` in the prefs (default false) plus a copy in memory for the page session. It is set when a
-ranked run crosses the line; a practice run does not count. When storage is missing or throws, the prefs read "not
+ranked run or a journey stage crosses the line; a practice run does not count. When storage is missing or throws, the prefs read "not
 done", so the prompts show on every visit, and the in-memory copy still switches them off for the rest of the session.
 The rules of the Warm-up Road (the log, the no-crash zone) do not depend on the prompts.
+
+### 5.4 A stage is one object (v1.9)
+
+Everything above is Hampi's data, held in one `StageDef` (`src/stages/stage.ts`; Hampi's is `HAMPI` in
+`src/stages/hampi.ts`). The Game scene, the HUD, the entities, the terrain bake, the records and the bot all take a
+`StageDef`; nothing reads a stage's data any other way. What all stages share (the tile, the baseline, the water lines,
+the screen, the shapes the data is written in) is in `src/level/level.ts`.
+
+| Field | What it is |
+|---|---|
+| `id`, `name` | `'hampi'`, `'HAMPI AT DUSK'`. The id is in storage keys and in the journey's order. |
+| `theme` | its `StageTheme` (section 6.5) |
+| `collectible` | what its pickups are: `{ texture, glow, label }` (Hampi: `diya`, `glow_diya`, `DIYAS`) |
+| `cols`, `sections` | the road (section 5.1); the sections must add up to `cols` |
+| `checkpoints` | 3 or 4, ids 0..n-1 in column order, each on solid ground |
+| `collectibles` | where the pickups are (`{ col, h }`) |
+| `hazards` | `{ obstacles, cow, monkeys, boulder }`; `null` for what the stage does not have |
+| `safeZone` | the no-crash warm-up, or `null` |
+| `prompts`, `hints` | tutorial prompts (section 5.3) and hints (section 5.2) |
+| `finish` | `{ col, art }`: the line's column and the texture that stands on it |
+| `kicker`, `bonus` | the flip ramps, or `null` |
+| `decor`, `boats` | decoration standing on the road; the boats bobbing on the river, or `null` |
+| `botRunMs` | the bot's measured clean run per bike |
+| `width`, `terrain`, `medalsMs` | built by `defineStage`: the width in px, the heightfield, the medal targets per bike (section 8.1) |
+
+`defineStage` refuses a stage whose sections do not add up, whose checkpoints are out of order or over a gap, or whose
+finish line is off the road. The stages are registered in `src/stages/index.ts` (`registerStage`), in riding order;
+`JOURNEY_ORDER` there lists the ids the journey rides. Adding a stage is one line in each. A bike is its physics only
+(`src/bike/bikes.ts`); bot runs and medal targets belong to a stage.
 
 The cow and the monkeys are there for humour and local flavour. Keep them friendly, never harmed: the bike only stops or stumbles
 (a fast hit on the cow crashes the bike, not the cow).
@@ -526,21 +561,49 @@ pixel size throughout.
 
 All on-screen text is ASCII only. Wait for `document.fonts.load('8px "Press Start 2P"')` before the Title scene.
 
-- **Flow (v1.6):** Title → **Bike select** → ride. `?cp=N` skips both and starts a practice run on the selected bike.
-- **Title:** the parallax scene slowly auto-scrolls; "OPEN ROADS: INDIA" in UI yellow with "STAGE 1: HAMPI AT DUSK" under it; "PRESS ENTER" (Enter, click or tap:
-  opens the bike select); a controls hint; the bike picked last rides across, and its best time is shown with its name and
-  medal once there is one ("DAYBREAK BEST 00:59.51").
+- **Flow (v1.9):** Title → **JOURNEY** → bike select (once) → the stages in order (a **stage card** between two) →
+  **journey finish**; or Title → **STAGES** → a stage → bike select → a single run → its finish screen.
+  `?cp=N` skips the menus and starts a practice single run on the selected bike.
+- **Title:** the parallax scene slowly auto-scrolls; "OPEN ROADS: INDIA" in UI yellow with "STAGE 1: HAMPI AT DUSK" under it
+  (with more than one stage in the journey: "A ROAD TRIP IN n STAGES"); a menu on a dim plate: **JOURNEY** (highlighted)
+  and **STAGES** (Up / Down + Enter, or click / tap), with one line about the highlighted one (for JOURNEY, the picked
+  bike's best journey time once there is one: "DAYBREAK JOURNEY BEST 00:59.51"); a controls hint; the bike picked last
+  rides across.
+- **Stages (v1.9):** "STAGES" over the dimmed parallax, one row per registered stage in the pixel-frame style (yellow
+  frame on the highlighted one): its number and name; for an unlocked stage the fastest single run of any bike, that
+  bike's name and its medal, or "NO RUN YET"; for a locked one a padlock, "LOCKED" and "REACH IT ON A JOURNEY", all dim.
+  Up / Down move through the stages and then BACK (wrapping), Enter opens the bike select for the highlighted stage (on
+  a locked stage: a note, nothing else), Esc or BACK returns to the title. A click or tap on a row highlights it, a second one picks it. The first stage is
+  always unlocked; any other once a journey has reached it.
 - **Bike select (v1.6):** "CHOOSE YOUR RIDE" over the dimmed parallax. Three cards side by side in the pixel-frame style
   (yellow frame on the highlighted one): the bike at 3× idling on a strip of road (the highlighted one revs: wheels turning,
   rider leaning in), its name, five stat bars of five pips (SPEED, PULL, BOOST, FLIP, GRIP; section 3.1), and that bike's
   own best time and medal or "NO RUN YET". Below: the highlighted bike's one-line tagline, RIDE / BACK, and the key hint.
-  Left / Right move the highlight (wrapping); Enter rides; Esc goes back to the title; Up / Down move between RIDE and BACK.
+  Left / Right move the highlight (wrapping); Enter rides; Up / Down move between RIDE and BACK.
   A click or tap on a card highlights it, a second one (or RIDE) rides. It opens on the bike ridden last (Daybreak the first
-  time). The pick is saved when the ride starts, not while browsing.
+  time). The pick is saved when the ride starts, not while browsing. v1.9: it is opened either **for a journey** (tag
+  "JOURNEY" top left; the cards show each bike's best journey time or "NO JOURNEY YET"; RIDE starts a journey on that
+  bike; Esc / BACK go to the title) or **for a single run of a stage** (tag "STAGE n"; the cards show that stage's best
+  and medal; Esc / BACK go to the STAGES list). In a journey it is shown once: the bike is never asked for again.
 - **HUD** (a separate UI scene that doesn't scroll): timer `00:00.00`, diyas `x/56`, boost bar, crash count, the flip tally
   once it is above 0, "BEST mm:ss.cc" (the time to beat on this bike) once there is one, a "MUSIC OFF" / "MUTED" tag, and
   the bike's name, small, bottom left. v1.7: the tutorial prompt (section 5.3) at the top centre, under the hint.
   The timer starts on the first fixed step after Enter, pauses with Pause, and stops at the finish.
+  v1.9: the stage's name at the top centre, on the line under the pause button. In a journey, a row of five helmet icons
+  (17 × 15, drawn in code: a yellow full-face helmet with a red stripe and a dark visor; a spent one is a dim hollow outline) under the
+  diya count, where a single run shows its best time; the helmet just lost blinks for 0.9 s. The timer is the stage's.
+- **GAME OVER (v1.9, a journey):** when the last helmet is lost the tumble plays out (1 s), then, without a fade, a
+  pixel frame over the dimmed, stopped stage: "GAME OVER", five spent helmets, "OUT OF HELMETS", "<STAGE> STARTS AGAIN
+  WITH 5 HELMETS", "ENTER - GO ON". The clock stops. After 3 s of game time (or Enter, from half a second in) the stage
+  starts again from its first checkpoint.
+- **Stage card (v1.9, a journey):** 1.2 s after the line of every stage but the last, a pixel frame over the stopped
+  game: "STAGE CLEAR", the cleared stage's name, its time, medal and collectibles; "NEXT: STAGE n OF m" and the next
+  stage's name in large type; the helmets going on (one given back, up to 5: "+1 HELMET FOR THE NEW STAGE" or
+  "HELMETS FULL"); the journey's time so far; RIDE ON (Enter or click).
+- **Journey finish (v1.9):** 1.2 s after the last stage's line: "JOURNEY COMPLETE", the bike and the number of stages;
+  one row per stage (name, time, the medal that time earns, collectibles found); the total time; the bike's best
+  journey time before this one, with a blinking "NEW BEST!" when it was beaten; the helmets left and the number of
+  game overs; NEW JOURNEY (highlighted: the bike select, for a journey) / STAGES / MAIN MENU (Left / Right + Enter, or click).
 - **Popups:** "CLEAN!", "+FLIP", "CHECKPOINT", "BUMP!" (the log), "WOBBLE!" (the no-crash zone), short floating text.
 - **Finish:** a yellow pixel frame (2 px UI-yellow border, 4 px notched corners, UI-ink fill). The medal earned (icons either
   side of "STAGE CLEAR", "DAYBREAK - GOLD MEDAL" / "DAYBREAK - NO MEDAL YET" with the bike's name); time, diyas and flips for this run next to the best before it, with a
@@ -551,11 +614,16 @@ All on-screen text is ASCII only. Wait for `document.fonts.load('8px "Press Star
   "PRACTICE RUN - NO MEDAL" and saves nothing.
 - **Pause** (v1.5): dim overlay and the same yellow pixel frame: "PAUSED", then RESUME / RESTART / CHANGE BIKE (v1.6) / MAIN MENU
   (Up / Down + Enter, or click / tap; P / Esc resumes). Game time stands still while it is open. A small pause
-  button at the top centre of the HUD opens it with the mouse.
+  button at the top centre of the HUD opens it with the mouse. v1.9, in a journey: RESUME / RESTART STAGE / QUIT JOURNEY,
+  with "A RESTART COSTS A HELMET" under them. RESTART STAGE takes a helmet and starts the stage again (the last helmet:
+  GAME OVER, then the stage with 5). QUIT JOURNEY ends the journey and returns to the title.
+- **Music** plays on the menus only (v1.6.4): the title, the STAGES list, the bike select, the finish screens and the
+  stage card. A run has the engine and the effects.
 
 ### 8.1 Replay loop (v1.3)
 
-Only a run from cp0 is ranked. It is scored on the step it crosses the line.
+Only a **single run** from cp0 is ranked. It is scored on the step it crosses the line. (A stage of a journey is
+scored by the journey: section 8.2.)
 
 - **Medals** by time, inclusive, **per bike**. v1.7: each bike's targets come from its clean bot run (no flips, boost only
   at the river): **gold = bot × 1.05, silver = bot × 1.25, bronze = bot × 2.2, each rounded up to a whole second.**
@@ -569,20 +637,44 @@ Only a run from cp0 is ranked. It is scored on the step it crosses the line.
   Gold leaves 3–4 s of slack on the bot's line; bronze is more than twice the bot's time, so a first run with a handful
   of crashes still earns a medal. All diyas is the separate middle star.
 - **Best run:** the fastest time, the most diyas and the most flips are kept, each on its own, in `localStorage`,
-  **one record per bike**, under keys that carry the record version (v1.7: version 2):
-  `hampi-at-dusk.best.v2.tonup`, `hampi-at-dusk.best.v2.daybreak`, `hampi-at-dusk.best.v2.sundowner`. A record carries
-  its version and the stage length and is ignored if either differs. **The records of the 580-column stage are an
-  archive:** `hampi-at-dusk.best` (pre-roster) and `hampi-at-dusk.best.<bike>` (v1.6) are never read, written or
-  removed, and there is no migration (they were ridden on a different stage). Preferences (ghost on/off, sound mode,
-  the bike picked last, `tutorialDone`) are in `hampi-at-dusk.prefs`. **Every storage access is wrapped in try/catch**;
-  when storage is missing or throws, the game plays the same and the bests (and ghost) live in memory until the page is closed.
+  **one record per stage and bike** (v1.9: version 3): `hampi-at-dusk.best.v3.<stage>.<bike>`, for example
+  `hampi-at-dusk.best.v3.hampi.daybreak`. A record is `{ v: 3, stage, cols, timeMs, diyas, flips, ghost }` and is ignored
+  if its version, stage id or stage length differs. **Migration (v1.9):** the version 2 records
+  (`hampi-at-dusk.best.v2.<bike>`, v1.7 – v1.8) were ridden on today's Hampi, so they carry over. When a bike has no
+  version 3 record on Hampi, its version 2 record is used (best, medal, ghost) and copied to the version 3 key; the
+  version 2 key is never written or removed, and is not read again once the version 3 record exists. **The records of
+  the 580-column stage are an archive:** `hampi-at-dusk.best` (pre-roster) and `hampi-at-dusk.best.<bike>` (v1.6) are
+  never read, written or removed. Preferences (ghost on/off, sound mode, the bike picked last, `tutorialDone`) are in
+  `hampi-at-dusk.prefs`. **Every storage access is wrapped in try/catch**; when storage is missing or throws, the game
+  plays the same and the bests (and ghost) live in memory until the page is closed.
 - **Ghost:** the bike's pose (x, y, angle) is recorded at 20 Hz of game time (every 6 fixed steps, from time 0, plus the pose
   on the line) and, when the run sets a new best time, stored with it: 7 base-36 characters per sample (x and y in half pixels,
   angle in whole degrees), about 8.3 kB for a 60 s run; runs over 180 s (v1.7; was 120 s) keep no ghost, so the longest
   stored ghost is about 25 kB. In later ranked runs it is replayed
   against the run timer as a translucent bike (interpolated between samples), hidden after the line. It has no collisions and
   no effects. G toggles it (default on).
-- **Quick restart:** R restarts the run at once, in a run and on the finish screen.
+- **Quick restart:** R restarts a single run at once, in a run and on the finish screen.
+
+### 8.2 The journey (v1.9)
+
+The rules are pure functions in `src/journey.ts`; the journey being ridden and its records are in `src/journeyRun.ts`.
+
+- **One bike** for the whole journey, over the stages of `JOURNEY_ORDER` (today `['hampi']`; Goa and Ladakh follow).
+- **5 helmets.** A helmet is lost by a crash, by C (back to the checkpoint) and by RESTART STAGE in the pause menu. A bad
+  landing in a stage's warm-up zone is a wobble, not a crash, and costs nothing; nor does a stumble.
+- **Helmets carry over** from stage to stage. Entering the next stage gives one back, up to 5.
+- **Game over** (no helmets left): the stage being ridden starts again with 5 helmets. The bike and the stages already
+  cleared are kept. A game over does not end the journey.
+- **Time:** the journey's time is the sum of the times of the runs that cleared each stage (an attempt that ended in a
+  game over does not count toward it). The best total is kept per bike and per route, in
+  `hampi-at-dusk.journey.v1.<route>.<bike>` (`<route>` = the stage ids joined with `+`, so a longer journey is a new
+  record): `{ v: 1, route, timeMs }`.
+- **Medals** on the stage card and the journey finish are what the stage's time earns on that stage and bike (the
+  single-run targets of section 8.1). A journey does not read or write the single-run records, and no ghost rides.
+- **Unlocks:** the moment a journey reaches a stage, that stage is unlocked for single runs (`hampi-at-dusk.unlocks`:
+  `{ v: 1, stages: [...] }`). The first stage is always unlocked.
+- A journey lives in memory: closing the page ends it. Unlocks and bests are saved as they happen, with copies in
+  memory so they work when storage is blocked.
 
 ---
 
@@ -594,7 +686,7 @@ Only a run from cp0 is ranked. It is scored on the step it crosses the line.
 3. **The bot run (Playwright)** finishes the stage with 0 crashes and all 56 diyas, within 120 s of game time (`timeMs`),
    driven by `__test.step`, on each bike. (Measured, and asserted to the millisecond: 49.908 s, 59.517 s, 69.150 s; gold on each.)
 4. **The river jump needs boost:** a Playwright test shows that hitting the river ramp at top speed without boost lands in the
-   water, and with boost from the river checkpoint (the last one: cp11) clears it with ≥ 1 tile to spare. "No boost" means no boost and no hop (the ramp is `noHop`).
+   water, and with boost from the river checkpoint (the last one: cp3 since v1.9) clears it with ≥ 1 tile to spare. "No boost" means no boost and no hop (the ramp is `noHop`).
    Margin = landing x − 14 080 ≥ 16. Expected with these values: about 130 px of flight without boost (fails) and about 230 px with
    boost (38 px past the edge). Tune `ramp 8 +4`, the gap width or the speeds until this is true, and record the final values in `DECISIONS.md`.
 5. Every canal gap can be cleared with a hop at normal top speed; none of them can be rolled across without a hop.
@@ -632,20 +724,42 @@ Only a run from cp0 is ranked. It is scored on the step it crosses the line.
     change: the Ton-Up's own hop over the second paired canal (31 ms; it takes the pair in one hop, 240 ms) and the
     Sundowner's one-hop line over the pair (91 ms; its two-hop line is 145 ms). Nothing new is under 120 ms.
 
+12. (v1.9) The bot's three runs are unchanged, in a single run and as a journey stage. Vitest: the journey's rules (a
+    helmet per crash, +1 per new stage capped at 5, game over → the same stage with 5 and the cleared stages kept, the
+    total time, unlocks); the stage registry and `defineStage`'s checks; Hampi's four checkpoints and its hints;
+    records version 3, the version 2 → 3 migration (used, copied, the old key kept, only into Hampi, malformed ignored,
+    read-only and throwing storage), the journey's records; the archive still untouched. (The standing starts of
+    criterion 11 are now cp2, which was cp9, and columns 232 and 774, which were cp3 and cp10.) Playwright: a journey from the
+    title with the bot to the journey finish, its values and its records; crashes forced until GAME OVER and the stage
+    starting again with 5 helmets; the pause menu of a journey and of a single run; the STAGES list with a locked and an
+    unlocked stage, the stage card and the unlock, over a two-stage test route; the version 2 → 3 migration in the
+    browser. Screenshots: the title menu, the STAGES list (locked and unlocked), the bike select for a journey, the HUD
+    with helmets, GAME OVER, the stage card, the journey finish, both pause menus, the "CHECKPOINT" popup.
+
 ### 9.1 Test hooks
 
 Expose `window.__test` only when `import.meta.env.DEV || import.meta.env.MODE === 'test'`:
 - `setInput({ throttle, brake, hop, boost, tiltUp, tiltDown, honk })`
-- `state()` → `{ x, y, vx, vy, v, angle, grounded, boost, crashed, crashes, diyas, finished, checkpoint, timeMs, bike, flips, spin, camX, ghost, boulder, prompt, stumbles, wobbles }`
+- `state()` → `{ x, y, vx, vy, v, angle, grounded, boost, crashed, crashes, diyas, finished, checkpoint, timeMs, bike, stage, mode, helmets, gameOver, flips, spin, camX, ghost, boulder, prompt, stumbles, wobbles }`
   (`ghost` = the pose the ghost is drawn at, or null; v1.7: `boulder` = `{ phase: 'hidden' | 'roll' | 'gone', x }`,
-  `prompt` = the tutorial prompt on screen or `''`, `stumbles` / `wobbles` = counts for this run)
-- `finish()` → the scored run once the line is crossed (medal, next target, bests before it, what was beaten, whether it was saved)
-- `audio()` → `{ created, state, mode, musicPeak, masterPeak }`; never creates audio
-- `startAt(checkpoint, bike?)`; `bike(id?)` → the selected bike (with an id: select it first)
-- `screen()` → `'boot' | 'title' | 'select' | 'game' | 'paused' | 'finish'`; `targets()` (menu click targets);
-  `select()` → the select screen's highlighted index and each card's bike, click target, best time and medal; `leaks()`
+  `prompt` = the tutorial prompt on screen or `''`, `stumbles` / `wobbles` = counts for this run; v1.9: `stage` = the
+  stage's id, `mode` = `'single' | 'journey'`, `helmets` = helmets left or null on a single run, `gameOver` = the
+  GAME OVER screen is up)
+- `finish()` → a single run's scored result once the line is crossed (medal, next target, bests before it, what was beaten, whether it was saved)
+- `audio()` → `{ created, state, mode, musicPeak, masterPeak, musicInRun }`; never creates audio
+- `startAt(checkpoint, bike?, stage?)` (a single run); `startAtCol(col, bike?, stage?)` (v1.9: a practice run at rest
+  at a column; its checkpoint is the last one at or before it); `bike(id?)` → the selected bike (with an id: select it first)
+- v1.9: `startJourney(bike?, route?)` (as JOURNEY → bike select → RIDE; `route` = stage ids, default the shipped
+  journey); `journey()` → the journey being ridden (`{ bike, route, index, helmets, results, gameOvers, status }`) or
+  null; `crash()` (crash the bike now); `addTestStage(id, name)` (registers a copy of the first stage, so a test can
+  ride a two-stage journey)
+- `screen()` → `'boot' | 'title' | 'stages' | 'select' | 'game' | 'paused' | 'gameover' | 'finish' | 'stagecard' | 'journeyfinish'`;
+  `targets()` (the shown menu's click targets and the pause button);
+  `select()` → the select screen's highlighted index and each card's bike, click target, best time and medal;
+  `selectFor()` → `{ mode, stage }`; `stages()` → the STAGES list's highlighted index and each row (id, name,
+  unlocked, best, click target); `stageCard()`; `journeyFinish()`; `leaks()`
 - `setManual(true)` stops rAF-driven stepping; `step(n)` runs n fixed steps and one render synchronously
-- `levelData`
+- `levelData` → the stage being ridden (on a menu: the first stage) as plain data
 
 All e2e tests use manual stepping. The bot may read `levelData` to time its hops and tilts.
 
@@ -653,8 +767,9 @@ All e2e tests use manual stepping. The bot may read `levelData` to time its hops
 
 ## 10. Out of scope
 
-Touch controls, more stages, an online leaderboard, gamepad support, recorded music or audio files.
-(v1.3 brought the local best run and code-generated music into scope.)
+Touch controls, an online leaderboard, gamepad support, recorded music or audio files.
+(v1.3 brought the local best run and code-generated music into scope. v1.9 brought more stages into scope as a
+framework; the stages themselves, Goa and Ladakh, are the next rounds.)
 
 ---
 
@@ -663,22 +778,26 @@ Touch controls, more stages, an online leaderboard, gamepad support, recorded mu
 ```
 src/
   main.ts            config.ts
-  scenes/  Boot.ts  Title.ts  Select.ts  Game.ts  Hud.ts  Finish.ts
-  level/   levelData.ts  terrain.ts (heightfield, surfaceY, slopeAngle)  terrainView.ts
-           boulder.ts (the rolling boulder's state machine; pure)
+  scenes/  Boot.ts  Title.ts  Stages.ts  Select.ts  Game.ts  Hud.ts  Finish.ts  StageCard.ts  JourneyFinish.ts
+  stages/  stage.ts (StageDef, defineStage, medalsFor, levelOf; pure)  index.ts (the registry, JOURNEY_ORDER)
+           hampi.ts (stage 1's data)
+  level/   level.ts (what stages share: tile, baseline, the data shapes)  terrain.ts (heightfield, surfaceY, slopeAngle)
+           terrainView.ts  boulder.ts (a rolling boulder's state machine; pure)
   bike/    BikePhysics.ts (pure, no Phaser — unit-testable)  BikeView.ts
-           bikes.ts (the roster: overrides, medals, stat bars; pure)  selection.ts  sprites.ts
+           bikes.ts (the roster: overrides, stat bars; pure)  selection.ts  sprites.ts
   entities/ Diya.ts  Obstacle.ts  Monkey.ts  Cow.ts  Checkpoint.ts  Boulder.ts
   art/     assets.ts  placeholders.ts  palette.ts  Parallax.ts  Ambience.ts  Fx.ts  pen.ts  depth.ts  bikeArt.ts (the three bikes)
            look/   pix.ts  silhouettes.ts  ground.ts  theme.ts  bake.ts  Atmosphere.ts   (the shared look system, v1.8)
            themes/ hampi.ts                                                               (one theme per stage)
   audio/   sfx.ts  music.ts
-  progress.ts        (medals, best run, ghost, storage; pure, no Phaser)
+  journey.ts         (the journey's rules: helmets, game over, stages, unlocks; pure, no Phaser)
+  journeyRun.ts      (the journey being ridden; its unlocks and best times)
+  progress.ts        (medals, best run, ghost, storage, the journey's records; pure, no Phaser)
 tests/
-  unit/  physics.test.ts  progress.test.ts  bikeArt.test.ts  look.test.ts
+  unit/  physics.test.ts  progress.test.ts  journey.test.ts  stages.test.ts  bikeArt.test.ts  look.test.ts
   shared/ plan.ts (the bot's hop planner, per bike; pure)  sim.ts (a headless port of the Game scene's ride loop)
-  e2e/   run.spec.ts  river.spec.ts  reverse.spec.ts  flip.spec.ts  storage.spec.ts  audio.spec.ts  menu.spec.ts
-         roster.spec.ts  select.spec.ts  sprites.spec.ts  tutorial.spec.ts  boulder.spec.ts
+  e2e/   run.spec.ts  journey.spec.ts  river.spec.ts  reverse.spec.ts  flip.spec.ts  storage.spec.ts  audio.spec.ts
+         menu.spec.ts  roster.spec.ts  select.spec.ts  sprites.spec.ts  tutorial.spec.ts  boulder.spec.ts
          bot.ts  helpers.ts  flipHelper.ts  consoleAllowlist.ts
   look/  shots.spec.ts (not part of `npm test`: fixed moments saved as PNGs; see playwright.look.config.ts)
 DECISIONS.md
