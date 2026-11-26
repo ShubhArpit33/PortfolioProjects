@@ -1066,3 +1066,8 @@ so the times are comparable; a run with crashes costs more now than it did with 
 - The title's subtitle is "STAGE 1: HAMPI AT DUSK" while the journey has one stage, and "A ROAD TRIP IN n STAGES" after.
 - The ambience's firefly zones and the birds-to-bats change are still Hampi's constants (as in v1.8).
 - Switching between two different themes has not run yet (there is one theme).
+
+## v1.9.1 — ten helmets
+- `MAX_HELMETS` is 10 (was 5; the user's call). +1 per new stage is still capped at the maximum; game over still restarts the stage on a full set.
+- The journey finish shows helmets left as one icon and `n/10` (ten icons do not fit beside GAME OVERS). The HUD, game over and stage card rows show all ten.
+- Tests now read `MAX_HELMETS` instead of a literal 5 where they can, so the next change is one line.

@@ -83,9 +83,9 @@ export class JourneyFinishScene extends Phaser.Scene {
     // How it went: the helmets still in hand, and how often they ran out.
     const sy = by + 22;
     pixelText(this, colName, sy, 'HELMETS LEFT', PAL.cream);
-    for (let i = 0; i < MAX_HELMETS; i++) {
-      this.add.image(colName + 112 + i * 19, sy + 3, i < journey.helmets ? 'helmet_on' : 'helmet_off');
-    }
+    // v1.9.1: ten helmets do not fit in a row beside GAME OVERS, so one icon and a count.
+    this.add.image(colName + 112, sy + 3, journey.helmets > 0 ? 'helmet_on' : 'helmet_off');
+    pixelText(this, colName + 124, sy, `${journey.helmets}/${MAX_HELMETS}`, PAL.cream);
     pixelText(this, colGot, sy, `GAME OVERS ${journey.gameOvers}`, journey.gameOvers === 0 ? PAL.uiYellow : PAL.cream).setOrigin(1, 0);
 
     this.menu = new Menu(this, [

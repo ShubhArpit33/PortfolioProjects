@@ -5,12 +5,17 @@
 
 import type { Page } from '@playwright/test';
 import { BIKES, BIKE_ORDER } from '../../src/bike/bikes';
+import { MAX_HELMETS } from '../../src/journey';
 import { PREFS_KEY, UNLOCKS_KEY, bestKey, journeyKey } from '../../src/progress';
 import { BOT_RUN_MS, HAMPI } from '../../src/stages/hampi';
 import { advance, planFor, resetBot } from './bot';
 import {
   boot, expect, getLevel, getState, journeyFromTitle, press, rideFromSelect, shot, test, type GameSnapshot,
 } from './helpers';
+
+const H = MAX_HELMETS;
+/** H-1, H-2, ... 1: the helmets left after each crash short of the last. */
+const countdown = (from: number): number[] => Array.from({ length: from }, (_, i) => from - i);
 
 const step = (page: Page, n: number, input?: Record<string, boolean>): Promise<void> =>
   page.evaluate(({ n, input }) => { const t = window.__test!; if (input) t.setInput(input); t.step(n); }, { n, input });
@@ -72,8 +77,8 @@ test('journey: title -> JOURNEY -> bike select -> Hampi with the bot -> journey 
   // Ride: the journey is on Hampi, on this bike, with five helmets.
   await journeyFromTitle(page, bike);
   let s = await getState(page);
-  expect([s.bike, s.stage, s.mode, s.helmets, s.gameOver, s.timeMs]).toEqual([bike, 'hampi', 'journey', 5, false, 0]);
-  expect(await journey(page)).toEqual({ bike, route: ['hampi'], index: 0, helmets: 5, results: [], gameOvers: 0, status: 'riding' });
+  expect([s.bike, s.stage, s.mode, s.helmets, s.gameOver, s.timeMs]).toEqual([bike, 'hampi', 'journey', H, false, 0]);
+  expect(await journey(page)).toEqual({ bike, route: ['hampi'], index: 0, helmets: H, results: [], gameOvers: 0, status: 'riding' });
   // Reaching a stage unlocks it (Hampi always is; it is remembered all the same).
   expect(await stored(page, UNLOCKS_KEY)).toEqual({ v: 1, stages: ['hampi'] });
   // A first visit: the tutorial prompts show on a journey too.
@@ -88,10 +93,10 @@ test('journey: title -> JOURNEY -> bike select -> Hampi with the bot -> journey 
 
   // The bot rides the stage clean: the same run, to the millisecond, as a single run.
   s = await advance(page, plan, lay.cpX[1]! + 40);
-  expect([s.checkpoint, s.helmets, s.crashes]).toEqual([1, 5, 0]);
+  expect([s.checkpoint, s.helmets, s.crashes]).toEqual([1, H, 0]);
   await shot(page, 'journey-04-checkpoint');
   s = await advance(page, plan, Infinity);
-  expect([s.finished, s.crashes, s.diyas, s.helmets]).toEqual([true, 0, 56, 5]);
+  expect([s.finished, s.crashes, s.diyas, s.helmets]).toEqual([true, 0, 56, H]);
   expect(s.timeMs).toBe(BOT_RUN_MS[bike]);
 
   // 1.2 s after the line: the journey finish (Hampi is the whole journey for now), not the single run's screen.
@@ -101,7 +106,7 @@ test('journey: title -> JOURNEY -> bike select -> Hampi with the bot -> journey 
   const jf = (await page.evaluate(() => window.__test!.journeyFinish()))!;
   expect(jf.finish).toEqual({ totalMs: BOT_RUN_MS[bike], prevBestMs: null, newBest: true, saved: true });
   expect(jf.journey.status).toBe('done');
-  expect([jf.journey.helmets, jf.journey.gameOvers, jf.journey.index]).toEqual([5, 0, 0]);
+  expect([jf.journey.helmets, jf.journey.gameOvers, jf.journey.index]).toEqual([H, 0, 0]);
   expect(jf.journey.results).toEqual([
     { stage: 'hampi', timeMs: BOT_RUN_MS[bike], collected: 56, total: 56, crashes: 0, flips: 0, medal: 'gold' },
   ]);
@@ -136,18 +141,18 @@ test('journey: title -> JOURNEY -> bike select -> Hampi with the bot -> journey 
   await rideFromSelect(page, bike);
   await resetBot(page);
   s = await getState(page);
-  expect([s.mode, s.helmets, s.prompt]).toEqual(['journey', 5, '']);
+  expect([s.mode, s.helmets, s.prompt]).toEqual(['journey', H, '']);
   s = await crashNow(page);
-  expect([s.crashed, s.helmets]).toEqual([true, 4]);
+  expect([s.crashed, s.helmets]).toEqual([true, H - 1]);
   s = await respawn(page);
-  expect([s.crashed, s.helmets, s.crashes]).toEqual([false, 4, 1]);
+  expect([s.crashed, s.helmets, s.crashes]).toEqual([false, H - 1, 1]);
   s = await advance(page, plan, Infinity);
-  expect([s.finished, s.crashes, s.helmets]).toEqual([true, 1, 4]);
+  expect([s.finished, s.crashes, s.helmets]).toEqual([true, 1, H - 1]);
   expect(s.timeMs).toBeGreaterThan(BOT_RUN_MS[bike]);
   await step(page, 240, {});
   const jf2 = (await page.evaluate(() => window.__test!.journeyFinish()))!;
   expect(jf2.finish).toEqual({ totalMs: s.timeMs, prevBestMs: BOT_RUN_MS[bike], newBest: false, saved: false });
-  expect([jf2.journey.helmets, jf2.journey.results[0]!.crashes]).toEqual([4, 1]);
+  expect([jf2.journey.helmets, jf2.journey.results[0]!.crashes]).toEqual([H - 1, 1]);
   expect(await stored(page, journeyKey(['hampi'], bike))).toEqual({ v: 1, route: 'hampi', timeMs: BOT_RUN_MS[bike] });
   await shot(page, 'journey-07-finish-second');
 
@@ -183,7 +188,7 @@ test('journey: a crash costs a helmet, the warm-up costs nothing, the fifth is G
     }
     return t.state();
   });
-  expect([s.crashed, s.wobbles, s.crashes, s.helmets], 'a wobble costs no helmet').toEqual([false, 1, 0, 5]);
+  expect([s.crashed, s.wobbles, s.crashes, s.helmets], 'a wobble costs no helmet').toEqual([false, 1, 0, H]);
   // Riding into the log is a stumble: no helmet either.
   s = await page.evaluate((x) => {
     const t = window.__test!;
@@ -191,7 +196,7 @@ test('journey: a crash costs a helmet, the warm-up costs nothing, the fifth is G
     for (let i = 0; i < 120 * 10 && t.state().x < x; i++) t.step(1);
     return t.state();
   }, 40 * T);
-  expect([s.stumbles, s.crashes, s.helmets]).toEqual([1, 0, 5]);
+  expect([s.stumbles, s.crashes, s.helmets]).toEqual([1, 0, H]);
 
   // Ride on out of the warm-up and pick up some diyas on the way.
   s = await page.evaluate((x) => {
@@ -201,10 +206,10 @@ test('journey: a crash costs a helmet, the warm-up costs nothing, the fifth is G
     return t.state();
   }, 126 * T);
   expect(s.diyas).toBeGreaterThan(0);
-  expect([s.crashes, s.helmets, s.checkpoint]).toEqual([0, 5, 0]);
+  expect([s.crashes, s.helmets, s.checkpoint]).toEqual([0, H, 0]);
 
   // Four crashes: a helmet each, and back to the checkpoint each time (the start: the next one is mid-stage).
-  for (const left of [4, 3, 2, 1]) {
+  for (const left of countdown(H - 1)) {
     s = await crashNow(page);
     expect([s.crashed, s.helmets, s.gameOver], `${left} left`).toEqual([true, left, false]);
     expect((await journey(page))!.helmets).toBe(left);
@@ -213,7 +218,7 @@ test('journey: a crash costs a helmet, the warm-up costs nothing, the fifth is G
       await shot(page, 'journey-10-helmet-lost'); // three spent helmets dim, the one just lost blinking
     }
     s = await respawn(page);
-    expect([s.crashed, s.x, s.helmets, s.crashes, s.checkpoint], `${left} left`).toEqual([false, startX, left, 5 - left, 0]);
+    expect([s.crashed, s.x, s.helmets, s.crashes, s.checkpoint], `${left} left`).toEqual([false, startX, left, H - left, 0]);
     expect(await screen(page)).toBe('game');
     await step(page, 60, { throttle: true });
   }
@@ -230,7 +235,7 @@ test('journey: a crash costs a helmet, the warm-up costs nothing, the fifth is G
   await step(page, 15);
   expect(await screen(page)).toBe('gameover');
   s = await getState(page);
-  expect([s.gameOver, s.crashed, s.helmets, s.crashes]).toEqual([true, false, 0, 5]);
+  expect([s.gameOver, s.crashed, s.helmets, s.crashes]).toEqual([true, false, 0, H]);
   const t = await targets(page);
   expect([t.menu.length, t.pause], 'no pause on the GAME OVER screen').toEqual([0, null]);
   const stoppedAt = s.timeMs;
@@ -245,13 +250,13 @@ test('journey: a crash costs a helmet, the warm-up costs nothing, the fifth is G
   await step(page, GAME_OVER_STEPS);
   await page.waitForFunction(() => window.__test!.screen() === 'game' && window.__test!.state().timeMs === 0);
   s = await getState(page);
-  expect([s.stage, s.mode, s.bike, s.helmets, s.crashes, s.diyas, s.x, s.gameOver]).toEqual(['hampi', 'journey', 'daybreak', 5, 0, 0, startX, false]);
-  expect(await journey(page)).toEqual({ bike: 'daybreak', route: ['hampi'], index: 0, helmets: 5, results: [], gameOvers: 1, status: 'riding' });
+  expect([s.stage, s.mode, s.bike, s.helmets, s.crashes, s.diyas, s.x, s.gameOver]).toEqual(['hampi', 'journey', 'daybreak', H, 0, 0, startX, false]);
+  expect(await journey(page)).toEqual({ bike: 'daybreak', route: ['hampi'], index: 0, helmets: H, results: [], gameOvers: 1, status: 'riding' });
   await step(page, 30);
   await shot(page, 'journey-13-restarted-five-helmets');
 
   // Again, and this time Enter skips the screen (after its first half second). C is the fifth "crash".
-  for (const left of [4, 3, 2, 1]) {
+  for (const left of countdown(H - 1)) {
     s = await crashNow(page);
     expect(s.helmets).toBe(left);
     s = await respawn(page);
@@ -267,8 +272,8 @@ test('journey: a crash costs a helmet, the warm-up costs nothing, the fifth is G
   await press(page, 'Enter');
   await page.waitForFunction(() => window.__test!.screen() === 'game' && window.__test!.state().timeMs < 50);
   s = await getState(page);
-  expect([s.helmets, s.crashes, s.x]).toEqual([5, 0, startX]);
-  expect(await journey(page)).toMatchObject({ helmets: 5, status: 'riding', gameOvers: 2 });
+  expect([s.helmets, s.crashes, s.x]).toEqual([H, 0, startX]);
+  expect(await journey(page)).toMatchObject({ helmets: H, status: 'riding', gameOvers: 2 });
 
   // Nothing was recorded by any of it: no journey best, no single-run record.
   expect(await stored(page, journeyKey(['hampi'], 'daybreak'))).toBeNull();
@@ -298,7 +303,7 @@ test('pause menus: a journey has RESUME / RESTART STAGE (a helmet) / QUIT JOURNE
   // RESUME.
   await press(page, 'Enter');
   expect(await screen(page)).toBe('game');
-  expect((await getState(page)).helmets).toBe(5);
+  expect((await getState(page)).helmets).toBe(H);
 
   // R does not restart a journey's stage (it would throw a helmet away): the run goes on.
   const before = await getState(page);
@@ -306,7 +311,7 @@ test('pause menus: a journey has RESUME / RESTART STAGE (a helmet) / QUIT JOURNE
   await step(page, 30);
   let s = await getState(page);
   expect(s.timeMs).toBeGreaterThan(before.timeMs);
-  expect([s.helmets, s.crashes]).toEqual([5, 0]);
+  expect([s.helmets, s.crashes]).toEqual([H, 0]);
   await shot(page, 'journey-22-r-hint');
 
   // RESTART STAGE (Down, Enter): the stage from its start, one helmet fewer.
@@ -316,11 +321,11 @@ test('pause menus: a journey has RESUME / RESTART STAGE (a helmet) / QUIT JOURNE
   await press(page, 'Enter');
   await page.waitForFunction(() => window.__test!.screen() === 'game' && window.__test!.state().timeMs < 50);
   s = await getState(page);
-  expect([s.helmets, s.crashes, s.x, s.mode, s.bike]).toEqual([4, 0, startX, 'journey', 'tonup']);
-  expect(await journey(page)).toMatchObject({ helmets: 4, status: 'riding', gameOvers: 0 });
+  expect([s.helmets, s.crashes, s.x, s.mode, s.bike]).toEqual([H - 1, 0, startX, 'journey', 'tonup']);
+  expect(await journey(page)).toMatchObject({ helmets: H - 1, status: 'riding', gameOvers: 0 });
 
   // With one helmet left, RESTART STAGE is the last one: GAME OVER, then the stage with five.
-  for (const left of [3, 2, 1]) {
+  for (const left of countdown(H - 2)) {
     s = await crashNow(page);
     expect(s.helmets).toBe(left);
     await respawn(page);
@@ -333,7 +338,7 @@ test('pause menus: a journey has RESUME / RESTART STAGE (a helmet) / QUIT JOURNE
   expect(await journey(page)).toMatchObject({ helmets: 0, status: 'gameover', gameOvers: 1 });
   await step(page, GAME_OVER_STEPS);
   await page.waitForFunction(() => window.__test!.screen() === 'game' && window.__test!.state().timeMs === 0);
-  expect((await getState(page)).helmets).toBe(5);
+  expect((await getState(page)).helmets).toBe(H);
 
   // QUIT JOURNEY, with the mouse: back on the title, and the journey is over.
   await step(page, 120, { throttle: true });
@@ -430,15 +435,15 @@ test('STAGES: Hampi is open, a stage no journey has reached is locked; a two-sta
 
   // A journey over both stages. One crash on Hampi first, so there is a helmet to get back.
   await startJourney(page, bike, ROUTE);
-  expect(await journey(page)).toMatchObject({ route: ROUTE, index: 0, helmets: 5 });
+  expect(await journey(page)).toMatchObject({ route: ROUTE, index: 0, helmets: H });
   expect(await stored(page, UNLOCKS_KEY), 'only what has been reached').toEqual({ v: 1, stages: ['hampi'] });
   let s = await crashNow(page);
   s = await respawn(page);
-  expect(s.helmets).toBe(4);
+  expect(s.helmets).toBe(H - 1);
   let level = await getLevel(page);
   let plan = planFor(level, cfg).plan;
   s = await advance(page, plan, Infinity);
-  expect([s.finished, s.crashes, s.diyas, s.helmets]).toEqual([true, 1, 56, 4]);
+  expect([s.finished, s.crashes, s.diyas, s.helmets]).toEqual([true, 1, 56, H - 1]);
   const firstMs = s.timeMs;
   expect(firstMs).toBeGreaterThan(BOT_RUN_MS[bike]);
   expect(firstMs).toBeLessThan(HAMPI.medalsMs[bike].gold);
@@ -447,9 +452,9 @@ test('STAGES: Hampi is open, a stage no journey has reached is locked; a two-sta
   await step(page, 240, {});
   expect(await screen(page)).toBe('stagecard');
   expect(await page.evaluate(() => window.__test!.stageCard())).toEqual({
-    cleared: 'hampi', next: 'test2', nextNumber: 2, helmets: 5, gained: 1, totalMs: firstMs,
+    cleared: 'hampi', next: 'test2', nextNumber: 2, helmets: H, gained: 1, totalMs: firstMs,
   });
-  expect(await journey(page)).toMatchObject({ index: 1, helmets: 5, status: 'riding' });
+  expect(await journey(page)).toMatchObject({ index: 1, helmets: H, status: 'riding' });
   expect((await journey(page))!.results).toEqual([
     { stage: 'hampi', timeMs: firstMs, collected: 56, total: 56, crashes: 1, flips: 0, medal: 'gold' },
   ]);
@@ -466,22 +471,22 @@ test('STAGES: Hampi is open, a stage no journey has reached is locked; a two-sta
   await press(page, 'Enter');
   await page.waitForFunction(() => window.__test!.screen() === 'game' && window.__test!.state().stage === 'test2' && window.__test!.state().timeMs === 0);
   s = await getState(page);
-  expect([s.stage, s.mode, s.bike, s.helmets, s.crashes, s.diyas, s.checkpoint]).toEqual(['test2', 'journey', bike, 5, 0, 0, 0]);
+  expect([s.stage, s.mode, s.bike, s.helmets, s.crashes, s.diyas, s.checkpoint]).toEqual(['test2', 'journey', bike, H, 0, 0, 0]);
   level = await getLevel(page);
   expect([level.id, level.name]).toEqual(['test2', 'TEST ROAD']);
   await resetBot(page);
   await step(page, 40, { throttle: true });
   await shot(page, 'journey-33-stage-2-hud');
 
-  // Two crashes here, then the bot: the journey finishes with three helmets.
-  for (const left of [4, 3]) {
+  // Two crashes here, then the bot: the journey finishes with H - 2 helmets.
+  for (const left of [H - 1, H - 2]) {
     s = await crashNow(page);
     expect(s.helmets).toBe(left);
     s = await respawn(page);
   }
   plan = planFor(level, cfg).plan;
   s = await advance(page, plan, Infinity);
-  expect([s.finished, s.crashes, s.diyas, s.helmets]).toEqual([true, 2, 56, 3]);
+  expect([s.finished, s.crashes, s.diyas, s.helmets]).toEqual([true, 2, 56, H - 2]);
   const secondMs = s.timeMs;
   await step(page, 240, {});
   expect(await screen(page)).toBe('journeyfinish');
@@ -490,7 +495,7 @@ test('STAGES: Hampi is open, a stage no journey has reached is locked; a two-sta
   expect(jf.journey.results.map((r) => [r.stage, r.timeMs, r.crashes, r.collected])).toEqual([
     ['hampi', firstMs, 1, 56], ['test2', secondMs, 2, 56],
   ]);
-  expect([jf.journey.status, jf.journey.helmets, jf.journey.gameOvers]).toEqual(['done', 3, 0]);
+  expect([jf.journey.status, jf.journey.helmets, jf.journey.gameOvers]).toEqual(['done', H - 2, 0]);
   await shot(page, 'journey-34-finish-two-stages');
   // A journey's best belongs to its route: this one is not the shipped journey's.
   expect(await stored(page, journeyKey(ROUTE, bike))).toEqual({ v: 1, route: 'hampi+test2', timeMs: firstMs + secondMs });
@@ -551,16 +556,16 @@ test('menus have the music: the stage card and the journey finish count as menus
   await page.waitForFunction(() => window.__test!.state().stage === 'test2' && window.__test!.state().timeMs === 0);
   expect(await inRun(), 'riding stage 2').toBe(true);
   // Out of helmets on stage 2: GAME OVER restarts stage 2 (not the journey); stage 1's result is kept.
-  for (let i = 0; i < 5; i++) {
+  for (let i = 0; i < H; i++) {
     await crashNow(page);
-    if (i < 4) await respawn(page);
+    if (i < H - 1) await respawn(page);
   }
   await step(page, 125);
   expect(await screen(page)).toBe('gameover');
   await step(page, GAME_OVER_STEPS);
   await page.waitForFunction(() => window.__test!.screen() === 'game' && window.__test!.state().timeMs === 0);
   s = await getState(page);
-  expect([s.stage, s.helmets, s.bike]).toEqual(['test2', 5, 'tonup']);
+  expect([s.stage, s.helmets, s.bike]).toEqual(['test2', H, 'tonup']);
   const j = (await journey(page))!;
   expect([j.index, j.gameOvers, j.results.length, j.results[0]!.timeMs]).toEqual([1, 1, 1, BOT_RUN_MS.tonup]);
   await resetBot(page);
@@ -569,6 +574,6 @@ test('menus have the music: the stage card and the journey finish count as menus
   await step(page, 240, {});
   expect([await screen(page), await inRun()]).toEqual(['journeyfinish', false]);
   const jf = (await page.evaluate(() => window.__test!.journeyFinish()))!;
-  expect([jf.finish.totalMs, jf.journey.gameOvers, jf.journey.helmets]).toEqual([2 * BOT_RUN_MS.tonup, 1, 5]);
+  expect([jf.finish.totalMs, jf.journey.gameOvers, jf.journey.helmets]).toEqual([2 * BOT_RUN_MS.tonup, 1, H]);
   await shot(page, 'journey-40-finish-after-game-over');
 });

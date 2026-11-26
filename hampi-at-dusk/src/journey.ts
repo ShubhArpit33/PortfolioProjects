@@ -3,10 +3,10 @@
 //
 // The rules:
 // - One bike for the whole journey, over a route of stages ridden in order.
-// - 5 helmets. Losing one: a crash, going back to the checkpoint with C, or RESTART STAGE from the pause
+// - 10 helmets (v1.9.1; was 5). Losing one: a crash, going back to the checkpoint with C, or RESTART STAGE from the pause
 //   menu. (A bad landing in a stage's warm-up zone is a wobble, not a crash, so it costs nothing.)
 // - Helmets carry over from stage to stage; entering the next stage gives one back, up to 5.
-// - No helmets left = game over: the stage being ridden starts again with 5 helmets. The bike and the
+// - No helmets left = game over: the stage being ridden starts again with 10 helmets. The bike and the
 //   stages already cleared are kept.
 // - The journey's time is the sum of the times of the runs that cleared each stage.
 // - Reaching a stage in a journey unlocks it for single runs (the first stage is always unlocked).
@@ -15,7 +15,7 @@ import type { BikeId } from './bike/bikes';
 import type { Medal } from './progress';
 import type { StageId } from './stages/stage';
 
-export const MAX_HELMETS = 5;
+export const MAX_HELMETS = 10; // v1.9.1: was 5 (user's call)
 
 /** A cleared stage, as the journey remembers it. */
 export interface StageResult {

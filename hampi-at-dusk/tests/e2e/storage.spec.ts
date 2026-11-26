@@ -1,6 +1,7 @@
 // The game must play the same when localStorage is unavailable (v1.3): here every access to it throws.
 // A full run still gets its medal; best time and ghost live on in memory for the session.
 
+import { MAX_HELMETS } from '../../src/journey';
 import { BIKES } from '../../src/bike/bikes';
 import { advance, planFor, resetBot } from './bot';
 import { SPOT, boot, expect, getLevel, getState, rideFromTitle, shot, test } from './helpers';
@@ -62,8 +63,8 @@ test('with localStorage throwing: full run, medal, in-memory best and ghost, no 
   await page.evaluate(() => { const t = window.__test!; t.setInput({}); t.startJourney('sundowner'); t.step(0); });
   await page.waitForFunction(() => window.__test!.state().mode === 'journey' && window.__test!.state().timeMs === 0);
   s = await getState(page);
-  expect([s.stage, s.helmets, s.prompt]).toEqual(['hampi', 5, '']);
+  expect([s.stage, s.helmets, s.prompt]).toEqual(['hampi', MAX_HELMETS, '']);
   await page.evaluate(() => { const t = window.__test!; t.setInput({ throttle: true }); t.step(120); t.crash(); t.step(1); });
-  expect((await getState(page)).helmets).toBe(4);
-  expect(await page.evaluate(() => window.__test!.journey()!.helmets)).toBe(4);
+  expect((await getState(page)).helmets).toBe(MAX_HELMETS - 1);
+  expect(await page.evaluate(() => window.__test!.journey()!.helmets)).toBe(MAX_HELMETS - 1);
 });
