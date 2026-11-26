@@ -1,11 +1,11 @@
 // The river jump needs boost (GAME_SPEC.md section 9, criterion 4). Both runs start at the river checkpoint.
 
 import { BIKES, BIKE_ORDER, DEFAULT_BIKE } from '../../src/bike/bikes';
-import { CHECKPOINTS } from '../../src/level/levelData';
 import { ARCHIVED_BEST_KEYS, bestKey } from '../../src/progress';
+import { CHECKPOINTS } from '../../src/stages/hampi';
 import { boot, expect, getLevel, layout, shot as saveShot, startAt, test } from './helpers';
 
-/** The river checkpoint: the last one (cp11 since v1.7). */
+/** The river checkpoint: the last one (cp3 since v1.9; cp11 before). */
 const RIVER_CP = CHECKPOINTS.length - 1;
 
 interface RiverResult {
@@ -112,7 +112,7 @@ for (const bike of BIKE_ORDER) test.describe(`river jump on the ${BIKES[bike].na
       `[river ${bike}, boost] lip speed ${mid.lipSpeed.toFixed(1)}; lands at x=${r.landingX!.toFixed(1)}, ` +
       `margin ${margin.toFixed(1)} px past the far edge (x=${river.x1}), meter left ${r.landingBoost!.toFixed(3)}`,
     );
-    expect(RIVER_CP).toBe(11);
+    expect(RIVER_CP).toBe(3);
     expect(river.x1).toBe(14080);
     expect(mid.lipSpeed).toBeCloseTo(cfg.boostSpeed, 0);
     expect(margin).toBeGreaterThanOrEqual(16);
@@ -128,7 +128,7 @@ for (const bike of BIKE_ORDER) test.describe(`river jump on the ${BIKES[bike].na
       t.setInput({});
       t.step(240);
       return { data: t.finish(), stored: keys.map((k) => window.localStorage.getItem(k)) };
-    }, [...ARCHIVED_BEST_KEYS, ...BIKE_ORDER.map(bestKey)]);
+    }, [...ARCHIVED_BEST_KEYS, ...BIKE_ORDER.map((b) => bestKey('hampi', b))]);
     expect(fin.data).not.toBeNull();
     expect(fin.data!.ranked).toBe(false);
     expect(fin.data!.medal).toBeNull();

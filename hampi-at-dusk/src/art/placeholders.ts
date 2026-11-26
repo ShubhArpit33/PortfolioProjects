@@ -466,6 +466,58 @@ function drawBubble(p: Pen): void {
   for (const x of [5, 9, 13]) p.r(PAL.ink, x, 5, 2, 2);
 }
 
+/** The 15 x 13 helmet silhouette (a full-face helmet seen from its right side): [x, width] per row. */
+const HELMET_ROWS: Array<[number, number]> = [
+  [5, 6], [3, 9], [2, 11], [1, 13], [1, 13], [0, 15], [0, 15], [0, 15], [0, 15], [0, 15], [1, 14], [1, 14], [2, 12],
+];
+const HELMET_W = 15;
+const inHelmet = (x: number, y: number): boolean => {
+  const row = HELMET_ROWS[y];
+  return row !== undefined && x >= row[0] && x < row[0] + row[1];
+};
+
+/**
+ * A helmet (v1.9, the journey's lives), 17 x 15: the silhouette inside a 1 px ink outline, so it reads on
+ * any sky. on = a helmet in hand: a yellow shell with a red stripe over the crown, a dark visor set in its
+ * front with a glint on the glass, the chin bar under it. off = a spent one: the same shape, hollow (a dim
+ * rim around ink, the visor's outline still showing).
+ */
+function drawHelmet(p: Pen, on: boolean): void {
+  for (const [dx, dy] of [[0, 1], [2, 1], [1, 0], [1, 2]] as const) p.rows(PAL.ink, dx, dy, HELMET_ROWS);
+  if (!on) {
+    const rim = mix(PAL.ink, PAL.graniteLight, 0.8);
+    for (let y = 0; y < HELMET_ROWS.length; y++) {
+      for (let x = 0; x < HELMET_W; x++) {
+        if (!inHelmet(x, y)) continue;
+        const edge = !inHelmet(x - 1, y) || !inHelmet(x + 1, y) || !inHelmet(x, y - 1) || !inHelmet(x, y + 1);
+        p.r(edge ? rim : PAL.ink, x + 1, y + 1, 1, 1);
+      }
+    }
+    // the visor's opening, as a faint line
+    p.r(rim, 8, 6, 5, 1, 0.6).r(rim, 8, 9, 5, 1, 0.6).r(rim, 7, 7, 1, 2, 0.6).r(rim, 13, 7, 1, 2, 0.6);
+    return;
+  }
+  p.rows(PAL.uiYellow, 1, 1, HELMET_ROWS);
+  // light on the dome, the back and the lower edge of the shell in shade
+  p.r(PAL.cream, 5, 2, 4, 1).r(PAL.cream, 4, 3, 2, 1).r(PAL.cream, 3, 4, 1, 2);
+  p.r(PAL.brass, 1, 8, 1, 3).r(PAL.brass, 2, 11, 1, 2);
+  p.rows(PAL.brass, 1, 12, [[1, 14], [2, 12]]);
+  // a red stripe over the crown, front to back
+  p.r(PAL.bikeBody, 9, 1, 2, 4);
+  // the visor: a window of dark glass set in the front of the shell (the shell runs on in front of it and
+  // under it, as the chin bar), with a glint across the glass
+  p.r(PAL.ink, 8, 6, 6, 4).r(PAL.ink, 7, 7, 1, 2);
+  p.r(PAL.chrome, 9, 7, 3, 1).r(PAL.chrome, 12, 8, 1, 1);
+}
+
+/** A padlock (v1.9, a locked stage), 9 x 11. */
+function drawLock(p: Pen): void {
+  const c = PAL.graniteLight;
+  p.r(c, 2, 0, 5, 1).r(c, 1, 1, 2, 4).r(c, 6, 1, 2, 4);
+  p.r(c, 0, 4, 9, 7).r(mix(c, PAL.cream, 0.45), 0, 4, 9, 1).r(PAL.graniteDark, 0, 10, 9, 1);
+  p.r(PAL.ink, 4, 6, 1, 3).r(PAL.ink, 3, 6, 3, 1);
+}
+
 // --- Registry ---------------------------------------------------------------------------------------
 
 interface Def {
@@ -514,6 +566,9 @@ const EXTRAS: Record<string, Def> = {
   medal_gold: { w: 11, h: 14, draw: (p) => drawMedal(p, PAL.gold, PAL.cream, PAL.brass) },
   medal_silver: { w: 11, h: 14, draw: (p) => drawMedal(p, PAL.chrome, PAL.cream, mix(PAL.chrome, PAL.ink, 0.45)) },
   medal_bronze: { w: 11, h: 14, draw: (p) => drawMedal(p, PAL.brass, PAL.sun, PAL.brown) },
+  helmet_on: { w: 17, h: 15, draw: (p) => drawHelmet(p, true) },
+  helmet_off: { w: 17, h: 15, draw: (p) => drawHelmet(p, false) },
+  lock: { w: 9, h: 11, draw: drawLock },
   p_dust: { w: 2, h: 2, draw: (p) => p.r(PAL.graniteLight, 0, 0, 2, 2, 0.8) },
   p_puff: { w: 3, h: 3, draw: (p) => p.r(PAL.graniteLight, 0, 0, 3, 3, 0.45).r(mix(PAL.graniteLight, PAL.cream, 0.4), 0, 1, 2, 2, 0.6) },
   p_streak: { w: 24, h: 1, draw: drawStreak },

@@ -3,7 +3,7 @@
 
 import { BIKES } from '../../src/bike/bikes';
 import { advance, planFor, resetBot } from './bot';
-import { boot, expect, getLevel, getState, rideFromTitle, shot, test } from './helpers';
+import { SPOT, boot, expect, getLevel, getState, rideFromTitle, shot, test } from './helpers';
 
 test('with localStorage throwing: full run, medal, in-memory best and ghost, no console errors', async ({ page }) => {
   test.setTimeout(240_000);
@@ -35,7 +35,7 @@ test('with localStorage throwing: full run, medal, in-memory best and ghost, no 
   let s = await advance(page, plan, Infinity);
   expect(s.finished).toBe(true);
   expect(s.crashes).toBe(0);
-  expect(s.diyas).toBe(level.diyas.length);
+  expect(s.diyas).toBe(level.collectibles.length);
   const fin = (await page.evaluate(() => window.__test!.finish()))!;
   expect(fin.medal).toBe('gold');
   expect(fin.newTime).toBe(true);
@@ -54,6 +54,16 @@ test('with localStorage throwing: full run, medal, in-memory best and ghost, no 
   s = await getState(page);
   expect(s.ghost).not.toBeNull();
   expect(s.ghost!.x).toBeGreaterThan(s.x);
-  s = await advance(page, plan, lay.cpX[1]!);
+  s = await advance(page, plan, SPOT.bazaar * level.tile);
   expect(s.crashes).toBe(0);
+  expect(lay.cpX).toHaveLength(4);
+
+  // v1.9: the journey works without storage too. Its helmets, its unlocks and its best time live in memory.
+  await page.evaluate(() => { const t = window.__test!; t.setInput({}); t.startJourney('sundowner'); t.step(0); });
+  await page.waitForFunction(() => window.__test!.state().mode === 'journey' && window.__test!.state().timeMs === 0);
+  s = await getState(page);
+  expect([s.stage, s.helmets, s.prompt]).toEqual(['hampi', 5, '']);
+  await page.evaluate(() => { const t = window.__test!; t.setInput({ throttle: true }); t.step(120); t.crash(); t.step(1); });
+  expect((await getState(page)).helmets).toBe(4);
+  expect(await page.evaluate(() => window.__test!.journey()!.helmets)).toBe(4);
 });

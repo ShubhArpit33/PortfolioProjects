@@ -1,14 +1,18 @@
 // The bot run (GAME_SPEC.md section 9, criteria 2, 3 and 9), then the replay loop on the same page:
 // best time + medal + ghost saved at the line, R to ride again, the ghost of the first run, G to hide it.
-// Starts from the title with a real Enter key press, then plays with __test.setInput / __test.step only.
+// Starts from the title with real key presses, then plays with __test.setInput / __test.step only.
 // v1.7: the 900-column stage. The first run also shows the tutorial prompts; finishing it switches them off.
+// v1.9: this is a single run of Hampi (title -> STAGES -> Hampi -> bike select); four checkpoints; the
+// record is the stage's and the bike's (version 3).
 
-import { BIKES, BIKE_ORDER, BOT_RUN_MS, DEFAULT_BIKE } from '../../src/bike/bikes';
-import { TERRAIN } from '../../src/level/terrain';
-import { ARCHIVED_BEST_KEYS, GHOST_SAMPLE_STEPS, PREFS_KEY, bestKey, encodeGhost } from '../../src/progress';
+import { BIKES, BIKE_ORDER, DEFAULT_BIKE, type BikeId } from '../../src/bike/bikes';
+import { ARCHIVED_BEST_KEYS, GHOST_SAMPLE_STEPS, PREFS_KEY, UNLOCKS_KEY, bestKey, encodeGhost, journeyKey } from '../../src/progress';
+import { BOT_RUN_MS, HAMPI, TERRAIN } from '../../src/stages/hampi';
 import { boulderMeetX } from '../shared/plan';
 import { advance, planFor, resetBot } from './bot';
-import { boot, expect, getLevel, getState, rideFromTitle, shot as saveShot, test } from './helpers';
+import { CP, boot, expect, getLevel, getState, press, rideFromTitle, shot as saveShot, test } from './helpers';
+
+const hampiKey = (bike: BikeId): string => bestKey('hampi', bike);
 
 /** The bot's measured clean run per bike (ms): a change in feel shows up here first. */
 const EXPECTED_MS = BOT_RUN_MS;
@@ -25,8 +29,8 @@ for (const bike of BIKE_ORDER) test(`bot on the ${BIKES[bike].name}: full run fr
   test.setTimeout(300_000);
   const def = BIKES[bike];
   const CONFIG = def.cfg;
-  const MEDAL_TIMES_MS = def.medalsMs;
-  const BEST_KEY = bestKey(bike);
+  const MEDAL_TIMES_MS = HAMPI.medalsMs[bike];
+  const BEST_KEY = hampiKey(bike);
   // The default bike keeps the plain screenshot names; the others get a suffix.
   const shot = (p: typeof page, name: string): Promise<void> => saveShot(p, bike === DEFAULT_BIKE ? name : `${name}-${bike}`);
   await boot(page);
@@ -55,7 +59,8 @@ for (const bike of BIKE_ORDER) test(`bot on the ${BIKES[bike].name}: full run fr
   expect((await getState(page)).timeMs).toBe(0);
 
   await rideFromTitle(page, bike);
-  expect((await getState(page)).bike).toBe(bike);
+  const started = await getState(page);
+  expect([started.bike, started.stage, started.mode, started.helmets]).toEqual([bike, 'hampi', 'single', null]);
 
   // --- the ride, stopping for screenshots ---
   let s = await getState(page);
@@ -85,14 +90,20 @@ for (const bike of BIKE_ORDER) test(`bot on the ${BIKES[bike].name}: full run fr
   await stop(sectionMid('Bazaar Street') + 120, 'bazaar'); // the cow comes into view
   expect(s.prompt).toBe('');
   await stop((lay.canals[2]!.x0 + lay.canals[2]!.x1) / 2, 'canals'); // mid-hop over the widest early canal
-  await stop(lay.cpX[3]! + 56, 'canals-cp3'); // v1.7: the checkpoint inside the canal run, just lit
-  expect(s.checkpoint).toBe(3);
+  await stop(232 * T + 64, 'canals-run'); // inside the canal run (a checkpoint until v1.9: now a crash here goes back to the start)
+  expect(s.checkpoint).toBe(CP.start);
   await stop(plan.honkFrom + 110, 'pavilion-monkeys'); // monkeys leaping away from the horn
   await stop(boxOf('cart', 0).x0, 'pavilion-cart'); // hopping the bullock cart
   await stop(sectionMid('Boulder Field') - 60, 'boulder-field'); // top of the big ramp, cliff ahead
-  await stop(level.bonus.lipCol * T - 24, 'ruins-bonus-ramp'); // v1.7 breather: rolling up the bonus ramp, ruins behind
-  await stop((level.bonus.cliffCol + 24) * T, 'ruins-trail'); // the diya trail out, past the shrine
-  expect(s.checkpoint).toBe(6);
+  expect(lay.cpX).toHaveLength(4);
+  expect(s.checkpoint).toBe(CP.start);
+  // v1.9: the middle checkpoint (Ruins Road). Its "CHECKPOINT" popup stays on the screen while the bike rides on.
+  await stop(lay.cpX[CP.ruins]! + 24, 'ruins-checkpoint');
+  expect(s.checkpoint).toBe(CP.ruins);
+  await stop(lay.cpX[CP.ruins]! + 150, 'ruins-checkpoint-later');
+  await stop(level.bonus!.lipCol * T - 24, 'ruins-bonus-ramp'); // v1.7 breather: rolling up the bonus ramp, ruins behind
+  await stop((level.bonus!.cliffCol + 24) * T, 'ruins-trail'); // the diya trail out, past the shrine
+  expect(s.checkpoint).toBe(CP.ruins);
   await stop(boxOf('pillar', 4).x0 + 24, 'mandapa'); // mandapa run: over the second pillar on the plinth
   await stop(kickerGap.x0 - 23 * T, 'rocks'); // rocks: top of the hop line off the second roller
   if (bike === DEFAULT_BIKE) expect(s.grounded, 'airborne on the roller hop line').toBe(false);
@@ -105,13 +116,13 @@ for (const bike of BIKE_ORDER) test(`bot on the ${BIKES[bike].name}: full run fr
     expect(s.grounded, `airborne over riser ${i + 1}`).toBe(false);
   }
   expect(s.boulder.phase).toBe('hidden');
-  await stop(lay.boulder.triggerX + 16, 'boulder-cue'); // it has just started: still off screen, the "!" at the right edge
+  await stop(lay.boulder!.triggerX + 16, 'boulder-cue'); // it has just started: still off screen, the "!" at the right edge
   expect(s.boulder.phase).toBe('roll');
-  expect(s.checkpoint).toBe(10);
-  await stop(lay.boulder.triggerX + 150, 'boulder-on-screen'); // rolling out of the temple doorway
+  expect(s.checkpoint).toBe(CP.steps); // the foot of the steps: a crash on the terrace goes back there
+  await stop(lay.boulder!.triggerX + 150, 'boulder-on-screen'); // rolling out of the temple doorway
   await stop(boulderMeetX(lay, CONFIG), 'boulder-hop'); // right over it
   expect(s.grounded, 'airborne over the boulder').toBe(false);
-  expect(Math.abs(s.boulder.x + level.boulder.hitW / 2 - s.x), 'the boulder is under the bike').toBeLessThan(6);
+  expect(Math.abs(s.boulder.x + level.boulder!.hitW / 2 - s.x), 'the boulder is under the bike').toBeLessThan(6);
   const stairs = TERRAIN.cliffs.filter((c) => c.x > lay.steps[2]!.x1);
   expect(stairs).toHaveLength(3);
   await stop(stairs[1]!.x + 8, 'stairs-down'); // rolling down the three drops
@@ -135,13 +146,13 @@ for (const bike of BIKE_ORDER) test(`bot on the ${BIKES[bike].name}: full run fr
   s = await getState(page);
   console.log(
     `[bot ${bike}] finished: timeMs=${s.timeMs} (${(s.timeMs / 1000).toFixed(2)} s), crashes=${s.crashes}, ` +
-    `diyas=${s.diyas}/${level.diyas.length}, boost left=${s.boost.toFixed(3)}`,
+    `diyas=${s.diyas}/${level.collectibles.length}, boost left=${s.boost.toFixed(3)}`,
   );
   expect(s.finished).toBe(true);
   expect(s.crashed).toBe(false);
   expect(s.crashes).toBe(0);
-  expect(level.diyas.length).toBe(56);
-  expect(s.diyas).toBe(level.diyas.length);
+  expect(level.collectibles.length).toBe(56);
+  expect(s.diyas).toBe(level.collectibles.length);
   expect([s.stumbles, s.wobbles, s.flips]).toEqual([0, 0, 0]);
   expect(s.timeMs).toBeLessThan(120_000);
   expect(s.timeMs, 'the timer stops at the finish line').toBe(final.timeMs);
@@ -175,14 +186,15 @@ for (const bike of BIKE_ORDER) test(`bot on the ${BIKES[bike].name}: full run fr
   expect([fin.newTime, fin.newDiyas, fin.newFlips, fin.saved]).toEqual([true, true, true, true]);
   const stored = await page.evaluate((k) => JSON.parse(window.localStorage.getItem(k) ?? 'null'), BEST_KEY);
   expect(stored.timeMs).toBe(s.timeMs);
-  expect(stored.diyas).toBe(level.diyas.length);
+  expect(stored.diyas).toBe(level.collectibles.length);
   expect(stored.flips).toBe(0);
-  expect(stored.v).toBe(2);
-  expect(stored.stage).toBe(900);
+  expect([stored.v, stored.stage, stored.cols]).toEqual([3, 'hampi', 900]);
+  // A single run is not a journey: no journey record, and nothing new unlocked.
+  expect(await page.evaluate((keys) => keys.map((k) => window.localStorage.getItem(k)), [journeyKey(['hampi'], bike), UNLOCKS_KEY])).toEqual([null, null]);
   // This bike's record only: nothing under the other bikes' keys, and the archive exactly as it was.
   const others = await page.evaluate(
     (keys) => keys.map((k) => window.localStorage.getItem(k)),
-    BIKE_ORDER.filter((b) => b !== bike).map(bestKey),
+    BIKE_ORDER.filter((b) => b !== bike).map(hampiKey),
   );
   expect(others).toEqual([null, null]);
   expect(await readArchive()).toEqual(ARCHIVE);
@@ -231,7 +243,7 @@ for (const bike of BIKE_ORDER) test(`bot on the ${BIKES[bike].name}: full run fr
   await page.evaluate(() => { window.__test!.setInput({}); window.__test!.step(240); });
   await shot(page, 'finish-second-run');
   const fin2 = (await page.evaluate(() => window.__test!.finish()))!;
-  expect(fin2.prevBest).toEqual({ timeMs: s.timeMs, diyas: level.diyas.length, flips: 0 });
+  expect(fin2.prevBest).toEqual({ timeMs: s.timeMs, diyas: level.collectibles.length, flips: 0 });
   expect([fin2.newTime, fin2.newDiyas, fin2.newFlips]).toEqual([false, false, false]);
   expect(fin2.medal).toBe('gold');
   const stored2 = await page.evaluate((k) => JSON.parse(window.localStorage.getItem(k) ?? 'null'), BEST_KEY);
@@ -252,12 +264,21 @@ for (const bike of BIKE_ORDER) test(`bot on the ${BIKES[bike].name}: full run fr
   expect(r.x).toBeLessThan(100);
   expect(r.crashes).toBe(0);
 
-  // Back on the title after a reload: the best time and its medal are shown. The archive is still untouched.
+  // After a reload the STAGES list shows Hampi's best time, the bike it was set on and its medal. The archive
+  // is still untouched.
   expect(await readArchive()).toEqual(ARCHIVE);
   await boot(page);
   expect(await readArchive()).toEqual(ARCHIVE);
   await page.evaluate(() => window.__test!.step(40));
-  await shot(page, 'title-best');
+  await shot(page, 'title-after-run');
+  await press(page, 'ArrowDown');
+  await press(page, 'Enter');
+  await page.waitForFunction(() => window.__test!.screen() === 'stages');
+  const list = (await page.evaluate(() => window.__test!.stages()))!;
+  expect(list.rows.map((row) => [row.id, row.unlocked, row.bestMs, row.bestBike, row.medal])).toEqual([['hampi', true, s.timeMs, bike, 'gold']]);
+  await shot(page, 'stages-list-best');
+  await press(page, 'Escape');
+  await page.waitForFunction(() => window.__test!.screen() === 'title');
   // ... and the tutorial stays done on the next visit.
   await rideFromTitle(page, bike);
   r = await getState(page);

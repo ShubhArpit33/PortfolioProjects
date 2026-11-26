@@ -5,7 +5,7 @@
 import type { Page } from '@playwright/test';
 import { BIKES, BIKE_ORDER } from '../../src/bike/bikes';
 import { PREFS_KEY } from '../../src/progress';
-import { boot, expect, getLevel, getState, rideFromTitle, shot, startAt, test, type GameSnapshot } from './helpers';
+import { CP, SPOT, boot, expect, getLevel, getState, rideFromTitle, shot, startAt, startAtCol, test, type GameSnapshot } from './helpers';
 
 /** Hold an input until the bike's x reaches untilX (or it crashes, or 20 s pass). */
 const rideTo = (page: Page, untilX: number, input: Record<string, boolean>): Promise<GameSnapshot> =>
@@ -89,11 +89,12 @@ test('first visit: four prompts in turn, the log is a stumble, a bad landing is 
   await page.evaluate(() => { window.__test!.setInput({ throttle: true }); window.__test!.step(12); });
   await shot(page, 'wobble'); // "WOBBLE!"
 
-  // The last metres: no prompt, and on to Bazaar Street's checkpoint without a crash.
+  // The last metres: no prompt, and on into Bazaar Street without a crash. (Until v1.9 there was a checkpoint
+  // here; now the next one is in the middle of the stage.)
   s = await rideTo(page, 104 * T, { throttle: true });
   expect(s.prompt).toBe('');
-  s = await rideTo(page, level.checkpoints[1]!.col * T + 12, { throttle: true });
-  expect([s.checkpoint, s.crashes, s.prompt]).toEqual([1, 0, '']);
+  s = await rideTo(page, SPOT.bazaar * T + 12, { throttle: true });
+  expect([s.checkpoint, s.crashes, s.prompt]).toEqual([CP.start, 0, '']);
 
   // The run was not finished, so the tutorial is not done: R shows the first prompt again.
   expect((await prefs(page)).tutorialDone).not.toBe(true);
@@ -107,7 +108,7 @@ test('the no-crash zone ends with the warm-up, on every bike; prompts stop for g
   await boot(page);
   const level = await getLevel(page);
   const T = level.tile;
-  const safeEnd = level.safeZone.toCol * T;
+  const safeEnd = level.safeZone!.toCol * T;
 
   for (const bike of BIKE_ORDER) {
     // The last hop of the warm-up comes down in Bazaar Street and is still only a wobble ...
@@ -117,8 +118,8 @@ test('the no-crash zone ends with the warm-up, on every bike; prompts stop for g
     expect(s.x, bike).toBeGreaterThan(safeEnd);
     expect([s.crashed, s.crashes, s.wobbles], bike).toEqual([false, 0, 1]);
     // ... the first hop taken past the line is a crash, as everywhere else.
-    await startAt(page, 1, bike);
-    s = await botchedHop(page, level.checkpoints[1]!.col * T + 60);
+    await startAtCol(page, SPOT.bazaar, bike);
+    s = await botchedHop(page, SPOT.bazaar * T + 60);
     expect([s.crashed, s.crashes, s.wobbles], bike).toEqual([true, 1, 0]);
   }
 

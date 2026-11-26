@@ -1,23 +1,25 @@
 // Bakes the heightfield into static textures, in chunks of 960 px (<= 1024, GAME_SPEC.md section 6.2).
 // Drawn once per page load with the 2D canvas API, one pixel column at a time so ramps stay crisp.
 // What a column of road or water looks like is the stage theme's ground kit (src/art/look/ground.ts);
-// where the surface is, the dressed stone of the Temple Steps and the boost strip are the level's.
+// where the surface is, the dressed stone of a flight of steps and the boost strip are the stage's.
+// v1.9: baked per stage (texture keys carry the stage id), the first time that stage is shown.
 
 import Phaser from 'phaser';
 import { grassLine, roadColumn, roadDetail, waterColumn } from '../art/look/ground';
 import { theme } from '../art/look/theme';
 import { PAL, css, mix, rng } from '../art/palette';
-import { BASELINE_Y, BONUS, BOULDER, PROMPTS, STAGE_WIDTH, TILE, WATER_LINE_Y } from './levelData';
-import { TERRAIN, type Terrain } from './terrain';
+import type { StageDef } from '../stages/stage';
+import { BASELINE_Y, TILE, WATER_LINE_Y, type PromptDef } from './level';
+import type { Terrain } from './terrain';
 
 export const CHUNK_W = 960;
 const H = 270;
 
-/** The stretch of road under the "HOLD SHIFT - BOOST" prompt, in world px. */
-const BOOST_STRIP = ((): { x0: number; x1: number } => {
-  const p = PROMPTS.find((q) => q.text.includes('BOOST'));
+/** The stretch of road under the "HOLD SHIFT - BOOST" prompt, in world px (empty when a stage has none). */
+function boostStrip(prompts: readonly PromptDef[]): { x0: number; x1: number } {
+  const p = prompts.find((q) => q.text.includes('BOOST'));
   return p ? { x0: (p.fromCol + 2) * TILE, x1: (p.toCol - 2) * TILE } : { x0: 0, x1: 0 };
-})();
+}
 
 /**
  * The drawn top of the ground at a world x, or null over water. A riser's slot (v1.7) is dry: it is drawn
@@ -36,7 +38,7 @@ function surfaceRow(terrain: Terrain, wx: number): number | null {
  * The Temple Steps are dressed stone (courses of cut blocks, a pale worn lip, no moss) from a little
  * before the first riser to a little past the last drop: [x0, x1) in world px, or null without risers.
  */
-export function dressedSpan(terrain: Terrain = TERRAIN): { x0: number; x1: number } | null {
+export function dressedSpan(terrain: Terrain): { x0: number; x1: number } | null {
   const steps = terrain.gaps.filter((g) => g.step);
   if (steps.length === 0) return null;
   const last = steps[steps.length - 1]!;
@@ -45,7 +47,9 @@ export function dressedSpan(terrain: Terrain = TERRAIN): { x0: number; x1: numbe
   return { x0: steps[0]!.x0 - 2 * TILE, x1: end + 2 * TILE };
 }
 
-function bakeChunk(scene: Phaser.Scene, key: string, x0: number, terrain: Terrain): void {
+function bakeChunk(scene: Phaser.Scene, key: string, x0: number, stage: StageDef): void {
+  const terrain = stage.terrain;
+  const BOOST_STRIP = boostStrip(stage.prompts);
   const tex = scene.textures.createCanvas(key, CHUNK_W, H);
   if (!tex) return;
   const ctx = tex.getContext();
@@ -146,39 +150,46 @@ function bakeChunk(scene: Phaser.Scene, key: string, x0: number, terrain: Terrai
   tex.refresh();
 }
 
-const chunkCount = Math.ceil(STAGE_WIDTH / CHUNK_W);
+const chunkCount = (stage: StageDef): number => Math.ceil(stage.width / CHUNK_W);
 
-/** Bake the chunk textures (once per page load). */
-export function bakeTerrain(scene: Phaser.Scene, terrain: Terrain = TERRAIN): void {
-  for (let i = 0; i < chunkCount; i++) {
-    const key = `terrain_${i}`;
-    if (!scene.textures.exists(key)) bakeChunk(scene, key, i * CHUNK_W, terrain);
+/** Texture key of a stage's i-th terrain chunk. */
+export const terrainKey = (stage: StageDef, i: number): string => `terrain_${stage.id}_${i}`;
+
+/**
+ * Bake a stage's chunk textures (once per page load and stage). The road is drawn with the theme that is
+ * active, so the stage's look must have been set first (useStageLook in src/art/assets.ts does both).
+ */
+export function bakeTerrain(scene: Phaser.Scene, stage: StageDef): void {
+  for (let i = 0; i < chunkCount(stage); i++) {
+    const key = terrainKey(stage, i);
+    if (!scene.textures.exists(key)) bakeChunk(scene, key, i * CHUNK_W, stage);
   }
 }
 
-/** Place the terrain chunk images in a scene. */
-export function addTerrain(scene: Phaser.Scene, depth: number): void {
-  bakeTerrain(scene);
-  for (let i = 0; i < chunkCount; i++) {
-    scene.add.image(i * CHUNK_W, 0, `terrain_${i}`).setOrigin(0, 0).setDepth(depth);
+/** Place a stage's terrain chunk images in a scene. */
+export function addTerrain(scene: Phaser.Scene, stage: StageDef, depth: number): void {
+  bakeTerrain(scene, stage);
+  for (let i = 0; i < chunkCount(stage); i++) {
+    scene.add.image(i * CHUNK_W, 0, terrainKey(stage, i)).setOrigin(0, 0).setDepth(depth);
   }
 }
 
 /**
- * Decoration that stands on the terrain (v1.7), all behind every entity and in a dark, low-contrast tone:
- * ruins along the Ruins Road breather, and the temple doorway on the terrace that the boulder rolls out of.
+ * A strip of a stage's road for the menus (the first chunk starts with flat road, so it tiles), as a
+ * TileSprite that fills the screen.
  */
-export function addDecor(scene: Phaser.Scene, depth: number): void {
-  const place = (key: string, col: number, alpha = 0.85): void => {
-    const x = col * TILE;
-    const y = TERRAIN.surfaceY(x + 0.5) ?? BASELINE_Y;
-    scene.add.image(x, y + 1, key).setOrigin(0, 1).setDepth(depth).setAlpha(alpha);
-  };
-  // Ruins Road: a broken hall before the bonus ramp, then more along the trail out after the drop.
-  place('ruins_a', BONUS.rampCol - 16);
-  place('ruins_b', BONUS.cliffCol + 6);
-  place('ruins_a', BONUS.cliffCol + 22);
-  place('ruins_b', BONUS.cliffCol + 37);
-  // The temple doorway stands where the boulder starts (it is 96 px wide: three columns either side).
-  place('temple_door', BOULDER.spawnCol - 3, 1);
+export function addGroundStrip(scene: Phaser.Scene, stage: StageDef, depth: number): Phaser.GameObjects.TileSprite {
+  bakeTerrain(scene, stage);
+  return scene.add.tileSprite(0, 0, 480, 270, terrainKey(stage, 0)).setOrigin(0, 0).setDepth(depth);
+}
+
+/**
+ * A stage's decoration that stands on the terrain (stage.decor), all behind every entity and in a dark,
+ * low-contrast tone. Hampi: the colonnade, the ruins, the temple doorway.
+ */
+export function addDecor(scene: Phaser.Scene, stage: StageDef, depth: number): void {
+  for (const d of stage.decor) {
+    const y = stage.terrain.surfaceY(d.x + 0.5) ?? BASELINE_Y;
+    scene.add.image(d.x, y + 1, d.key).setOrigin(0, 1).setDepth(depth).setAlpha(d.alpha);
+  }
 }

@@ -3,7 +3,6 @@
 
 import type { Page } from '@playwright/test';
 import { CONFIG, type Config } from '../../src/config';
-import { CAMERA_MAX_SCROLL_X } from '../../src/level/levelData';
 import { layout, planHopsFor, type Layout, type Span } from '../shared/plan';
 import type { GameSnapshot, LevelData } from './helpers';
 
@@ -16,8 +15,6 @@ export interface Plan {
   boostFrom: number;   // hold boost from this x on
 }
 
-const CAM_MAX = CAMERA_MAX_SCROLL_X;
-
 export interface BotMemory {
   next: number; hopHeld: boolean; steps: number;
   camMinStep: number; camMaxStep: number; minScreenX: number; maxScreenX: number;
@@ -28,8 +25,9 @@ export interface BotMemory {
  * decision. The bot's memory lives in window.__bot so the run can be resumed after a screenshot.
  */
 export function advance(page: Page, plan: Plan, untilX: number, maxSteps = 120 * 120): Promise<GameSnapshot> {
-  return page.evaluate(({ plan, untilX, maxSteps, camMax }) => {
+  return page.evaluate(({ plan, untilX, maxSteps }) => {
     const t = window.__test!;
+    const camMax = t.levelData.stageWidth - 480; // the furthest the camera scrolls on this stage
     const w = window as unknown as { __bot?: BotMemory };
     const bot = (w.__bot ??= {
       next: 0, hopHeld: false, steps: 0,
@@ -61,7 +59,7 @@ export function advance(page: Page, plan: Plan, untilX: number, maxSteps = 120 *
       if (hop && !s.grounded) bot.next++;
     }
     return s;
-  }, { plan, untilX, maxSteps, camMax: CAM_MAX });
+  }, { plan, untilX, maxSteps });
 }
 
 
@@ -80,8 +78,8 @@ export function planFor(level: LevelData, cfg: Config = CONFIG): {
     planner: hopPlan.planner,
     plan: {
       hops: hopPlan.hops,
-      honkFrom: level.monkeys.triggerCol * T,
-      honkTo: Math.max(...level.monkeys.spawnCols) * T,
+      honkFrom: level.monkeys ? level.monkeys.triggerCol * T : 1e12,
+      honkTo: level.monkeys ? Math.max(...level.monkeys.spawnCols) * T : -1,
       boostFrom: lay.cpX[riverCp]!, // boost only in the river run-up: the meter budget is tight
     },
   };

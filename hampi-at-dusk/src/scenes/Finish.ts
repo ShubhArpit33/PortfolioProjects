@@ -1,20 +1,25 @@
-// Finish screen: a yellow pixel frame over the stopped game. This run next to the best, the medal
+// Finish screen of a single run: a yellow pixel frame over the stopped game. This run next to the best, the medal
 // earned and the next target, three stars, and the way out: RIDE AGAIN (Enter or R), CHANGE BIKE or MAIN MENU.
 // Medal targets and bests are the ridden bike's own.
 import Phaser from 'phaser';
 import { PAL } from '../art/palette';
 import { setMusicInRun, tickMusic } from '../audio/music';
 import { onKeyPress } from '../input';
-import { DIYAS } from '../level/levelData';
 import { BIKES, type BikeId } from '../bike/bikes';
 import type { Medal } from '../progress';
+import { stageDef } from '../stages';
+import type { StageId } from '../stages/stage';
 import { Menu } from '../ui/Menu';
 import { formatTime, pixelFrame, pixelText } from '../ui/text';
 import type { GameScene } from './Game';
 
 export interface FinishData {
+  /** the stage the run was on (targets, bests and what its pickups are called are the stage's) */
+  stage: StageId;
   timeMs: number;
+  /** collectibles picked up, and how many the stage has */
   diyas: number;
+  total: number;
   crashes: number;
   flips: number;
   /** the bike the run was ridden on (medal targets and bests are per bike) */
@@ -47,7 +52,8 @@ export class FinishScene extends Phaser.Scene {
     setMusicInRun(false); // v1.6.4: menus have the music
     this.t = 0;
     this.blink = [];
-    const total = DIYAS.length;
+    const total = data.total;
+    const pickups = stageDef(data.stage).collectible.label;
     this.add.rectangle(0, 0, 480, 270, PAL.ink, 0.45).setOrigin(0, 0);
     const x = 60, y = 18, w = 360, h = 236;
     pixelFrame(this.add.graphics(), x, y, w, h);
@@ -75,7 +81,7 @@ export class FinishScene extends Phaser.Scene {
     const best = data.prevBest;
     const rows: Array<[string, string, string | null, boolean]> = [
       ['TIME', formatTime(data.timeMs), best.timeMs === null ? null : formatTime(best.timeMs), data.newTime],
-      ['DIYAS', `${data.diyas}/${total}`, best.diyas === null ? null : `${best.diyas}/${total}`, data.newDiyas],
+      [pickups, `${data.diyas}/${total}`, best.diyas === null ? null : `${best.diyas}/${total}`, data.newDiyas],
       ['FLIPS', String(data.flips), best.flips === null ? null : String(best.flips), data.newFlips],
       ['CRASHES', String(data.crashes), '', false],
     ];
@@ -104,7 +110,7 @@ export class FinishScene extends Phaser.Scene {
 
     // Star 1: finished. Star 2: every diya. Star 3: no crashes.
     const earned = [true, data.diyas >= total, data.crashes === 0];
-    const labels = ['FINISH', 'DIYAS', 'CLEAN'];
+    const labels = ['FINISH', pickups, 'CLEAN'];
     earned.forEach((on, i) => {
       const sx = 240 + (i - 1) * 72;
       this.add.image(sx, y + 162, on ? 'star_on' : 'star_off').setScale(2);

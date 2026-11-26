@@ -4,8 +4,8 @@
 // y grows downward (screen space), so "above the surface" means a smaller y.
 
 import { CONFIG, type Config } from '../config';
-import { WATER_KILL_Y, WORLD_END_X, WORLD_START_X } from '../level/levelData';
-import { TERRAIN, type Box, type Terrain } from '../level/terrain';
+import { WATER_KILL_Y, WORLD_START_X, worldEndX } from '../level/level';
+import type { Box, Terrain } from '../level/terrain';
 
 export const FIXED_DT = 1 / 120;
 export const HOP_COYOTE_S = 0.08;
@@ -73,7 +73,7 @@ export interface BikeState {
   evImpact: number;
 }
 
-export function createBikeState(x: number, terrain: Terrain = TERRAIN, cfg: Config = CONFIG): BikeState {
+export function createBikeState(x: number, terrain: Terrain, cfg: Config = CONFIG): BikeState {
   const y = terrain.surfaceY(x);
   if (y === null) throw new Error(`createBikeState: x=${x} is over a gap`);
   return {
@@ -131,8 +131,8 @@ function approach(value: number, target: number, maxDelta: number): number {
 export function step(
   prev: BikeState,
   input: BikeInput,
-  dt: number = FIXED_DT,
-  terrain: Terrain = TERRAIN,
+  dt: number,
+  terrain: Terrain,
   cfg: Config = CONFIG,
 ): BikeState {
   if (prev.crashed !== null) return prev;
@@ -149,8 +149,9 @@ export function step(
   if (s.hopBuffer > 0) s.hopBuffer = Math.max(0, s.hopBuffer - dt);
 
   // World bounds: invisible walls at both ends of the stage.
-  if (s.x > WORLD_END_X) {
-    s.x = WORLD_END_X;
+  const endX = worldEndX(terrain.width);
+  if (s.x > endX) {
+    s.x = endX;
     s.vx = 0;
     if (s.grounded) s.v = 0;
   } else if (s.x < WORLD_START_X) {
@@ -418,7 +419,7 @@ export function stumble(s: BikeState, factor: number): BikeState {
  * wobble instead. The bike is stood upright on the surface and keeps `factor` of its forward speed.
  * Anything else (a state that is not a landing crash) is returned unchanged.
  */
-export function wobbleLanding(s: BikeState, factor: number, terrain: Terrain = TERRAIN): BikeState {
+export function wobbleLanding(s: BikeState, factor: number, terrain: Terrain): BikeState {
   if (s.crashed !== 'landing') return s;
   const slope = terrain.slopeAngle(s.x);
   const th = slope * DEG;

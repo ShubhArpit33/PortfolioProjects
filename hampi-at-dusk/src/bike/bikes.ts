@@ -2,12 +2,12 @@
 //
 // CONFIG itself is the Daybreak (the bike the stage was built around) and is never changed here.
 // All three share the 24 x 16 hitbox and the same wheel contact points; only the feel differs.
-// Every number below was measured against the stage first (DECISIONS.md, v1.6; medals v1.7).
+// Every number below was measured against the stage first (DECISIONS.md, v1.6).
+// v1.9: a bike is its physics only. Bot run times and medal targets belong to a stage (src/stages).
 
 import { CONFIG, type Config } from '../config';
 
 export type BikeId = 'tonup' | 'daybreak' | 'sundowner';
-export type MedalTimes = Readonly<Record<'gold' | 'silver' | 'bronze', number>>;
 
 export interface BikeStats {
   speed: number; pull: number; boost: number; flip: number; grip: number;
@@ -21,8 +21,6 @@ export interface BikeDef {
   /** what this bike changes; everything else is CONFIG */
   overrides: Readonly<Partial<Config>>;
   cfg: Config;
-  /** medal targets (ms, inclusive), set from each bike's measured bot run */
-  medalsMs: MedalTimes;
   /** select-screen bars, 1..5, derived from cfg (see statBars) */
   stats: BikeStats;
 }
@@ -53,24 +51,6 @@ const NAMES: Record<BikeId, [string, string]> = {
   sundowner: ['SUNDOWNER', 'THE BOBBER. LOW, HEAVY AND FORGIVING.'],
 };
 
-/**
- * The bot's clean run on each bike (ms): no flips, boost only at the river. Measured on the 900-column
- * stage (v1.7); the e2e bot run asserts these to the millisecond.
- */
-export const BOT_RUN_MS: Readonly<Record<BikeId, number>> = { tonup: 49_908, daybreak: 59_517, sundowner: 69_150 };
-
-/** Medal targets from a bot time (v1.7): gold x1.05, silver x1.25, bronze x2.2, each rounded up to a whole second. */
-export function medalsFor(botMs: number): MedalTimes {
-  const up = (k: number): number => Math.ceil((botMs * k) / 1000 - 1e-9) * 1000;
-  return { gold: up(1.05), silver: up(1.25), bronze: up(2.2) };
-}
-
-const MEDALS: Record<BikeId, MedalTimes> = {
-  tonup: medalsFor(BOT_RUN_MS.tonup),         // 53 / 63 / 110 s
-  daybreak: medalsFor(BOT_RUN_MS.daybreak),   // 63 / 75 / 131 s
-  sundowner: medalsFor(BOT_RUN_MS.sundowner), // 73 / 87 / 153 s
-};
-
 /** A value on a 1..5 bar: lo maps to 1, hi to 5 (rounded, clamped). */
 const bar = (v: number, lo: number, hi: number): number =>
   Math.min(5, Math.max(1, Math.round(1 + (4 * (v - lo)) / (hi - lo))));
@@ -92,7 +72,7 @@ export function statBars(cfg: Config): BikeStats {
 function define(id: BikeId): BikeDef {
   const overrides = OVERRIDES[id];
   const cfg: Config = { ...CONFIG, ...overrides };
-  return { id, name: NAMES[id][0], tagline: NAMES[id][1], overrides, cfg, medalsMs: MEDALS[id], stats: statBars(cfg) };
+  return { id, name: NAMES[id][0], tagline: NAMES[id][1], overrides, cfg, stats: statBars(cfg) };
 }
 
 export const BIKES: Readonly<Record<BikeId, BikeDef>> = {

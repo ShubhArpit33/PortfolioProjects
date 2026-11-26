@@ -6,7 +6,8 @@ import type Phaser from 'phaser';
 import { bakeKeyline, bakeLook } from './look/bake';
 import { setTheme, theme } from './look/theme';
 import { MANIFEST, generatePlaceholders } from './placeholders';
-import { HAMPI } from './themes/hampi';
+import { bakeTerrain } from '../level/terrainView';
+import type { StageDef } from '../stages/stage';
 
 /** Queue the PNGs that exist. Call from a scene's preload(). */
 export function queueAssetPngs(scene: Phaser.Scene): void {
@@ -29,10 +30,34 @@ const KEYLINED: ReadonlyArray<readonly [string, number, (readonly [number, numbe
   ['diya', 0, [7, 1]], ['pillar', 0], ['cart', 0], ['log', 0], ['cow', 0], ['monkey', 16],
 ];
 
-/** Fill in every texture that was not loaded from a PNG. Call from create(). */
-export function ensureTextures(scene: Phaser.Scene): void {
-  setTheme(HAMPI); // the only stage so far
+/** Fill in every texture that was not loaded from a PNG. Call from create(), once, with the first stage. */
+export function ensureTextures(scene: Phaser.Scene, first: StageDef): void {
+  setTheme(first.theme);
   bakeLook(scene, theme());
+  lookOf = first.theme.id;
   generatePlaceholders(scene);
   for (const [key, frameW, glint] of KEYLINED) bakeKeyline(scene, key, theme().ink, 0.9, frameW, glint);
+  bakeTerrain(scene, first);
+}
+
+/** The light and mist textures every theme bakes under the same key, in its own colours. */
+const SHARED_LOOK = ['glow', 'glow_diya', 'light_pool', 'sun_glitter', 'mist_band', 'p_mist'];
+/** The theme those were last baked for. */
+let lookOf: string | null = null;
+
+/**
+ * Make a stage's look the active one (v1.9): its theme, its layers and its road. Call at the top of a
+ * scene's create(), before anything is drawn; scenes that showed another stage must have been stopped.
+ * A stage's own textures are baked the first time and kept; the shared light and mist textures are baked
+ * again whenever the theme changes.
+ */
+export function useStageLook(scene: Phaser.Scene, stage: StageDef): void {
+  const t = stage.theme;
+  setTheme(t);
+  if (lookOf !== t.id) {
+    for (const key of SHARED_LOOK) if (scene.textures.exists(key)) scene.textures.remove(key);
+    bakeLook(scene, t);
+    lookOf = t.id;
+  }
+  bakeTerrain(scene, stage);
 }

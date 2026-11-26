@@ -1,8 +1,8 @@
-// The bot's plan, derived from levelData and a bike's tuning only. Pure (no Playwright, no Phaser), so
+// The bot's plan, derived from a stage's level data (levelOf(stage)) and a bike's tuning only. Pure (no Playwright, no Phaser), so
 // the unit tests can ride the same plan the e2e bot does.
 
 import { CONFIG, type Config } from '../../src/config';
-import type { LevelData } from '../../src/level/levelData';
+import type { LevelData } from '../../src/stages/stage';
 
 export interface Span { x0: number; x1: number }
 
@@ -14,8 +14,8 @@ export interface Layout {
   river: Span;
   rampStartX: number; // start of the noHop river ramp
   boxes: Span[];      // cow + obstacles, the log included (x extent of the hitbox)
-  /** the boulder: where it starts rolling, where it appears, its speed and width */
-  boulder: { triggerX: number; spawnX: number; speed: number; w: number };
+  /** the boulder: where it starts rolling, where it appears, its speed and width (null: the stage has none) */
+  boulder: { triggerX: number; spawnX: number; speed: number; w: number } | null;
   cpX: number[];
   finishX: number;
 }
@@ -50,13 +50,13 @@ export function layout(level: LevelData): Layout {
   if (!river) throw new Error('levelData has no river gap');
   if (!kicker) throw new Error('levelData has no kicker gap');
   const boxes: Span[] = [
-    { x0: level.cow.col * T, x1: level.cow.col * T + level.cow.w },
+    ...(level.cow ? [{ x0: level.cow.col * T, x1: level.cow.col * T + level.cow.w }] : []),
     ...level.obstacles.map((o) => ({ x0: o.col * T, x1: (o.col + o.wCols) * T })),
   ];
   const b = level.boulder;
   return {
     gaps, canals, kicker, steps, river, rampStartX, boxes,
-    boulder: { triggerX: b.triggerCol * T, spawnX: b.spawnCol * T, speed: b.speed, w: b.hitW },
+    boulder: b ? { triggerX: b.triggerCol * T, spawnX: b.spawnCol * T, speed: b.speed, w: b.hitW } : null,
     cpX: level.checkpoints.map((c) => c.col * T + T / 2),
     finishX: level.finish.col * T,
   };
@@ -79,6 +79,7 @@ export interface HopPlan {
  */
 export function boulderMeetX(lay: Layout, cfg: Config = CONFIG): number {
   const b = lay.boulder;
+  if (!b) throw new Error('this stage has no boulder');
   const d = b.spawnX + b.w / 2 - b.triggerX;
   return b.triggerX + (d * cfg.topSpeed) / (cfg.topSpeed + b.speed);
 }
@@ -95,11 +96,12 @@ export function boulderMeetX(lay: Layout, cfg: Config = CONFIG): number {
 export function planHopsFor(lay: Layout, level: LevelData, cfg: Config = CONFIG): HopPlan {
   const HALF_BIKE = cfg.bikeHitW / 2;
   const HOP_LEN = hopLength(cfg);
-  const meet = boulderMeetX(lay, cfg);
+  const rock = lay.boulder;
+  const meet = rock ? boulderMeetX(lay, cfg) : 0;
   const hazards: Span[] = [
     ...lay.gaps,
     ...lay.boxes.map((b) => ({ x0: b.x0 - HALF_BIKE, x1: b.x1 + HALF_BIKE })),
-    { x0: meet - lay.boulder.w / 2 - HALF_BIKE, x1: meet + lay.boulder.w / 2 + HALF_BIKE },
+    ...(rock ? [{ x0: meet - rock.w / 2 - HALF_BIKE, x1: meet + rock.w / 2 + HALF_BIKE }] : []),
   ].sort((a, b) => a.x0 - b.x0);
 
   let hops: number[] = [];
@@ -152,7 +154,7 @@ export function planHopsFor(lay: Layout, level: LevelData, cfg: Config = CONFIG)
   const T = level.tile;
   const heights = columnHeights(level);
   let lastDiyaHop = -Infinity;
-  for (const d of level.diyas) {
+  for (const d of level.collectibles) {
     const x = d.col * T + T / 2;
     const ground = heights.h[d.col];
     if (ground === null || ground === undefined || d.h - ground < 2) continue;

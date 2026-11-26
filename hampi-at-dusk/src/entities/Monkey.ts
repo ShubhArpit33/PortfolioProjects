@@ -1,8 +1,8 @@
-// The monkey troop in the Fallen Pavilion. Triggered by the bike, they run in and sit on the road.
+// A monkey troop (Hampi: in the Fallen Pavilion). Triggered by the bike, they run in and sit on the road.
 // A honk in range makes them leap away; contact is a single stumble per monkey, never a crash.
 import Phaser from 'phaser';
 import { followKey, keyUnder } from '../art/look/bake';
-import { BASELINE_Y, MONKEYS, TILE } from '../level/levelData';
+import { BASELINE_Y, TILE, type MonkeysDef } from '../level/level';
 import type { Box } from '../level/terrain';
 
 type MonkeyState = 'hidden' | 'run' | 'sit' | 'leap' | 'gone';
@@ -14,7 +14,7 @@ export class Monkey {
   private sprite: Phaser.GameObjects.Sprite;
   private key: Phaser.GameObjects.Image;
 
-  constructor(scene: Phaser.Scene, private spawnX: number, private sitX: number, depth: number, private seed: number) {
+  constructor(scene: Phaser.Scene, private def: MonkeysDef, private spawnX: number, private sitX: number, depth: number, private seed: number) {
     this.x = spawnX;
     this.sprite = scene.add.sprite(0, 0, 'monkey', 0).setOrigin(0.5, 1).setDepth(depth).setVisible(false);
     this.key = keyUnder(scene, this.sprite);
@@ -25,11 +25,11 @@ export class Monkey {
   }
 
   get centreX(): number {
-    return this.x + MONKEYS.hitW / 2;
+    return this.x + this.def.hitW / 2;
   }
 
   get box(): Box {
-    return { x: this.x, y: BASELINE_Y - MONKEYS.hitH, w: MONKEYS.hitW, h: MONKEYS.hitH };
+    return { x: this.x, y: BASELINE_Y - this.def.hitH, w: this.def.hitW, h: this.def.hitH };
   }
 
   reset(): void {
@@ -52,7 +52,7 @@ export class Monkey {
 
   step(dt: number): void {
     if (this.state === 'run') {
-      this.x -= MONKEYS.runSpeed * dt;
+      this.x -= this.def.runSpeed * dt;
       if (this.x <= this.sitX) {
         this.x = this.sitX;
         this.state = 'sit';
@@ -93,12 +93,13 @@ export class Monkey {
 
 export class MonkeyTroop {
   readonly monkeys: Monkey[];
-  readonly triggerX = MONKEYS.triggerCol * TILE;
+  readonly triggerX: number;
   triggered = false;
 
-  constructor(scene: Phaser.Scene, depth: number) {
-    this.monkeys = MONKEYS.spawnCols.map(
-      (col, i) => new Monkey(scene, col * TILE, MONKEYS.sitCols[i]! * TILE, depth, i * 2.1),
+  constructor(scene: Phaser.Scene, def: MonkeysDef, depth: number) {
+    this.triggerX = def.triggerCol * TILE;
+    this.monkeys = def.spawnCols.map(
+      (col, i) => new Monkey(scene, def, col * TILE, def.sitCols[i]! * TILE, depth, i * 2.1),
     );
   }
 

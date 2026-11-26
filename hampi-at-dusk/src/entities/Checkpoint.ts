@@ -1,7 +1,7 @@
 // Deepastambha (stone lamp pillar). Lights up with a glow once the bike's x reaches it.
 import Phaser from 'phaser';
-import { checkpointX, type Checkpoint as CheckpointDef } from '../level/levelData';
-import { TERRAIN } from '../level/terrain';
+import { BASELINE_Y, checkpointX, type Checkpoint as CheckpointDef } from '../level/level';
+import type { Terrain } from '../level/terrain';
 
 const LAMP_OFFSET_X = 26;
 
@@ -11,18 +11,16 @@ export class Checkpoint {
   readonly y: number;
   /** where the lamp is drawn */
   readonly lampX: number;
-  readonly hint: string | undefined;
   lit = false;
   private sprite: Phaser.GameObjects.Sprite;
   private glows: Phaser.GameObjects.Image[];
   /** the lamp's light pooled on the road at its foot */
   private pool: Phaser.GameObjects.Image;
 
-  constructor(scene: Phaser.Scene, def: CheckpointDef, depth: number) {
+  constructor(scene: Phaser.Scene, def: CheckpointDef, terrain: Terrain, depth: number) {
     this.id = def.id;
-    this.hint = def.hint;
     this.x = checkpointX(def);
-    this.y = TERRAIN.surfaceY(this.x) ?? 222;
+    this.y = terrain.surfaceY(this.x) ?? BASELINE_Y;
     // The lamp stands just behind the activation / respawn x so a respawned bike doesn't cover it.
     const lampX = this.x - LAMP_OFFSET_X;
     this.lampX = lampX;

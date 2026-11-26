@@ -1,23 +1,37 @@
 import { describe, expect, it } from 'vitest';
-import {
-  BIKES, BIKE_ORDER, BOT_RUN_MS, DEFAULT_BIKE, bikeDef, isBikeId, medalsFor, statBars, type BikeDef, type BikeId,
-} from '../../src/bike/bikes';
+import { BIKES, BIKE_ORDER, DEFAULT_BIKE, bikeDef, isBikeId, statBars, type BikeDef, type BikeId } from '../../src/bike/bikes';
 import { CONFIG, type Config } from '../../src/config';
 import {
-  FIXED_DT, aabbOverlap, bikeAABB, countFlips, createBikeState, evaluateLanding, hitsObstacle, normalizeAngle, step,
-  stumble, touchesDiya, wobbleLanding, type BikeInput, type BikeState,
+  FIXED_DT, aabbOverlap, bikeAABB, countFlips, createBikeState as createBikeStateOn, evaluateLanding, hitsObstacle,
+  normalizeAngle, step as stepOn, stumble, touchesDiya, wobbleLanding as wobbleLandingOn, type BikeInput, type BikeState,
 } from '../../src/bike/BikePhysics';
+import { boulderModel } from '../../src/level/boulder';
 import {
-  BOULDER_END_X, BOULDER_GROUND_Y, BOULDER_SPAWN_X, BOULDER_TRIGGER_X, boulderBox, boulderBoxAt, boulderMeetX, createBoulder,
-  stepBoulder,
-} from '../../src/level/boulder';
+  BASELINE_Y, TILE, WORLD_START_X, checkpointX, diyaCentre, promptAt as promptAtIn, type ObstacleDef,
+} from '../../src/level/level';
+import { obstacleBox as obstacleBoxOn, type Box, type Terrain } from '../../src/level/terrain';
 import {
-  BASELINE_Y, BONUS, BOULDER, CHECKPOINTS, COW, DIYAS, FINISH, KICKER, LEVEL, OBSTACLES, PROMPTS, SAFE_ZONE, SECTIONS, STAGE_COLS,
-  TILE, WORLD_START_X, checkpointX, diyaCentre, promptAt,
-} from '../../src/level/levelData';
-import { TERRAIN, obstacleBox, type Box } from '../../src/level/terrain';
+  BONUS, BOT_RUN_MS, BOULDER, CHECKPOINTS, COW, DIYAS, FINISH, HAMPI, HINTS, KICKER, LEVEL, OBSTACLES, PROMPTS, SAFE_ZONE,
+  SECTIONS, STAGE_COLS, TERRAIN,
+} from '../../src/stages/hampi';
+import { medalsFor } from '../../src/stages/stage';
 import { boulderMeetX as planMeetX, hopLength, layout, planHopsFor } from '../shared/plan';
 import { LOG_BOXES, SAFE_X1, botHops, ride } from '../shared/sim';
+
+// These are Hampi's tests: the physics helpers below are the game's, bound to Hampi's terrain (since v1.9
+// the physics takes the terrain of whichever stage is being ridden).
+const createBikeState = (x: number, terrain: Terrain = TERRAIN, cfg: Config = CONFIG): BikeState => createBikeStateOn(x, terrain, cfg);
+const step = (s: BikeState, input: BikeInput, dt: number = FIXED_DT, terrain: Terrain = TERRAIN, cfg: Config = CONFIG): BikeState =>
+  stepOn(s, input, dt, terrain, cfg);
+const wobbleLanding = (s: BikeState, factor: number, terrain: Terrain = TERRAIN): BikeState => wobbleLandingOn(s, factor, terrain);
+const obstacleBox = (o: ObstacleDef, terrain: Terrain = TERRAIN): Box => obstacleBoxOn(o, terrain);
+const promptAt = (x: number): string => promptAtIn(PROMPTS, x);
+/** Hampi's medal targets, per bike. */
+const MEDALS = HAMPI.medalsMs;
+/** Hampi's boulder: the machine and its numbers, under the names these tests have always used. */
+const ROCK = boulderModel(BOULDER);
+const { triggerX: BOULDER_TRIGGER_X, spawnX: BOULDER_SPAWN_X, endX: BOULDER_END_X, groundY: BOULDER_GROUND_Y } = ROCK;
+const { create: createBoulder, step: stepBoulder, box: boulderBox, boxAt: boulderBoxAt, meetX: boulderMeetX } = ROCK;
 
 const COW_BOX: Box = { x: COW.col * TILE, y: BASELINE_Y - COW.h, w: COW.w, h: COW.h };
 const CANAL_GAPS = TERRAIN.gaps.filter((g) => !g.river && !g.kicker && !g.step);
@@ -153,12 +167,22 @@ describe('level data (5.1)', () => {
     expect(new Set(DIYAS.map((d) => `${d.col}:${d.h}`)).size).toBe(56);
   });
 
-  it('entities stand where the layout says (v1.7)', () => {
-    expect(CHECKPOINTS.map((c) => c.col)).toEqual([2, 122, 182, 232, 262, 342, 422, 506, 616, 726, 774, 842]);
-    expect(CHECKPOINTS.map((c) => c.id)).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
-    expect(CHECKPOINTS.filter((c) => c.hint).map((c) => [c.id, c.hint])).toEqual([
-      [8, 'HOP ON THE RAMP!'], [9, 'HOP UP THE STEPS!'], [11, 'HOLD SHIFT - BOOST!'],
+  it('entities stand where the layout says (v1.7; four checkpoints since v1.9)', () => {
+    // v1.9: the start, the Ruins Road breather in the middle, the foot of the Temple Steps, the river's run-up
+    expect(CHECKPOINTS.map((c) => c.col)).toEqual([2, 422, 726, 842]);
+    expect(CHECKPOINTS.map((c) => c.id)).toEqual([0, 1, 2, 3]);
+    expect(CHECKPOINTS.map((c) => SECTIONS.find((sec) => c.col >= sec.startCol && c.col <= sec.endCol)!.name)).toEqual([
+      'Warm-up Road', 'Ruins Road', 'Temple Steps', 'Tungabhadra Leap',
     ]);
+    // the hints that hung on checkpoints are a list of their own, at the columns they always came up at
+    expect(HINTS).toEqual([
+      { col: 616, text: 'HOP ON THE RAMP!' }, { col: 726, text: 'HOP UP THE STEPS!' }, { col: 774, text: '' },
+      { col: 842, text: 'HOLD SHIFT - BOOST!' },
+    ]);
+    expect(HINTS.map((h) => h.col)).toEqual([...HINTS.map((h) => h.col)].sort((a, b) => a - b));
+    for (const h of HINTS) expect(h.text.length * 8).toBeLessThanOrEqual(440);
+    // the steps' and the river's hints stand on their checkpoints, so a respawn there shows them again
+    expect(HINTS.filter((h) => CHECKPOINTS.some((c) => c.col === h.col)).map((h) => h.text)).toEqual(['HOP UP THE STEPS!', 'HOLD SHIFT - BOOST!']);
     // every checkpoint is on solid, level ground
     for (const c of CHECKPOINTS) {
       expect(TERRAIN.surfaceY(checkpointX(c)), `cp${c.id}`).not.toBeNull();
@@ -171,9 +195,11 @@ describe('level data (5.1)', () => {
     expect([COW.col, FINISH.col, KICKER.rampCol, KICKER.lipCol]).toEqual([164, 892, 666, 670]);
     expect(BONUS).toEqual({ rampCol: 442, lipCol: 451, cliffCol: 456 });
     expect(BOULDER).toEqual({ triggerCol: 781, spawnCol: 811, endCol: 771, speed: 80, hitW: 16, hitH: 14, terraceH: 3 });
-    // the boulder's checkpoint is on the terrace, before its trigger; the boulder starts before the stairs down
-    expect(CHECKPOINTS[10]!.col).toBeGreaterThan(BOULDER.endCol);
-    expect(CHECKPOINTS[10]!.col).toBeLessThan(BOULDER.triggerCol);
+    // a crash on the terrace goes back to the foot of the steps (cp2), well before the boulder's trigger; the
+    // steps' hint is cleared on the terrace, between the top riser and the trigger
+    expect(CHECKPOINTS[2]!.col).toBeLessThan(BOULDER.endCol);
+    expect(HINTS[2]!.col).toBeGreaterThan(BOULDER.endCol);
+    expect(HINTS[2]!.col).toBeLessThan(BOULDER.triggerCol);
     expect(BOULDER.spawnCol).toBeLessThan(817);
     for (const d of DIYAS) expect(d.col).toBeLessThan(FINISH.col);
   });
@@ -577,7 +603,7 @@ interface Floors {
   boulderStandMs: number;
   boulderTopMs: number;
   boulderBoostMs: number;
-  /** from a standing start at cp3 (the widest canal), cp9 (the first riser), cp10 (the boulder): single-hop window (ms) */
+  /** from a standing start at column 232 (the widest canal), cp2 (the first riser), column 774 (the boulder): single-hop window (ms) */
   restCanalMs: number;
   restRiserMs: number;
   restBoulderMs: number;
@@ -646,11 +672,11 @@ describe('roster (v1.6)', () => {
 
   it('medals (v1.7): gold = the bot run x 1.05, silver x 1.25, bronze x 2.2, each rounded up to a whole second', () => {
     expect(BOT_RUN_MS).toEqual({ tonup: 49_908, daybreak: 59_517, sundowner: 69_150 });
-    expect(BIKES.tonup.medalsMs).toEqual({ gold: 53_000, silver: 63_000, bronze: 110_000 });
-    expect(BIKES.daybreak.medalsMs).toEqual({ gold: 63_000, silver: 75_000, bronze: 131_000 });
-    expect(BIKES.sundowner.medalsMs).toEqual({ gold: 73_000, silver: 87_000, bronze: 153_000 });
+    expect(MEDALS.tonup).toEqual({ gold: 53_000, silver: 63_000, bronze: 110_000 });
+    expect(MEDALS.daybreak).toEqual({ gold: 63_000, silver: 75_000, bronze: 131_000 });
+    expect(MEDALS.sundowner).toEqual({ gold: 73_000, silver: 87_000, bronze: 153_000 });
     for (const id of BIKE_ORDER) {
-      const m = BIKES[id].medalsMs;
+      const m = MEDALS[id];
       expect(m).toEqual(medalsFor(BOT_RUN_MS[id]));
       for (const [medal, k] of [['gold', 1.05], ['silver', 1.25], ['bronze', 2.2]] as const) {
         expect(m[medal] % 1000, `${id} ${medal}: a whole second`).toBe(0);
@@ -1114,7 +1140,7 @@ describe.each(ROSTER)('%s: pillar, cart and cow hop windows (criterion 6)', (_na
 describe.each(ROSTER)('%s: river (criterion 4)', (_name, bike: BikeDef) => {
   const cfg = bike.cfg;
   const floors = FLOORS[bike.id];
-  const riverCp = checkpointX(CHECKPOINTS[RIVER_CP]!); // the river checkpoint (cp11 since v1.7)
+  const riverCp = checkpointX(CHECKPOINTS[RIVER_CP]!); // the river checkpoint (cp3 since v1.9)
 
   const ride = (input: BikeInput, startBoost = 1) => {
     let s = createBikeState(riverCp, TERRAIN, cfg);
@@ -1133,8 +1159,8 @@ describe.each(ROSTER)('%s: river (criterion 4)', (_name, bike: BikeDef) => {
     return { s, lipSpeed, lipX };
   };
 
-  it('starts at cp11 = 16*842 + 8', () => {
-    expect(RIVER_CP).toBe(11);
+  it('starts at cp3 (cp11 until v1.9) = 16*842 + 8', () => {
+    expect(RIVER_CP).toBe(3);
     expect(riverCp).toBe(16 * 842 + 8);
     expect(RIVER.x0).toBe(13888);
     expect(RIVER.x1).toBe(14080);
@@ -1270,17 +1296,22 @@ describe.each(ROSTER)('%s: the bot plan collects all 56 diyas (5.2)', (_name, bi
     // the measured run, to the millisecond (the e2e bot run asserts the same number in the real game)
     expect(r.timeMs).toBe(BOT_RUN_MS[bike.id]);
     // a clean run is gold on this bike, with a few seconds in hand
-    expect(bike.medalsMs.gold - r.timeMs).toBeGreaterThan(2400);
-    expect(bike.medalsMs.gold - r.timeMs).toBeLessThan(4500);
+    expect(MEDALS[bike.id].gold - r.timeMs).toBeGreaterThan(2400);
+    expect(MEDALS[bike.id].gold - r.timeMs).toBeLessThan(4500);
     expect(r.worstLanding).toBeLessThan(cfg.safeLandingAngle);
     // the camera never jumps or runs backward, and the bike stays in the left part of the screen
     expect(r.cam.minStep).toBeGreaterThanOrEqual(-0.001);
     expect(r.cam.maxStep).toBeLessThanOrEqual((cfg.boostSpeed / 120) * 1.5);
     expect(r.cam.minScreenX).toBeGreaterThanOrEqual(110);
     expect(r.cam.maxScreenX).toBeLessThanOrEqual(215);
-    // every leg between two checkpoints is short: nothing is ever more than about 10 s back
+    // v1.9, four checkpoints: the first leg (to the middle of the stage) is the long one, then they get
+    // shorter toward the big moments; the last, from the river's checkpoint to the line, is a few seconds
     const legs = r.cpSteps.map((st, i) => ((i + 1 < r.cpSteps.length ? r.cpSteps[i + 1]! : r.steps) - st) / 120);
-    expect(Math.max(...legs)).toBeLessThan(10.5);
+    expect(legs).toHaveLength(4);
+    expect(legs[0]!).toBeLessThan(34);
+    expect(legs[0]! / (r.steps / 120)).toBeLessThan(0.5); // never more than half the stage back
+    expect([...legs].sort((a, b) => b - a)).toEqual(legs);
+    expect(legs[3]!).toBeLessThan(3);
   });
 
   it('the plan is not a knife edge: +/- 8 px on every hop still gets all 56', () => {
@@ -1357,14 +1388,14 @@ function hopAnywhereNoTilt(cfg: Config, startX: number, from: number, to: number
 }
 
 /**
- * From a standing start at a checkpoint, throttle held: the longest unbroken range of hop-press times (ms)
+ * From a standing start at a checkpoint (or at a column), throttle held: the longest unbroken range of hop-press times (ms)
  * for which a single hop takes the bike past untilX. Ridden in the full game loop (boulder, log, wobbles).
  */
-function fromRestWindowMs(cfg: Config, cp: number, untilX: number): number {
+function fromRestWindowMs(cfg: Config, start: { startCp?: number; startCol?: number }, untilX: number): number {
   let best = 0;
   let run = 0;
   for (let k = 0; k < 120 * 8; k++) {
-    const r = ride(cfg, { startCp: cp, untilX, inputAt: (_s, i) => ({ throttle: true, hop: i === k }) });
+    const r = ride(cfg, { ...start, untilX, inputAt: (_s, i) => ({ throttle: true, hop: i === k }) });
     const ok = r.finished && r.crash === null;
     run = ok ? run + 1 : 0;
     best = Math.max(best, run);
@@ -1563,7 +1594,7 @@ describe.each(ROSTER)('%s: Ruins Road, the breather (v1.7)', (_name, bike: BikeD
   });
 
   it('its ten diyas are all on the rolling line, and there is nothing to hit', () => {
-    const r = ride(cfg, { startCp: 6, hops: [], untilX: x1 });
+    const r = ride(cfg, { startCp: 1, hops: [], untilX: x1 }); // cp1 (v1.9): Ruins Road
     expect(r.crash).toBeNull();
     const here = DIYAS.filter((d) => d.col >= BR && d.col < BR + 84).map((d) => d.col);
     expect(here).toHaveLength(10);
@@ -1669,7 +1700,7 @@ describe.each(ROSTER)('%s: Temple Steps, the risers (v1.7)', (_name, bike: BikeD
 
   it('in the game loop, riding into a riser is a wall crash at the foot of the step, never a sink into the stone', () => {
     for (const target of [15, 40, 90, 150, V]) {
-      const r = ride(cfg, { startCp: 9, hops: [], inputAt: (s) => ({ throttle: s.v < target }) });
+      const r = ride(cfg, { startCp: 2, hops: [], inputAt: (s) => ({ throttle: s.v < target }) }); // cp2 (v1.9): the foot of the steps
       expect(r.crash, `at ${target} px/s`).toBe('wall');
       expect(r.crashX, `at ${target} px/s`).toBeGreaterThanOrEqual(RISERS[0]!.x0);
       expect(r.crashX, `at ${target} px/s`).toBeLessThan(RISERS[0]!.x1 + 6);
@@ -1773,37 +1804,39 @@ describe.each(ROSTER)('%s: Temple Steps, the boulder (v1.7)', (_name, bike: Bike
   });
 
   it('a bike that stops short of the trigger never sets it off', () => {
-    const r = ride(cfg, { startCp: 10, hops: [], untilX: BOULDER_TRIGGER_X - 40, inputAt: (s) => ({ throttle: s.x < BOULDER_TRIGGER_X - 60 }) });
+    const r = ride(cfg, { startCol: 774, hops: [], untilX: BOULDER_TRIGGER_X - 40, inputAt: (s) => ({ throttle: s.x < BOULDER_TRIGGER_X - 60 }) });
     expect(r.crash).toBeNull();
     expect(r.boulder).toBe('hidden');
   });
 });
 
-describe.each(ROSTER)('%s: standing starts at the new checkpoints (v1.7)', (_name, bike: BikeDef) => {
+// v1.7 measured these from the checkpoints of the time. Since v1.9 only the foot of the steps is still a
+// checkpoint (cp2); the other two are places a rider may come to a stop (columns 232 and 774), same numbers.
+describe.each(ROSTER)('%s: standing starts (v1.7; cp2 and two places that were checkpoints until v1.9)', (_name, bike: BikeDef) => {
   const cfg = bike.cfg;
   const floors = FLOORS[bike.id];
 
-  it('cp3, inside the canal run: one hop clears the widest canal', () => {
-    const cp = CHECKPOINTS[3]!;
+  it('column 232, inside the canal run: one hop clears the widest canal', () => {
     const canal = CANAL_GAPS[5]!;
     expect(canal.cols).toBe(6);
-    expect(canal.x0 - checkpointX(cp)).toBe(104);
-    const ms = fromRestWindowMs(cfg, 3, canal.x1 + 20);
-    console.log(`[${bike.id} cp3 from rest] canal hop window ${ms.toFixed(0)} ms`);
+    expect(canal.x0 - checkpointX({ col: 232 })).toBe(104);
+    const ms = fromRestWindowMs(cfg, { startCol: 232 }, canal.x1 + 20);
+    console.log(`[${bike.id} col 232 from rest] canal hop window ${ms.toFixed(0)} ms`);
     expect(ms).toBeGreaterThanOrEqual(120);
     expect(ms).toBeGreaterThan(floors.restCanalMs);
   });
 
-  it('cp9, at the foot of the steps: one hop clears the first riser', () => {
-    const ms = fromRestWindowMs(cfg, 9, RISERS[0]!.x1 + 20);
-    console.log(`[${bike.id} cp9 from rest] riser hop window ${ms.toFixed(0)} ms`);
+  it('cp2, at the foot of the steps: one hop clears the first riser', () => {
+    expect(CHECKPOINTS[2]!.col).toBe(726);
+    const ms = fromRestWindowMs(cfg, { startCp: 2 }, RISERS[0]!.x1 + 20);
+    console.log(`[${bike.id} cp2 from rest] riser hop window ${ms.toFixed(0)} ms`);
     expect(ms).toBeGreaterThanOrEqual(120);
     expect(ms).toBeGreaterThan(floors.restRiserMs);
   });
 
-  it('cp10, on the terrace: one hop clears the boulder', () => {
-    const ms = fromRestWindowMs(cfg, 10, (BOULDER.spawnCol + 2) * TILE);
-    console.log(`[${bike.id} cp10 from rest] boulder hop window ${ms.toFixed(0)} ms`);
+  it('column 774, on the terrace: one hop clears the boulder', () => {
+    const ms = fromRestWindowMs(cfg, { startCol: 774 }, (BOULDER.spawnCol + 2) * TILE);
+    console.log(`[${bike.id} col 774 from rest] boulder hop window ${ms.toFixed(0)} ms`);
     expect(ms).toBeGreaterThanOrEqual(120);
     expect(ms).toBeGreaterThan(floors.restBoulderMs);
   });

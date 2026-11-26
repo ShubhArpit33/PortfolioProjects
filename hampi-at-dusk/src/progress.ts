@@ -1,10 +1,11 @@
-// The replay loop (v1.3): medals, the best run, and its ghost. Pure logic, no Phaser.
+// The replay loop (v1.3): medals, the best run, and its ghost; since v1.9 per stage, with the journey's
+// own records (unlocks, best total time). Pure logic, no Phaser.
 //
 // Everything that touches storage goes through try/catch: localStorage can be missing, full, or throw
 // on access (private windows, blocked site data, sandboxed frames). The game must play the same without it.
 
-import { BIKES, BIKE_ORDER, DEFAULT_BIKE, isBikeId, type BikeId, type MedalTimes } from './bike/bikes';
-import { STAGE_COLS } from './level/levelData';
+import { BIKE_ORDER, DEFAULT_BIKE, isBikeId, type BikeId } from './bike/bikes';
+import type { MedalTimes, StageId } from './stages/stage';
 
 // ---------------------------------------------------------------------------------------------
 // Medals
@@ -13,15 +14,13 @@ import { STAGE_COLS } from './level/levelData';
 export type Medal = 'gold' | 'silver' | 'bronze';
 
 /**
- * Time targets (ms) of the default bike, set from the measured bot run (v1.7: 59.52 s for a clean, no-flip
- * run that boosts only at the river): gold = that x 1.05, silver x 1.25, bronze x 2.2, each rounded up to
- * a whole second. Every bike has its own targets, set the same way (bikes.ts).
+ * Time targets (ms) belong to a stage and a bike (stage.medalsMs[bike]): gold = that bike's measured bot
+ * run on that stage x 1.05, silver x 1.25, bronze x 2.2, each rounded up to a whole second.
  */
-export const MEDAL_TIMES_MS: MedalTimes = BIKES[DEFAULT_BIKE].medalsMs;
 export const MEDAL_ORDER: readonly Medal[] = ['bronze', 'silver', 'gold'];
 
 /** The medal a finishing time earns (targets are inclusive), or null. */
-export function medalFor(timeMs: number, targets: MedalTimes = MEDAL_TIMES_MS): Medal | null {
+export function medalFor(timeMs: number, targets: MedalTimes): Medal | null {
   if (!(timeMs >= 0)) return null;
   if (timeMs <= targets.gold) return 'gold';
   if (timeMs <= targets.silver) return 'silver';
@@ -30,7 +29,7 @@ export function medalFor(timeMs: number, targets: MedalTimes = MEDAL_TIMES_MS): 
 }
 
 /** The next medal up from a finishing time and its target, or null once gold is earned. */
-export function nextMedal(timeMs: number, targets: MedalTimes = MEDAL_TIMES_MS): { medal: Medal; timeMs: number } | null {
+export function nextMedal(timeMs: number, targets: MedalTimes): { medal: Medal; timeMs: number } | null {
   const have = medalFor(timeMs, targets);
   if (have === 'gold') return null;
   const next: Medal = have === 'silver' ? 'gold' : have === 'bronze' ? 'silver' : 'bronze';
@@ -156,17 +155,35 @@ export interface KeyValueStore {
 /** Returns the store, or throws / returns null when there is none. */
 export type StoreProvider = () => KeyValueStore | null | undefined;
 
-/** Bumped whenever old records stop being comparable. v2 = the 900-column stage of v1.7. */
-export const RECORD_VERSION = 2;
+/** What the records need to know of a stage: its id (in the key) and its length (a record of another layout is ignored). */
+export interface StageRef { id: StageId; cols: number }
+
+/**
+ * Bumped whenever the record format changes. v3 (v1.9) = one record per stage and bike. (v2 = the
+ * 900-column Hampi of v1.7, one per bike; before that, the 580-column stage.)
+ */
+export const RECORD_VERSION = 3;
 const KEY_ROOT = 'hampi-at-dusk.best';
-/** Each bike keeps its own best run and ghost, under a key that carries the record version. */
-export const bestKey = (bike: BikeId): string => `${KEY_ROOT}.v${RECORD_VERSION}.${bike}`;
+/** Each stage and bike keeps its own best single run and ghost. */
+export const bestKey = (stage: StageId, bike: BikeId): string => `${KEY_ROOT}.v${RECORD_VERSION}.${stage}.${bike}`;
+/**
+ * The v2 records (v1.7 - v1.8): Hampi's, one per bike. A v2 record is the same stage as today's Hampi, so
+ * it is carried over: read when the bike has no v3 record on Hampi yet, copied to the v3 key, and left
+ * where it was (never written, never removed).
+ */
+export const LEGACY_V2_STAGE: Readonly<StageRef> = { id: 'hampi', cols: 900 };
+export const legacyV2Key = (bike: BikeId): string => `${KEY_ROOT}.v2.${bike}`;
 /**
  * The records of the 580-column stage (v1.3 - v1.6): the single pre-roster key and one per bike. They are
  * an archive: this version never reads, writes or removes them. (The name is only here so tests can check that.)
  */
 export const ARCHIVED_BEST_KEYS: readonly string[] = [KEY_ROOT, ...BIKE_ORDER.map((b) => `${KEY_ROOT}.${b}`)];
 export const PREFS_KEY = 'hampi-at-dusk.prefs';
+/** Which stages have been reached in a journey (v1.9). */
+export const UNLOCKS_KEY = 'hampi-at-dusk.unlocks';
+/** A bike's best journey time over a route (the stage ids, in order). A longer journey is another record. */
+export const journeyKey = (route: readonly StageId[], bike: BikeId): string =>
+  `hampi-at-dusk.journey.v1.${route.join('+')}.${bike}`;
 
 /** The browser's localStorage. Even reading the property can throw, so callers wrap this. */
 export const browserStore: StoreProvider = () =>
@@ -195,27 +212,83 @@ function write(key: string, value: unknown, store: StoreProvider): boolean {
 const wholeOrNull = (v: unknown, max: number): number | null =>
   typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= max ? Math.round(v) : null;
 
-function parseBest(raw: unknown): Best | null {
-  if (typeof raw !== 'object' || raw === null) return null;
-  const r = raw as Record<string, unknown>;
-  if (r.v !== RECORD_VERSION || r.stage !== STAGE_COLS) return null;
+function bestFields(r: Record<string, unknown>): Best {
   const timeMs = wholeOrNull(r.timeMs, 3_600_000);
   const ghost = timeMs !== null && decodeGhost(r.ghost).length > 0 ? (r.ghost as string) : '';
   return { timeMs, diyas: wholeOrNull(r.diyas, 999), flips: wholeOrNull(r.flips, 9999), ghost };
 }
 
-/**
- * Load a bike's bests. Anything missing, malformed, from another record version or from another stage
- * layout comes back as "no run yet". Only the bike's own v2 key is read: records from before v1.7 are
- * left where they are and never looked at (there is no migration; the old stage was a different one).
- */
-export function loadBest(bike: BikeId = DEFAULT_BIKE, store: StoreProvider = browserStore): Best {
-  return parseBest(read(bestKey(bike), store)) ?? { ...EMPTY_BEST };
+function parseBest(raw: unknown, stage: StageRef): Best | null {
+  if (typeof raw !== 'object' || raw === null) return null;
+  const r = raw as Record<string, unknown>;
+  if (r.v !== RECORD_VERSION || r.stage !== stage.id || r.cols !== stage.cols) return null;
+  return bestFields(r);
 }
 
-/** Save a bike's bests. Returns false (and changes nothing else) when storage is unavailable or throws. */
-export function saveBest(bike: BikeId, best: Best, store: StoreProvider = browserStore): boolean {
-  return write(bestKey(bike), { v: RECORD_VERSION, stage: STAGE_COLS, ...best }, store);
+/** A v2 record (v: 2, stage: 900 columns), for the stage it was ridden on only. */
+function parseLegacyV2(raw: unknown, stage: StageRef): Best | null {
+  if (stage.id !== LEGACY_V2_STAGE.id || stage.cols !== LEGACY_V2_STAGE.cols) return null;
+  if (typeof raw !== 'object' || raw === null) return null;
+  const r = raw as Record<string, unknown>;
+  if (r.v !== 2 || r.stage !== LEGACY_V2_STAGE.cols) return null;
+  return bestFields(r);
+}
+
+/**
+ * Load a bike's bests on a stage. Anything missing, malformed, from another record version or from
+ * another layout of the stage comes back as "no run yet".
+ *
+ * Migration (v1.9): a bike with no v3 record on Hampi gets its v2 record, if it has one. The v2 record is
+ * copied to the v3 key (when storage allows) and stays where it was; once a v3 record exists the v2 key
+ * is not read again. Records from before v1.7 are never looked at.
+ */
+export function loadBest(stage: StageRef, bike: BikeId = DEFAULT_BIKE, store: StoreProvider = browserStore): Best {
+  const own = parseBest(read(bestKey(stage.id, bike), store), stage);
+  if (own) return own;
+  if (stage.id !== LEGACY_V2_STAGE.id) return { ...EMPTY_BEST };
+  const old = parseLegacyV2(read(legacyV2Key(bike), store), stage);
+  if (!old) return { ...EMPTY_BEST };
+  saveBest(stage, bike, old, store);
+  return old;
+}
+
+/** Save a bike's bests on a stage. Returns false (and changes nothing else) when storage is unavailable or throws. */
+export function saveBest(stage: StageRef, bike: BikeId, best: Best, store: StoreProvider = browserStore): boolean {
+  return write(bestKey(stage.id, bike), { v: RECORD_VERSION, stage: stage.id, cols: stage.cols, ...best }, store);
+}
+
+// ---------------------------------------------------------------------------------------------
+// The journey's records (v1.9): which stages have been reached, and the best total time per bike
+// ---------------------------------------------------------------------------------------------
+
+const STAGE_ID = /^[a-z][a-z0-9]*$/;
+
+/** The stage ids reached in a journey so far ([] when there are none, or storage cannot be read). */
+export function loadUnlocks(store: StoreProvider = browserStore): StageId[] {
+  const raw = read(UNLOCKS_KEY, store);
+  if (typeof raw !== 'object' || raw === null) return [];
+  const list = (raw as Record<string, unknown>).stages;
+  if (!Array.isArray(list)) return [];
+  const out: StageId[] = [];
+  for (const id of list) if (typeof id === 'string' && STAGE_ID.test(id) && !out.includes(id)) out.push(id);
+  return out;
+}
+
+export function saveUnlocks(ids: readonly StageId[], store: StoreProvider = browserStore): boolean {
+  return write(UNLOCKS_KEY, { v: 1, stages: [...ids] }, store);
+}
+
+/** A bike's best total time (ms) over a route, or null. */
+export function loadJourneyBest(route: readonly StageId[], bike: BikeId, store: StoreProvider = browserStore): number | null {
+  const raw = read(journeyKey(route, bike), store);
+  if (typeof raw !== 'object' || raw === null) return null;
+  const r = raw as Record<string, unknown>;
+  if (r.v !== 1 || r.route !== route.join('+')) return null;
+  return wholeOrNull(r.timeMs, 36_000_000);
+}
+
+export function saveJourneyBest(route: readonly StageId[], bike: BikeId, timeMs: number, store: StoreProvider = browserStore): boolean {
+  return write(journeyKey(route, bike), { v: 1, route: route.join('+'), timeMs: Math.round(timeMs) }, store);
 }
 
 export interface Prefs {

@@ -8,15 +8,13 @@ import path from 'node:path';
 import { mkdirSync } from 'node:fs';
 import { BIKES, BIKE_ORDER, type BikeId } from '../../src/bike/bikes';
 import { kickerFlip } from './flipHelper';
-import { SHOTS_DIR, boot, expect, getLevel, getState, startAt, test } from './helpers';
+import { CP, SHOTS_DIR, SPOT, boot, expect, getLevel, getState, selectFromTitle, startAt, startAtCol, test } from './helpers';
 
 const SCALE = 4;
 test.use({ viewport: { width: 480 * SCALE, height: 270 * SCALE } });
 
-/** Checkpoints (v1.7 numbering): Fallen Pavilion, Hemakuta Rocks, the river. */
-const PAVILION_CP = 4;
-const ROCKS_CP = 8;
-const RIVER_CP = 11;
+/** The river's checkpoint (the other places these poses are taken at were checkpoints until v1.9: now columns). */
+const RIVER_CP = CP.river;
 
 /** A crop of the screen around the bike, w x h game pixels, at 4 screen pixels per game pixel. */
 async function bikeShot(page: Page, name: string, w = 72, h = 52, lift = 0): Promise<void> {
@@ -69,7 +67,7 @@ for (const bike of BIKE_ORDER) test(`${BIKES[bike].name} sprite: standing, ridin
   await bikeShot(page, `bike-${id}-4x-hop`, 72, 60);
 
   // Backing up: the foot shuffles.
-  await startAt(page, 1, id);
+  await startAtCol(page, SPOT.bazaar, id);
   await run(page, { brake: true }, 130);
   s = await getState(page);
   expect(s.v).toBe(-cfg.reverseSpeed);
@@ -84,8 +82,8 @@ for (const bike of BIKE_ORDER) test(`${BIKES[bike].name} sprite: standing, ridin
   await fullShot(page, `boost-${id}-4x`);
 
   // A backflip off the kicker: upside down, then landed.
-  const lipX = level.kicker.lipCol * level.tile;
-  await startAt(page, ROCKS_CP, id);
+  const lipX = level.kicker!.lipCol * level.tile;
+  await startAtCol(page, SPOT.rocks, id);
   expect(await kickerFlip(page, lipX - 32, 330, true, 180, true)).toBeNull();
   s = await getState(page);
   expect(s.grounded).toBe(false);
@@ -99,8 +97,8 @@ for (const bike of BIKE_ORDER) test(`${BIKES[bike].name} sprite: standing, ridin
   await run(page, { throttle: true }, 14);
   await fullShot(page, `flip-landed-${id}-4x`);
 
-  // A crash: straight into the first pillar. The bike tumbles back, then is at the checkpoint again.
-  await startAt(page, PAVILION_CP, id);
+  // A crash: straight into the first pillar. The bike tumbles back, then is at the last checkpoint again (the start).
+  await startAtCol(page, SPOT.pavilion, id);
   const crashed = await page.evaluate(() => {
     const t = window.__test!;
     t.setInput({ throttle: true });
@@ -114,7 +112,8 @@ for (const bike of BIKE_ORDER) test(`${BIKES[bike].name} sprite: standing, ridin
   await fullShot(page, `crash-${id}-4x`);
   await run(page, {}, 150); // respawn delay + fade
   s = await getState(page);
-  expect([s.crashed, s.checkpoint, s.v, s.boost]).toEqual([false, PAVILION_CP, 0, 1]);
+  expect([s.crashed, s.checkpoint, s.v, s.boost]).toEqual([false, CP.start, 0, 1]);
+  expect(s.x).toBe(level.checkpoints[CP.start]!.col * level.tile + level.tile / 2);
   await run(page, {}, 40);
   await bikeShot(page, `bike-${id}-4x-respawn`);
 });
@@ -123,9 +122,8 @@ test('select screen, ghost and finish at 4x with the three sprites', async ({ pa
   await boot(page);
   await page.evaluate(() => window.__test!.step(40));
   await fullShot(page, 'title-4x');
-  await page.keyboard.press('Enter');
+  await selectFromTitle(page);
   await page.evaluate(() => window.__test!.step(40));
-  await page.waitForFunction(() => window.__test!.screen() === 'select');
   await fullShot(page, 'select-4x');
   for (const [key, name] of [['ArrowLeft', 'tonup'], ['ArrowLeft', 'sundowner']] as const) {
     await page.keyboard.press(key);

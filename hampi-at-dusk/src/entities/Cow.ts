@@ -1,16 +1,18 @@
-// The cow on Bazaar Street. Solid below cowCrashSpeed, a crash above it; she is never harmed.
+// A cow in the road (Hampi: on Bazaar Street). Solid below cowCrashSpeed, a crash above it; she is never harmed.
 // Wait politely nearby and she ambles off. A honk only earns a "..." bubble.
 import Phaser from 'phaser';
 import { followKey, keyUnder } from '../art/look/bake';
-import { BASELINE_Y, COW, TILE } from '../level/levelData';
+import { BASELINE_Y, TILE, type CowDef } from '../level/level';
 import type { Box } from '../level/terrain';
 
 type CowState = 'stand' | 'walk' | 'gone';
 
 export class Cow {
   state: CowState = 'stand';
-  x = COW.col * TILE;      // left edge of the box
-  readonly homeX = COW.col * TILE;
+  x: number;               // left edge of the box
+  readonly homeX: number;
+  /** her box's width (the scene needs it to stand a slow bike beside her) */
+  readonly w: number;
   private waitT = 0;
   private walkT = 0;
   private bubbleT = 0;
@@ -18,10 +20,12 @@ export class Cow {
   private key: Phaser.GameObjects.Image;
   private bubble: Phaser.GameObjects.Image;
 
-  constructor(scene: Phaser.Scene, depth: number) {
+  constructor(scene: Phaser.Scene, private readonly def: CowDef, depth: number) {
+    this.x = this.homeX = def.col * TILE;
+    this.w = def.w;
     this.sprite = scene.add.image(this.x, BASELINE_Y, 'cow').setOrigin(0, 1).setDepth(depth);
     this.key = keyUnder(scene, this.sprite);
-    this.bubble = scene.add.image(this.x + 2, BASELINE_Y - COW.h - 3, 'bubble').setOrigin(0.5, 1).setDepth(depth + 0.5).setVisible(false);
+    this.bubble = scene.add.image(this.x + 2, BASELINE_Y - this.def.h - 3, 'bubble').setOrigin(0.5, 1).setDepth(depth + 0.5).setVisible(false);
   }
 
   get solid(): boolean {
@@ -29,7 +33,7 @@ export class Cow {
   }
 
   get box(): Box {
-    return { x: this.x, y: BASELINE_Y - COW.h, w: COW.w, h: COW.h };
+    return { x: this.x, y: BASELINE_Y - this.def.h, w: this.def.w, h: this.def.h };
   }
 
   reset(): void {
@@ -44,10 +48,10 @@ export class Cow {
   step(dt: number, bikeBox: Box, speed: number): void {
     if (this.bubbleT > 0) this.bubbleT = Math.max(0, this.bubbleT - dt);
     if (this.state === 'stand') {
-      const gap = Math.max(this.x - (bikeBox.x + bikeBox.w), bikeBox.x - (this.x + COW.w), 0);
-      if (gap <= COW.waitRangeTiles * TILE && speed < COW.waitMaxSpeed) {
+      const gap = Math.max(this.x - (bikeBox.x + bikeBox.w), bikeBox.x - (this.x + this.def.w), 0);
+      if (gap <= this.def.waitRangeTiles * TILE && speed < this.def.waitMaxSpeed) {
         this.waitT += dt;
-        if (this.waitT >= COW.waitSeconds) {
+        if (this.waitT >= this.def.waitSeconds) {
           this.state = 'walk';
           this.walkT = 0;
         }
@@ -56,8 +60,8 @@ export class Cow {
       }
     } else if (this.state === 'walk') {
       this.walkT += dt;
-      this.x += COW.walkSpeed * dt;
-      if (this.walkT >= COW.walkSeconds) this.state = 'gone';
+      this.x += this.def.walkSpeed * dt;
+      if (this.walkT >= this.def.walkSeconds) this.state = 'gone';
     }
   }
 
@@ -71,7 +75,7 @@ export class Cow {
     this.sprite.setVisible(visible);
     this.sprite.x = Math.round(this.x);
     if (this.state === 'walk') {
-      this.sprite.setAlpha(Math.min(1, (COW.walkSeconds - this.walkT) / 1.0));
+      this.sprite.setAlpha(Math.min(1, (this.def.walkSeconds - this.walkT) / 1.0));
       this.sprite.setFlipX(true); // turns and walks right
       this.sprite.y = BASELINE_Y - (Math.sin(t * 10) > 0 ? 1 : 0);
     } else {
@@ -80,6 +84,6 @@ export class Cow {
     }
     followKey(this.key, this.sprite);
     this.bubble.setVisible(visible && this.bubbleT > 0);
-    this.bubble.x = Math.round(this.x) + (this.state === 'walk' ? COW.w - 2 : 2);
+    this.bubble.x = Math.round(this.x) + (this.state === 'walk' ? this.def.w - 2 : 2);
   }
 }

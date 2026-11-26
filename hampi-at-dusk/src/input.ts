@@ -2,7 +2,6 @@
 import type Phaser from 'phaser';
 import type { BikeInput } from './bike/BikePhysics';
 import { isBikeId, type BikeId } from './bike/bikes';
-import { CHECKPOINTS } from './level/levelData';
 
 export interface GameInput extends BikeInput {
   honk?: boolean;
@@ -20,12 +19,15 @@ export const runtime = {
 
 const params = new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '');
 export const URL_DEBUG = params.get('debug') === '1';
+/** ?cp=N starts a practice run at checkpoint N (the Game scene clamps it to the stage's last checkpoint). */
 export const URL_CP = ((): number | null => {
   const raw = params.get('cp');
   if (raw === null) return null;
   const n = Number.parseInt(raw, 10);
-  return Number.isFinite(n) ? Math.min(CHECKPOINTS.length - 1, Math.max(0, n)) : null;
+  return Number.isFinite(n) ? Math.max(0, n) : null;
 })();
+/** ?stage=<id> picks the stage of a ?cp= practice run (anything unknown is the first stage). */
+export const URL_STAGE = params.get('stage');
 
 /** ?bike=tonup|daybreak|sundowner picks the bike for this page load (anything else is ignored). */
 export const URL_BIKE = ((): BikeId | null => {

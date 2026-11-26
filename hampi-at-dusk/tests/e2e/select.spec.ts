@@ -1,12 +1,14 @@
 // Bike select (v1.6): Title -> BIKE SELECT -> ride. Each bike can be picked with the keys and with the
 // mouse; CHANGE BIKE in the pause menu and on the finish screen comes back here; every bike keeps its own
 // record; the pick is remembered; and nothing leaks over repeated trips through the select screen.
+// v1.9: this is the select screen of a single run (Title -> STAGES -> Hampi -> BIKE SELECT); BACK and Esc go
+// to the STAGES list. The journey's bike select is in journey.spec.ts.
 
 import type { Page } from '@playwright/test';
 import { BIKES, BIKE_ORDER, type BikeId } from '../../src/bike/bikes';
 import { PREFS_KEY, bestKey } from '../../src/progress';
 import { advance, planFor, resetBot } from './bot';
-import { boot, expect, getLevel, getState, rideFromSelect, shot, test } from './helpers';
+import { boot, expect, getLevel, getState, rideFromSelect, selectFromTitle, shot, test } from './helpers';
 
 type Rect = { x: number; y: number; w: number; h: number };
 
@@ -29,10 +31,19 @@ async function click(page: Page, r: Rect): Promise<void> {
   await step(page, 1);
 }
 
+/** Title -> STAGES -> Hampi -> the bike select. */
 async function openSelect(page: Page): Promise<void> {
   expect(await screen(page)).toBe('title');
-  await press(page, 'Enter');
-  await waitFor(page, 'select');
+  await selectFromTitle(page);
+  expect(await page.evaluate(() => window.__test!.selectFor())).toEqual({ mode: 'single', stage: 'hampi' });
+}
+
+/** From the select screen of a single run: back to the STAGES list, and from there to the title. */
+async function backToTitle(page: Page): Promise<void> {
+  await press(page, 'Escape');
+  await waitFor(page, 'stages');
+  await press(page, 'Escape');
+  await waitFor(page, 'title');
 }
 
 async function waitForRun(page: Page): Promise<void> {
@@ -54,7 +65,7 @@ const PAUSE_CHANGE_BIKE = 2;
 const PAUSE_MAIN_MENU = 3;
 const FINISH_CHANGE_BIKE = 1;
 
-test('select screen: three cards, Left / Right (wrapping) + Enter rides each bike; Esc and BACK return to the title', async ({ page }) => {
+test('select screen: three cards, Left / Right (wrapping) + Enter rides each bike; Esc and BACK return to the STAGES list', async ({ page }) => {
   await boot(page);
   await step(page, 30);
   await openSelect(page);
@@ -93,13 +104,14 @@ test('select screen: three cards, Left / Right (wrapping) + Enter rides each bik
   // Browsing saves nothing: the pick is remembered when the ride starts.
   expect(await page.evaluate((k) => window.localStorage.getItem(k), PREFS_KEY)).toBeNull();
 
-  // Esc goes back to the title; so does BACK (Down, Enter).
-  await press(page, 'Escape');
-  await waitFor(page, 'title');
+  // Esc goes back to the STAGES list (and Esc there to the title); so does BACK (Down, Enter).
+  await backToTitle(page);
   await openSelect(page);
   await press(page, 'ArrowDown');
   expect((await targets(page)).index).toBe(1);
   await press(page, 'Enter');
+  await waitFor(page, 'stages');
+  await press(page, 'Escape');
   await waitFor(page, 'title');
 
   // Each bike in turn, by keyboard: the run is on that bike, and the pick is remembered.
@@ -131,8 +143,10 @@ test('select screen: three cards, Left / Right (wrapping) + Enter rides each bik
 test('select screen with the mouse: a click picks a card, a second click (or RIDE) rides; BACK returns', async ({ page }) => {
   await boot(page);
   await step(page, 20);
-  // The title's PRESS ENTER is a click target.
-  await click(page, { x: 172, y: 122, w: 136, h: 20 });
+  // The title's STAGES and the stage's row are click targets (the row is highlighted, so one click rides on).
+  await click(page, (await targets(page)).menu[1]!);
+  await waitFor(page, 'stages');
+  await click(page, (await page.evaluate(() => window.__test!.stages()))!.rows[0]!.rect);
   await waitFor(page, 'select');
 
   for (const bike of BIKE_ORDER) {
@@ -158,10 +172,12 @@ test('select screen with the mouse: a click picks a card, a second click (or RID
     expect((await getState(page)).bike).toBe(bike);
   }
 
-  // BACK with the mouse.
+  // BACK with the mouse: the select screen's, then the STAGES list's.
   await pauseAndPick(page, PAUSE_CHANGE_BIKE);
   await waitFor(page, 'select');
   await click(page, (await targets(page)).menu[1]!);
+  await waitFor(page, 'stages');
+  await click(page, (await targets(page)).menu[0]!);
   await waitFor(page, 'title');
 });
 
@@ -224,7 +240,7 @@ test('CHANGE BIKE from the pause menu and from the finish screen; each bike keep
   await shot(page, 'select-two-records');
 
   // Storage: one record per bike ridden, each with its own ghost.
-  const stored = await page.evaluate((keys) => keys.map((k) => JSON.parse(window.localStorage.getItem(k) ?? 'null')), BIKE_ORDER.map(bestKey));
+  const stored = await page.evaluate((keys) => keys.map((k) => JSON.parse(window.localStorage.getItem(k) ?? 'null')), BIKE_ORDER.map((b) => bestKey('hampi', b)));
   expect(stored[0].timeMs).toBe(tonupMs);
   expect(stored[1]).toBeNull();
   expect(stored[2].timeMs).toBe(sundownerMs);
@@ -266,17 +282,22 @@ test('CHANGE BIKE from the pause menu and from the finish screen; each bike keep
   expect(sel.index).toBe(1);
   expect(sel.cards.map((c) => c.bestMs)).toEqual([tonupMs, null, sundownerMs]);
 
-  // The title shows the best of the bike picked last (none on the Daybreak; the Sundowner's after picking it).
+  // Back out: the STAGES list shows Hampi's fastest run of any bike (the Ton-Up's), then the title, where
+  // the bike picked last rides by.
+  await press(page, 'Escape');
+  await waitFor(page, 'stages');
+  const rows = (await page.evaluate(() => window.__test!.stages()))!.rows;
+  expect(rows.map((r) => [r.id, r.bestMs, r.bestBike, r.medal])).toEqual([['hampi', tonupMs, 'tonup', 'gold']]);
   await press(page, 'Escape');
   await waitFor(page, 'title');
   await step(page, 30);
-  await shot(page, 'title-daybreak-no-best');
+  await shot(page, 'title-daybreak');
   await openSelect(page);
   await rideFromSelect(page, 'sundowner');
   await pauseAndPick(page, PAUSE_MAIN_MENU);
   await waitFor(page, 'title');
   await step(page, 30);
-  await shot(page, 'title-sundowner-best');
+  await shot(page, 'title-sundowner');
 });
 
 test('round trips through the select screen: nothing leaks, no stuck keys', async ({ page }) => {
@@ -339,9 +360,9 @@ test('round trips through the select screen: nothing leaks, no stuck keys', asyn
   for (const k of [1, 2]) expect({ ...inGame[k], 'Game.objects': 0 }).toEqual({ ...inGame[0], 'Game.objects': 0 });
   expect(atSelectAgain[1]).toEqual(atSelect[1]);
   const end = atTitle[3]!;
-  expect(end.scenes).toBe(6);
+  expect(end.scenes).toBe(9);
   expect(end.running).toBe(1);
-  for (const key of ['Select', 'Game', 'Hud', 'Finish']) {
+  for (const key of ['Stages', 'Select', 'Game', 'Hud', 'Finish', 'StageCard', 'JourneyFinish']) {
     for (const what of ['objects', 'updating', 'interactive', 'keyEvents', 'inputEvents', 'tweens', 'timers']) {
       expect(end[`${key}.${what}`], `${key}.${what} after returning to the title`).toBe(0);
     }
@@ -349,7 +370,7 @@ test('round trips through the select screen: nothing leaks, no stuck keys', asyn
   // While the select screen is up, it is the only scene running.
   const sel = atSelect[3]!;
   expect(sel.running).toBe(1);
-  for (const key of ['Title', 'Game', 'Hud', 'Finish']) {
+  for (const key of ['Title', 'Stages', 'Game', 'Hud', 'Finish', 'StageCard', 'JourneyFinish']) {
     for (const what of ['objects', 'updating', 'interactive', 'keyEvents', 'inputEvents']) {
       expect(sel[`${key}.${what}`], `${key}.${what} behind the select screen`).toBe(0);
     }

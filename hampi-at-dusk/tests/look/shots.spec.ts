@@ -5,7 +5,7 @@ import type { Page } from '@playwright/test';
 import { BIKES, DEFAULT_BIKE } from '../../src/bike/bikes';
 import { boulderMeetX } from '../shared/plan';
 import { advance, planFor } from '../e2e/bot';
-import { expect, getLevel, getState, rideFromTitle, startAt, test } from '../e2e/helpers';
+import { CP, SPOT, expect, getLevel, getState, rideFromSelect, selectFromTitle, startAtCol, test } from '../e2e/helpers';
 
 const DIR = path.resolve(process.env.LOOK_DIR ?? path.join('test-results', 'look'));
 const URL = process.env.LOOK_RENDERER === 'webgl' ? '/' : '/?renderer=canvas';
@@ -30,16 +30,11 @@ test('look: title, select, the stage end to end, finish', async ({ page }) => {
   await boot(page);
   await step(page, 90);
   await shot(page, '01-title');
-  await page.keyboard.press('Enter');
-  await step(page, 1);
-  await page.waitForFunction(() => window.__test!.screen() === 'select');
+  // v1.9: title -> STAGES -> Hampi -> the bike select -> a single run.
+  await selectFromTitle(page);
   await step(page, 30);
   await shot(page, '02-select');
-  await page.keyboard.press('Escape');
-  await step(page, 1);
-  await page.waitForFunction(() => window.__test!.screen() === 'title');
-
-  await rideFromTitle(page, DEFAULT_BIKE);
+  await rideFromSelect(page, DEFAULT_BIKE);
   const level = await getLevel(page);
   const { plan, lay, riverCp, kickerGap } = planFor(level, cfg);
   const T = level.tile;
@@ -54,17 +49,18 @@ test('look: title, select, the stage end to end, finish', async ({ page }) => {
   await stop(62 * T, '06-boost-strip');
   await stop(mid('Bazaar Street') + 120, '07-bazaar-cow');
   await stop((lay.canals[2]!.x0 + lay.canals[2]!.x1) / 2, '08-canals');
-  await stop(lay.cpX[3]! + 56, '09-canals-checkpoint');
+  await stop(SPOT.canalRun * T + 64, '09-canals-run');
   await stop(plan.honkFrom + 110, '10-pavilion-monkeys');
   await stop(box('cart', 0), '11-pavilion-cart');
   await stop(mid('Boulder Field') - 60, '12-boulder-field');
-  await stop(level.bonus.lipCol * T - 24, '13-ruins-bonus-ramp');
-  await stop((level.bonus.cliffCol + 24) * T, '14-ruins-trail');
+  await stop(lay.cpX[CP.ruins]! + 56, '13a-ruins-checkpoint'); // v1.9: the middle checkpoint, just lit
+  await stop(level.bonus!.lipCol * T - 24, '13-ruins-bonus-ramp');
+  await stop((level.bonus!.cliffCol + 24) * T, '14-ruins-trail');
   await stop(box('pillar', 4) + 24, '15-mandapa');
   await stop(kickerGap.x0 - 23 * T, '16-rocks');
   await stop((kickerGap.x0 + kickerGap.x1) / 2, '17-kicker');
   await stop(lay.steps[1]!.x0 + 8, '18-steps-riser2');
-  await stop(lay.boulder.triggerX + 150, '19-boulder-on-screen');
+  await stop(lay.boulder!.triggerX + 150, '19-boulder-on-screen');
   await stop(boulderMeetX(lay, cfg), '20-boulder-hop');
   await stop(lay.cpX[riverCp]! + 150, '21-river-run-up');
   await stop(lay.river.x0 - 40, '22-river-lip');
@@ -79,22 +75,22 @@ test('look: title, select, the stage end to end, finish', async ({ page }) => {
 
 test('look: crash, respawn, pause', async ({ page }) => {
   await boot(page);
-  await startAt(page, 2, DEFAULT_BIKE);
+  await startAtCol(page, SPOT.canals, DEFAULT_BIKE);
   await step(page, 150, { throttle: true }); // into the first canal
   for (let i = 0; i < 400 && !(await getState(page)).crashed; i += 4) await step(page, 4, { throttle: true });
   await step(page, 20);
   await shot(page, '30-crash-water');
   await step(page, 160);
   await shot(page, '31-respawn');
-  await startAt(page, 4, DEFAULT_BIKE);
+  await startAtCol(page, SPOT.pavilion, DEFAULT_BIKE);
   for (let i = 0; i < 800 && !(await getState(page)).crashed; i += 4) await step(page, 4, { throttle: true });
   await step(page, 30);
   await shot(page, '32-crash-pillar');
-  await startAt(page, 10, DEFAULT_BIKE);
+  await startAtCol(page, SPOT.terrace, DEFAULT_BIKE);
   for (let i = 0; i < 800 && !(await getState(page)).crashed; i += 4) await step(page, 4, { throttle: true });
   await step(page, 12);
   await shot(page, '33-crash-boulder');
-  await startAt(page, 7, DEFAULT_BIKE);
+  await startAtCol(page, SPOT.mandapa, DEFAULT_BIKE);
   await step(page, 200, { throttle: true });
   await page.keyboard.press('p');
   await step(page, 1);

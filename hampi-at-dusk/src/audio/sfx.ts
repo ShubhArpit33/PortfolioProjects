@@ -5,7 +5,7 @@
 // Sound has three modes, cycled with M (v1.3): everything on, music off, everything muted.
 
 import { loadPrefs, savePrefs } from '../progress';
-import { attachMusic, duckMusic, makeNoise, setMusicOn } from './music';
+import { attachMusic, duckMusic, makeNoise, musicInRun, setMusicOn } from './music';
 
 export type SfxName =
   | 'honk' | 'hop' | 'thud' | 'clean' | 'diya' | 'crash' | 'splash' | 'bell' | 'flip' | 'rumble' | 'crumble';
@@ -91,6 +91,8 @@ export interface AudioDebug {
   /** peak sample (0..1) in the last analyser window of the music bus / the master output */
   musicPeak: number;
   masterPeak: number;
+  /** the music is held back for a run (false on every menu: title, lists, finish screens, the stage card) */
+  musicInRun: boolean;
 }
 
 function peak(tap: AnalyserNode | null): number {
@@ -104,7 +106,10 @@ function peak(tap: AnalyserNode | null): number {
 
 /** What the audio is doing right now (test hooks only). */
 export function audioDebug(): AudioDebug {
-  return { created: ctx !== null, state: ctx?.state ?? 'none', mode, musicPeak: peak(musicTap), masterPeak: peak(masterTap) };
+  return {
+    created: ctx !== null, state: ctx?.state ?? 'none', mode, musicPeak: peak(musicTap), masterPeak: peak(masterTap),
+    musicInRun: musicInRun(),
+  };
 }
 
 /** Install the unlock + sound-mode listeners once. */

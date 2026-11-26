@@ -1,14 +1,16 @@
 // Pause menu (RESUME / RESTART / MAIN MENU), the finish screen's MAIN MENU, and the way back to the title:
 // the game truly freezes while paused, nothing leaks over repeated title -> game -> title round trips,
 // no key stays stuck, and the best / medal / ghost survive the trip.
+// v1.9: these are single runs (title -> STAGES -> Hampi -> bike select). The journey's pause menu and its
+// screens are in journey.spec.ts.
 
 import type { Page } from '@playwright/test';
 import { DEFAULT_BIKE } from '../../src/bike/bikes';
 import { bestKey } from '../../src/progress';
 import { advance, planFor, resetBot } from './bot';
-import { boot, expect, getState, getLevel, rideFromTitle, shot, test } from './helpers';
+import { CP, boot, expect, getState, getLevel, rideFromTitle, shot, test } from './helpers';
 
-const BEST_KEY = bestKey(DEFAULT_BIKE);
+const BEST_KEY = bestKey('hampi', DEFAULT_BIKE);
 
 type Rect = { x: number; y: number; w: number; h: number };
 
@@ -31,7 +33,7 @@ async function click(page: Page, r: Rect): Promise<void> {
   await step(page, 1);
 }
 
-/** From the title: Enter, and wait for the run to exist. */
+/** From the title: STAGES, Hampi, the bike select, RIDE; and wait for the run to exist. */
 async function startFromTitle(page: Page): Promise<void> {
   expect(await screen(page)).toBe('title');
   await rideFromTitle(page);
@@ -48,10 +50,10 @@ async function practiceFinish(page: Page): Promise<void> {
   await page.evaluate(() => {
     const t = window.__test!;
     t.setInput({});
-    t.startAt(11);
+    t.startAt(3); // the river's checkpoint
     t.step(0);
   });
-  await page.waitForFunction(() => window.__test!.state().checkpoint === 11 && window.__test!.state().x > 0);
+  await page.waitForFunction(() => window.__test!.state().checkpoint === 3 && window.__test!.state().x > 0);
   await page.evaluate(() => {
     const t = window.__test!;
     t.setInput({ throttle: true, boost: true });
@@ -192,11 +194,11 @@ test('three round trips title -> game -> title: nothing leaks, no stuck keys, ev
   expect(inGame[2]).toEqual(inGame[0]);
   expect(paused[1]).toEqual(paused[0]);
   expect(paused[2]).toEqual(paused[0]);
-  // Only the title is running; Game, Hud and Finish hold nothing.
+  // Only the title is running; every other scene holds nothing.
   const end = atTitle[3]!;
-  expect(end.scenes).toBe(6);
+  expect(end.scenes).toBe(9);
   expect(end.running).toBe(1);
-  for (const key of ['Select', 'Game', 'Hud', 'Finish']) {
+  for (const key of ['Stages', 'Select', 'Game', 'Hud', 'Finish', 'StageCard', 'JourneyFinish']) {
     for (const what of ['objects', 'updating', 'interactive', 'keyEvents', 'inputEvents', 'tweens', 'timers']) {
       expect(end[`${key}.${what}`], `${key}.${what} after returning to the title`).toBe(0);
     }
@@ -252,7 +254,7 @@ test('finish screen: Enter rides again, MAIN MENU by keyboard and mouse; best, m
   expect(s.finished).toBe(false);
   expect(s.ghost, 'the ghost of the gold run').not.toBeNull();
 
-  // Pause -> MAIN MENU: the title shows the best and its medal; storage is untouched.
+  // Pause -> MAIN MENU: back on the title; storage is untouched.
   await press(page, 'Escape');
   await press(page, 'ArrowDown');
   await press(page, 'ArrowDown');
@@ -281,7 +283,7 @@ test('finish screen: Enter rides again, MAIN MENU by keyboard and mouse; best, m
   await practiceFinish(page);
   await click(page, (await targets(page)).menu[0]!);
   await page.waitForFunction(() => window.__test!.screen() === 'game' && window.__test!.state().timeMs < 50);
-  expect((await getState(page)).checkpoint).toBe(11);
+  expect((await getState(page)).checkpoint).toBe(CP.river);
   await press(page, 'Escape');
   await press(page, 'ArrowUp');
   await press(page, 'Enter');
@@ -294,12 +296,19 @@ test('finish screen: Enter rides again, MAIN MENU by keyboard and mouse; best, m
   expect(s.checkpoint).toBe(0);
   expect(s.ghost).not.toBeNull();
   expect(s.ghost!.x).toBeGreaterThan(s.x);
-  // The title's "PRESS ENTER" is a click target as well.
   await press(page, 'Escape');
   await press(page, 'ArrowUp');
   await press(page, 'Enter');
   await expectTitle(page);
-  // The title's "PRESS ENTER" is a click target as well: it opens the bike select.
-  await click(page, { x: 172, y: 122, w: 136, h: 20 });
+  // The title's menu takes the mouse as well: STAGES opens the list, JOURNEY the bike select (for a journey).
+  t = await targets(page);
+  expect(t.menu.length).toBe(2);
+  expect(t.index, 'JOURNEY is selected').toBe(0);
+  await click(page, t.menu[1]!);
+  await page.waitForFunction(() => window.__test!.screen() === 'stages');
+  await press(page, 'Escape');
+  await expectTitle(page);
+  await click(page, (await targets(page)).menu[0]!);
   await page.waitForFunction(() => window.__test!.screen() === 'select');
+  expect(await page.evaluate(() => window.__test!.selectFor())).toEqual({ mode: 'journey', stage: 'hampi' });
 });

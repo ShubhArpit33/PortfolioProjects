@@ -1,49 +1,22 @@
-// Level data (GAME_SPEC.md sections 5.1 and 5.2). Pure data, no Phaser.
+// Stage 1: Hampi at Dusk (GAME_SPEC.md sections 5.1 and 5.2). Pure data, no Phaser.
 //
-// v1.7: the stage is 900 columns (about a minute on the Daybreak). New since v1.6: the Warm-up Road in
-// front of Bazaar Street (the tutorial, a no-crash zone), the Ruins Road breather after the Boulder
-// Field, and the Temple Steps (three risers up, a rolling boulder on the terrace, stairs down) before
-// the river. Every section that existed in v1.6 is unchanged, only shifted right.
+// v1.7: the stage is 900 columns (about a minute on the Daybreak): the Warm-up Road (the tutorial, a
+// no-crash zone), Bazaar Street, the Canals, the Fallen Pavilion, the Boulder Field, the Ruins Road
+// breather, the Mandapa Run, the Hemakuta Rocks, the Temple Steps (three risers up, a rolling boulder
+// on the terrace, stairs down) and the river.
+// v1.9: the data is one StageDef (HAMPI). Four checkpoints instead of twelve; the hints that hung on
+// checkpoints are a list of their own. The road itself has not changed by a column.
 
-export const TILE = 16;
-export const BASELINE_Y = 222;      // surface y at height h0
-export const WATER_LINE_Y = 226;    // drawn water line in gaps
-export const WATER_KILL_Y = 230;    // kill plane over gaps
+import { HAMPI as HAMPI_THEME } from '../art/themes/hampi';
+import type { BikeId } from '../bike/bikes';
+import {
+  TILE, cliff, flat, gap, ramp, riser,
+  type BoulderDef, type Checkpoint, type CowDef, type DecorDef, type DiyaDef, type HintDef, type MonkeysDef,
+  type ObstacleDef, type PromptDef, type Section,
+} from '../level/level';
+import { defineStage, levelOf, type StageDef } from './stage';
+
 export const STAGE_COLS = 900;
-export const STAGE_WIDTH = STAGE_COLS * TILE; // 14400
-export const WORLD_END_X = STAGE_WIDTH - TILE; // 14384, invisible wall
-export const WORLD_START_X = 24;    // invisible wall at the start (keeps a backed-up bike fully on screen)
-export const CAMERA_MAX_SCROLL_X = STAGE_WIDTH - 480; // 13920
-
-export type Segment =
-  | { kind: 'flat'; cols: number; noHop?: boolean }
-  /** rise is in tiles: positive = uphill, negative = downhill */
-  | { kind: 'ramp'; cols: number; rise: number; noHop?: boolean }
-  /**
-   * farBankH: height (tiles) of the far bank; omitted = unchanged.
-   * step: a dry 1-column slot at the foot of a riser (stone, not water); its far bank is one tile higher.
-   */
-  | { kind: 'gap'; cols: number; river?: boolean; kicker?: boolean; step?: boolean; farBankH?: number }
-  /** instant drop (vertical wall) to height toH, takes 0 columns */
-  | { kind: 'cliff'; toH: number };
-
-export interface Section {
-  id: number;
-  name: string;
-  startCol: number;
-  endCol: number; // inclusive
-  segments: Segment[];
-  /** no-crash zone (the warm-up): a bad landing is a wobble, never a crash */
-  safe?: boolean;
-}
-
-const flat = (cols: number): Segment => ({ kind: 'flat', cols });
-const ramp = (cols: number, rise: number, noHop = false): Segment =>
-  noHop ? { kind: 'ramp', cols, rise, noHop: true } : { kind: 'ramp', cols, rise };
-const gap = (cols: number): Segment => ({ kind: 'gap', cols });
-const cliff = (toH: number): Segment => ({ kind: 'cliff', toH });
-/** A riser: a dry 1-column slot whose far bank is at height toH (one tile up). Cleared by a hop, like a canal. */
-const riser = (toH: number): Segment => ({ kind: 'gap', cols: 1, step: true, farBankH: toH });
 
 export const SECTIONS: Section[] = [
   {
@@ -135,24 +108,26 @@ export const SECTIONS: Section[] = [
 
 // ---- Entities (section 5.2). x = left column, h = tiles above the baseline. ----
 
-export interface Checkpoint { id: number; col: number; hint?: string }
-export interface DiyaDef { col: number; h: number }
-/** pillar and cart are solid (a crash); a log is not: riding into it is a stumble */
-export interface ObstacleDef { type: 'pillar' | 'cart' | 'log'; col: number; wCols: number; hTiles: number }
-
+/**
+ * Four checkpoints (v1.9; twelve before): the start, the Ruins Road breather in the middle, the foot of
+ * the Temple Steps, and the river's run-up. A crash goes back to the last one passed.
+ */
 export const CHECKPOINTS: Checkpoint[] = [
   { id: 0, col: 2 },
-  { id: 1, col: 122 },                               // Bazaar Street
-  { id: 2, col: 182 },                               // Canals
-  { id: 3, col: 232 },                               // v1.7: inside the canal run, before the widest canal
-  { id: 4, col: 262 },                               // Fallen Pavilion
-  { id: 5, col: 342 },                               // Boulder Field
-  { id: 6, col: 422 },                               // v1.7: Ruins Road
-  { id: 7, col: 506 },                               // Mandapa Run
-  { id: 8, col: 616, hint: 'HOP ON THE RAMP!' },     // Hemakuta Rocks
-  { id: 9, col: 726, hint: 'HOP UP THE STEPS!' },    // v1.7: Temple Steps
-  { id: 10, col: 774 },                              // v1.7: the terrace, before the boulder's trigger
-  { id: 11, col: 842, hint: 'HOLD SHIFT - BOOST!' }, // Tungabhadra Leap
+  { id: 1, col: 422 },   // Ruins Road: the middle of the stage, where nothing can hurt
+  { id: 2, col: 726 },   // Temple Steps
+  { id: 3, col: 842 },   // Tungabhadra Leap
+];
+
+/**
+ * Hints (v1.9): they used to hang on checkpoints; now they are their own list, at the same columns.
+ * The empty one clears "HOP UP THE STEPS!" on the terrace, where the thing to read is the boulder's "!".
+ */
+export const HINTS: HintDef[] = [
+  { col: 616, text: 'HOP ON THE RAMP!' },     // Hemakuta Rocks
+  { col: 726, text: 'HOP UP THE STEPS!' },    // Temple Steps
+  { col: 774, text: '' },                     // the terrace, before the boulder's trigger
+  { col: 842, text: 'HOLD SHIFT - BOOST!' },  // Tungabhadra Leap
 ];
 
 export const DIYAS: DiyaDef[] = [
@@ -200,7 +175,7 @@ export const OBSTACLES: ObstacleDef[] = [
   { type: 'cart', col: 581, wCols: 3, hTiles: 2 },
 ];
 
-export const MONKEYS = {
+export const MONKEYS: MonkeysDef = {
   triggerCol: 288,
   spawnCols: [298, 300],
   sitCols: [292, 294],
@@ -209,7 +184,7 @@ export const MONKEYS = {
   hitH: 12,
 };
 
-export const COW = {
+export const COW: CowDef = {
   col: 164,
   w: 32,
   h: 24,
@@ -220,7 +195,7 @@ export const COW = {
   walkSeconds: 2,
 };
 
-export const FINISH = { col: 892 };
+export const FINISH = { col: 892, art: 'gateway' };
 
 /** The kicker (Hemakuta Rocks): the ramp whose lip is the flip spot. lipCol = first column past the lip. */
 export const KICKER = { rampCol: 666, lipCol: 670 };
@@ -233,7 +208,7 @@ export const BONUS = { rampCol: 442, lipCol: 451, cliffCol: 456 };
  * spawnCol and rolls left at `speed`; it breaks up when it reaches endCol (the top riser). Touching it
  * is a crash. The box is smaller than the 22 px rock, on purpose.
  */
-export const BOULDER = {
+export const BOULDER: BoulderDef = {
   triggerCol: 781,
   spawnCol: 811,
   endCol: 771,
@@ -248,7 +223,6 @@ export const BOULDER = {
 export const SAFE_ZONE = { fromCol: 0, toCol: 120 };
 
 /** Tutorial prompts (v1.7): shown while the bike is in [fromCol, toCol), until one full run has been finished. */
-export interface PromptDef { fromCol: number; toCol: number; text: string }
 export const PROMPTS: PromptDef[] = [
   { fromCol: 0, toCol: 24, text: 'HOLD RIGHT TO RIDE' },
   { fromCol: 24, toCol: 40, text: 'SPACE - HOP THE LOG' },
@@ -256,44 +230,55 @@ export const PROMPTS: PromptDef[] = [
   { fromCol: 78, toCol: 100, text: 'IN THE AIR: UP / DOWN TO TILT' },
 ];
 
-/** The prompt for a bike x (world px), or '' when there is none there. */
-export function promptAt(x: number): string {
-  const col = x / TILE;
-  for (const p of PROMPTS) if (col >= p.fromCol && col < p.toCol) return p.text;
-  return '';
-}
+/** The Mandapa Run's plinth (h1): the flat stretch the colonnade stands behind. */
+const PLINTH = { col: 518, cols: 82 };
 
-/** Diya centre in world px. */
-export function diyaCentre(d: DiyaDef): { x: number; y: number } {
-  return { x: TILE * d.col + TILE / 2, y: BASELINE_Y - TILE * d.h };
-}
+/**
+ * Decoration that stands on the road, behind every entity and in a dark, low-contrast tone: the colonnade
+ * behind the Mandapa Run's plinth, ruins along the Ruins Road, and the temple doorway the boulder rolls out of.
+ */
+export const DECOR: DecorDef[] = ((): DecorDef[] => {
+  const out: DecorDef[] = [];
+  // A standing colonnade behind the plinth: 192 px pieces, 16 px apart.
+  for (let x = PLINTH.col * TILE + 24; x + 192 <= (PLINTH.col + PLINTH.cols) * TILE; x += 208) out.push({ key: 'colonnade', x, alpha: 0.85 });
+  // Ruins Road: a broken hall before the bonus ramp, then more along the trail out after the drop.
+  const at = (key: string, col: number, alpha = 0.85): void => { out.push({ key, x: col * TILE, alpha }); };
+  at('ruins_a', BONUS.rampCol - 16);
+  at('ruins_b', BONUS.cliffCol + 6);
+  at('ruins_a', BONUS.cliffCol + 22);
+  at('ruins_b', BONUS.cliffCol + 37);
+  // The temple doorway stands where the boulder starts (it is 96 px wide: three columns either side).
+  at('temple_door', BOULDER.spawnCol - 3, 1);
+  return out;
+})();
 
-/** Respawn / activation x of a checkpoint. */
-export function checkpointX(cp: Checkpoint): number {
-  return TILE * cp.col + TILE / 2;
-}
+/**
+ * The bot's clean run on each bike (ms): no flips, boost only at the river. Measured on the 900-column
+ * stage (v1.7); the e2e bot run asserts these to the millisecond. Medal targets follow from them.
+ */
+export const BOT_RUN_MS: Readonly<Record<BikeId, number>> = { tonup: 49_908, daybreak: 59_517, sundowner: 69_150 };
 
-export const LEVEL = {
-  tile: TILE,
-  baselineY: BASELINE_Y,
-  waterLineY: WATER_LINE_Y,
-  waterKillY: WATER_KILL_Y,
-  stageCols: STAGE_COLS,
-  stageWidth: STAGE_WIDTH,
-  worldStartX: WORLD_START_X,
-  worldEndX: WORLD_END_X,
+export const HAMPI: StageDef = defineStage({
+  id: 'hampi',
+  name: 'HAMPI AT DUSK',
+  theme: HAMPI_THEME,
+  collectible: { texture: 'diya', glow: 'glow_diya', label: 'DIYAS' },
+  cols: STAGE_COLS,
   sections: SECTIONS,
   checkpoints: CHECKPOINTS,
-  diyas: DIYAS,
-  obstacles: OBSTACLES,
-  monkeys: MONKEYS,
-  cow: COW,
+  collectibles: DIYAS,
+  hazards: { obstacles: OBSTACLES, cow: COW, monkeys: MONKEYS, boulder: BOULDER },
+  safeZone: SAFE_ZONE,
+  prompts: PROMPTS,
+  hints: HINTS,
   finish: FINISH,
   kicker: KICKER,
   bonus: BONUS,
-  boulder: BOULDER,
-  safeZone: SAFE_ZONE,
-  prompts: PROMPTS,
-};
+  decor: DECOR,
+  boats: 'coracle',
+  botRunMs: BOT_RUN_MS,
+});
 
-export type LevelData = typeof LEVEL;
+/** Hampi's heightfield and its plain-data view (for the tests and the bot's planner). */
+export const TERRAIN = HAMPI.terrain;
+export const LEVEL = levelOf(HAMPI);

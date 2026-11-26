@@ -4,7 +4,6 @@
 // Layers are screen-fixed TileSprites whose tile offset follows the camera, so they tile seamlessly.
 
 import type Phaser from 'phaser';
-import { CAMERA_MAX_SCROLL_X } from '../level/levelData';
 import { Ambience } from './Ambience';
 import { DEPTH } from './depth';
 import { Atmosphere } from './look/Atmosphere';
@@ -23,7 +22,8 @@ export class Parallax {
   private atmosphere: Atmosphere;
   private ambience: Ambience;
 
-  constructor(scene: Phaser.Scene) {
+  /** camMaxX = the furthest the camera scrolls on this stage (the landmark stands at the end of it). */
+  constructor(scene: Phaser.Scene, camMaxX: number) {
     const t = theme();
     this.layers = t.layers.map((l) => ({
       sprite: scene.add.tileSprite(0, 0, VIEW_W, VIEW_H, l.key).setOrigin(0, 0).setScrollFactor(0).setDepth(l.depth),
@@ -32,7 +32,7 @@ export class Parallax {
     const lm = t.landmark;
     if (lm) {
       this.landmarkScroll = lm.scroll;
-      this.landmarkLayerX = lm.endScreenX + CAMERA_MAX_SCROLL_X * lm.scroll;
+      this.landmarkLayerX = lm.endScreenX + camMaxX * lm.scroll;
       this.landmark = scene.add.image(0, lm.groundY(this.landmarkLayerX % LAYER_W), lm.key)
         .setOrigin(0.5, 1).setScrollFactor(0).setDepth(DEPTH.chariot);
     }

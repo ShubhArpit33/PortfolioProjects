@@ -1,12 +1,9 @@
-// Heightfield built from the level segments. Pure, no Phaser.
+// Heightfield built from a stage's segments. Pure, no Phaser. Each StageDef holds its own (stage.terrain).
 // surfaceY is continuous piecewise-linear (ramps interpolate; columns do not step),
 // except at a cliff (vertical wall) and at gaps (null). A riser (v1.7) is a 1-column gap whose far bank
 // is one tile higher: the physics treats it exactly like a canal (hop it, or hit the far wall).
 
-import {
-  BASELINE_Y, SECTIONS, STAGE_COLS, TILE,
-  type ObstacleDef, type Section,
-} from './levelData';
+import { BASELINE_Y, TILE, type ObstacleDef, type Section } from './level';
 
 export interface GroundPiece {
   x0: number; x1: number;   // [x0, x1)
@@ -52,7 +49,7 @@ export interface Terrain {
 
 export const heightY = (h: number): number => BASELINE_Y - TILE * h;
 
-export function buildTerrain(sections: Section[] = SECTIONS): Terrain {
+export function buildTerrain(sections: Section[]): Terrain {
   const pieces: GroundPiece[] = [];
   const gaps: Gap[] = [];
   const cliffs: CliffWall[] = [];
@@ -139,17 +136,10 @@ export function buildTerrain(sections: Section[] = SECTIONS): Terrain {
   };
 }
 
-/** The stage terrain (built once). */
-export const TERRAIN: Terrain = buildTerrain();
-
-if (TERRAIN.width !== STAGE_COLS * TILE) {
-  throw new Error(`level segments cover ${TERRAIN.width} px, expected ${STAGE_COLS * TILE}`);
-}
-
 export interface Box { x: number; y: number; w: number; h: number } // top-left + size
 
 /** Obstacle AABB: left column, extends right and up from the surface. */
-export function obstacleBox(o: ObstacleDef, terrain: Terrain = TERRAIN): Box {
+export function obstacleBox(o: ObstacleDef, terrain: Terrain): Box {
   const x = o.col * TILE;
   const ground = terrain.surfaceY(x) ?? BASELINE_Y;
   const h = o.hTiles * TILE;

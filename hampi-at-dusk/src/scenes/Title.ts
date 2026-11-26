@@ -1,25 +1,34 @@
-// Title: the parallax scene drifts by under the logo. Enter goes to the bike select.
+// Title: the parallax scene drifts by under the logo. Two ways in (v1.9): JOURNEY (the stages in order,
+// one bike, 5 helmets) and STAGES (one stage at a time, for medals and ghosts).
 import Phaser from 'phaser';
 import { DEPTH, Parallax } from '../art/Parallax';
+import { useStageLook } from '../art/assets';
 import { PAL } from '../art/palette';
 import { soundLabel } from '../audio/sfx';
 import { setMusicInRun, setMusicIntensity, tickMusic } from '../audio/music';
 import { BikeView } from '../bike/BikeView';
 import { currentBikeDef } from '../bike/selection';
 import { onKeyPress } from '../input';
-import { BASELINE_Y } from '../level/levelData';
-import { medalFor } from '../progress';
+import { MAX_HELMETS } from '../journey';
+import { journeyBest } from '../journeyRun';
+import { BASELINE_Y, cameraMaxScrollX } from '../level/level';
+import { addGroundStrip } from '../level/terrainView';
+import { FIRST_STAGE, JOURNEY_ORDER, stageTitle } from '../stages';
+import { Menu } from '../ui/Menu';
 import { formatTime, pixelText } from '../ui/text';
-import { currentBest } from './Game';
 
 const SCROLL_SPEED = 28; // px/s
 
 export class TitleScene extends Phaser.Scene {
+  /** JOURNEY / STAGES */
+  menu!: Menu;
   private parallax!: Parallax;
   private ground!: Phaser.GameObjects.TileSprite;
   private bike!: BikeView;
-  private press!: Phaser.GameObjects.Text;
+  private about!: Phaser.GameObjects.Text;
   private mute!: Phaser.GameObjects.Text;
+  private lines: string[] = [];
+  private shown = -1;
   private t = 0;
 
   constructor() {
@@ -29,34 +38,42 @@ export class TitleScene extends Phaser.Scene {
   create(): void {
     setMusicInRun(false); // v1.6.4: menus have the music
     this.t = 0;
-    this.parallax = new Parallax(this);
-    // The first terrain chunk is all flat road, so it tiles as a ground strip.
-    this.ground = this.add.tileSprite(0, 0, 480, 270, 'terrain_0').setOrigin(0, 0).setDepth(DEPTH.terrain);
-    // The bike picked last rides across the title; the best shown is that bike's.
+    this.shown = -1;
+    // The menus are set on the first stage's road.
+    useStageLook(this, FIRST_STAGE);
+    this.parallax = new Parallax(this, cameraMaxScrollX(FIRST_STAGE.width));
+    this.ground = addGroundStrip(this, FIRST_STAGE, DEPTH.terrain);
+    // The bike picked last rides across the title; the journey best shown is that bike's.
     const def = currentBikeDef();
     this.bike = new BikeView(this, DEPTH.bike, DEPTH.fx, def.id);
 
     const ui = DEPTH.fade;
     // The font is monospaced, so a ':' sits in a full-width cell; drawn as two pieces with a small gap the
     // space after the colon reads as one space instead of two.
-    const head = pixelText(this, 0, 58, 'OPEN ROADS:', PAL.uiYellow, 24).setDepth(ui);
-    const tail = pixelText(this, 0, 58, 'INDIA', PAL.uiYellow, 24).setDepth(ui);
+    const head = pixelText(this, 0, 50, 'OPEN ROADS:', PAL.uiYellow, 24).setDepth(ui);
+    const tail = pixelText(this, 0, 50, 'INDIA', PAL.uiYellow, 24).setDepth(ui);
     const gap = 12;
     const left = Math.round(240 - (head.width + gap + tail.width) / 2);
     head.setX(left);
     tail.setX(left + head.width + gap);
-    pixelText(this, 240, 92, 'STAGE 1: HAMPI AT DUSK', PAL.cream).setOrigin(0.5, 0).setDepth(ui);
-    this.press = pixelText(this, 240, 128, 'PRESS ENTER', PAL.uiYellow).setOrigin(0.5, 0).setDepth(ui);
+    const n = JOURNEY_ORDER.length;
+    const sub = n === 1 ? stageTitle(FIRST_STAGE) : `A ROAD TRIP IN ${n} STAGES`;
+    pixelText(this, 240, 84, sub, PAL.cream).setOrigin(0.5, 0).setDepth(ui);
 
-    // The time to beat, with its medal.
-    const best = currentBest(def.id);
-    if (best.timeMs !== null) {
-      const medal = medalFor(best.timeMs, def.medalsMs);
-      const label = `${def.name} BEST ${formatTime(best.timeMs)}`;
-      const tx = medal ? 247 : 240;
-      pixelText(this, tx, 150, label, PAL.cream).setOrigin(0.5, 0).setDepth(ui);
-      if (medal) this.add.image(tx - (label.length * 8) / 2 - 13, 154, `medal_${medal}`).setDepth(ui);
-    }
+    // What each way in is, in one line under the menu (the journey's line ends with this bike's best time).
+    const best = journeyBest(def.id);
+    this.lines = [
+      best === null ? `ONE BIKE, ${MAX_HELMETS} HELMETS, EVERY STAGE IN ORDER` : `${def.name} JOURNEY BEST ${formatTime(best)}`,
+      'ONE STAGE AT A TIME: MEDALS AND GHOSTS',
+    ];
+    // A dim plate behind the menu and its line, so they read over the skyline (notched like the pixel frames).
+    const plate = this.add.graphics().setDepth(ui - 1);
+    plate.fillStyle(PAL.ink, 0.55).fillRect(66, 108, 348, 62).fillRect(64, 110, 352, 58);
+    this.menu = new Menu(this, [
+      { label: 'JOURNEY', x: 240, y: 116, action: () => this.scene.start('Select', { mode: 'journey' }) },
+      { label: 'STAGES', x: 240, y: 132, action: () => this.scene.start('Stages') },
+    ], ui);
+    this.about = pixelText(this, 240, 154, '', PAL.cream).setOrigin(0.5, 0).setDepth(ui);
 
     this.add.rectangle(0, 232, 480, 38, PAL.ink, 0.72).setOrigin(0, 0).setDepth(ui - 1);
     const hints = [
@@ -66,10 +83,9 @@ export class TitleScene extends Phaser.Scene {
     hints.forEach((line, i) => pixelText(this, 240, 239 + i * 13, line, PAL.cream).setOrigin(0.5, 0).setDepth(ui));
     this.mute = pixelText(this, 474, 6, '', PAL.cream).setOrigin(1, 0).setDepth(ui).setVisible(false);
 
-    const start = (): void => { this.scene.start('Select'); };
-    onKeyPress(this, 'ENTER', start);
-    // "PRESS ENTER" is also a click / tap target (it blinks, so the target is a zone of its own).
-    this.add.zone(240, 132, 136, 20).setInteractive({ useHandCursor: true }).once('pointerdown', start);
+    onKeyPress(this, 'UP', () => this.menu.move(-1));
+    onKeyPress(this, 'DOWN', () => this.menu.move(1));
+    onKeyPress(this, 'ENTER', () => this.menu.activate());
     this.draw(0);
   }
 
@@ -83,7 +99,10 @@ export class TitleScene extends Phaser.Scene {
     this.parallax.update(scroll, this.t);
     this.ground.tilePositionX = scroll;
     this.bike.ride(150, BASELINE_Y, 0, { throttle: true, brake: false, reversing: false, footDown: false, boosting: false, grounded: true, v: SCROLL_SPEED * 3 }, dt);
-    this.press.setVisible(Math.floor(this.t * 2.5) % 2 === 0);
+    if (this.menu.index !== this.shown) {
+      this.shown = this.menu.index;
+      this.about.setText(this.lines[this.shown] ?? '');
+    }
     const tag = soundLabel();
     if (tag !== this.mute.text) this.mute.setText(tag);
     this.mute.setVisible(tag !== '');

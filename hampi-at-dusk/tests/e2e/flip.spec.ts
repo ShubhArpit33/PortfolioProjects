@@ -1,21 +1,20 @@
 // Tricks in the real game (v1.3): a backflip off the kicker lands, counts and refills the meter;
-// an over-rotated one crashes and awards nothing. Both runs start at cp8 (Hemakuta Rocks).
-// v1.7: the bonus ramp on Ruins Road (cp6) is a flip spot as well.
+// an over-rotated one crashes and awards nothing. Both runs start at the Hemakuta Rocks (column 616).
+// v1.7: the bonus ramp on Ruins Road (cp1 since v1.9) is a flip spot as well.
 
 import { CONFIG } from '../../src/config';
 import { kickerFlip } from './flipHelper';
-import { boot, expect, getLevel, getState, shot, startAt, test } from './helpers';
+import { CP, SPOT, boot, expect, getLevel, getState, shot, startAt, startAtCol, test } from './helpers';
 
-const ROCKS_CP = 8;
-const RUINS_CP = 6;
+const RUINS_CP = CP.ruins;
 
 test('kicker: a backflip lands, counts as a flip and refills the boost meter; a botched one does not', async ({ page }) => {
   await boot(page);
   const level = await getLevel(page);
-  const lipX = level.kicker.lipCol * level.tile;
+  const lipX = level.kicker!.lipCol * level.tile;
   const tankEndX = lipX + 8 * level.tile;
 
-  await startAt(page, ROCKS_CP);
+  await startAtCol(page, SPOT.rocks);
   // Stop upside down for the screenshot, then finish the flip.
   expect(await kickerFlip(page, lipX - 32, 330, true, 180, true)).toBeNull();
   const mid = await getState(page);
@@ -40,7 +39,7 @@ test('kicker: a backflip lands, counts as a flip and refills the boost meter; a 
   await shot(page, 'flip-landed'); // "+FLIP" popup, FLIPS 1 in the HUD
 
   // Second run: hold Up far too long and never correct. Crash, no award.
-  await startAt(page, ROCKS_CP);
+  await startAtCol(page, SPOT.rocks);
   const bad = (await kickerFlip(page, lipX - 32, 440, false))!;
   expect(bad.after.crashed).toBe(true);
   expect(bad.after.crashes).toBe(1);
@@ -51,7 +50,7 @@ test('bonus ramp (v1.7): a backflip off the Ruins Road ramp lands and counts; ig
   await boot(page);
   const level = await getLevel(page);
   const T = level.tile;
-  const lipX = level.bonus.lipCol * T;
+  const lipX = level.bonus!.lipCol * T;
 
   await startAt(page, RUINS_CP);
   // Stop upside down over the top of the ramp for the screenshot, then finish the flip.
@@ -74,6 +73,6 @@ test('bonus ramp (v1.7): a backflip off the Ruins Road ramp lands and counts; ig
     t.setInput({ throttle: true });
     for (let i = 0; i < 120 * 30 && t.state().x < untilX && !t.state().crashed; i++) t.step(1);
     return t.state();
-  }, (level.bonus.cliffCol + 44) * T);
+  }, (level.bonus!.cliffCol + 44) * T);
   expect([rolled.crashed, rolled.crashes, rolled.flips, rolled.diyas]).toEqual([false, 0, 0, 10]);
 });

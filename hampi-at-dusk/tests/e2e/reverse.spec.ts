@@ -2,12 +2,12 @@
 // at reverseSpeed; releasing stops it; the level start is a wall.
 
 import { CONFIG } from '../../src/config';
-import { boot, expect, getLevel, getState, shot, startAt, test } from './helpers';
+import { CP, SPOT, boot, expect, getLevel, getState, shot, startAt, startAtCol, test } from './helpers';
 
 test('Left brakes while rolling, backs the bike up from a standstill, and stops at the level start', async ({ page }) => {
   await boot(page);
   const level = await getLevel(page);
-  await startAt(page, 1);
+  await startAtCol(page, SPOT.bazaar); // Bazaar Street: flat road, nothing near
   const startX = (await getState(page)).x;
 
   // Roll forward for half a second, then hold Left through the stop and beyond.
@@ -43,7 +43,7 @@ test('Left brakes while rolling, backs the bike up from a standstill, and stops 
   await page.evaluate(() => window.__test!.step(60));
   expect((await getState(page)).x).toBe(stopped.x);
   expect(stopped.x).toBeLessThan(trace.peakX);
-  expect(stopped.checkpoint).toBe(1);
+  expect(stopped.checkpoint).toBe(CP.start);
   expect(startX).toBeGreaterThan(0);
 
   // From cp0, backing up ends at the wall at the level start, with no crash.

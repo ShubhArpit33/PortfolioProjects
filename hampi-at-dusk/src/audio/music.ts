@@ -690,6 +690,11 @@ export function setMusicOn(value: boolean): void {
 }
 
 /** Called by the scenes: true while a run is on screen (music fades out), false on the menus (it fades back in). */
+/** Is the music held back for a run right now (false on every menu)? */
+export function musicInRun(): boolean {
+  return inRun;
+}
+
 export function setMusicInRun(value: boolean): void {
   if (inRun === value) return;
   inRun = value;

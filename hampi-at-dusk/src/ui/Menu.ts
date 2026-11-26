@@ -51,8 +51,14 @@ export class Menu {
     this.select(this.index + by);
   }
 
+  /** Nothing selected (index -1): for a screen whose highlight is somewhere else, e.g. on a list above the menu. */
+  blur(): void {
+    this.index = -1;
+    this.draw();
+  }
+
   activate(): void {
-    if (this.visible) this.items[this.index]!.action();
+    if (this.visible && this.index >= 0) this.items[this.index]!.action();
   }
 
   /** Hidden menus take no input (keys or pointer). */
